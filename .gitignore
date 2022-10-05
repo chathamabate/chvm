@@ -1,0 +1,4 @@
+vmbin
+chvm
+*.o
+*.swp
