@@ -13,17 +13,14 @@ typedef struct {
     void *data;
 } token;
 
-typedef struct _scanner scanner;
-
+// Should return '\0' when exhausted.
 typedef char (*char_stream)();
 
 typedef enum {
     READY,      // More to be scanned.
     CLOSED,     // No more to be scanned. 
-    ERROR       // Error occured. 
+    ERROR       // Error occured. (Also no more to be scanned)
 } scanner_state;
-
-#define SC_ERROR_BUF_LEN    50
 
 typedef struct _scanner {
     char_stream cs;
