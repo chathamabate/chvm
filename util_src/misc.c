@@ -67,7 +67,7 @@ void *ll_next(linked_list *ll) {
     return data;
 }
 
-void *delete_linked_list(linked_list *ll) {
+void delete_linked_list(linked_list *ll) {
     linked_list_node *iter = ll->head; 
     linked_list_node *temp;
 

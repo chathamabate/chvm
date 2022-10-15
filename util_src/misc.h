@@ -13,8 +13,8 @@ void display_channels();
 typedef struct _ll_node linked_list_node;
 
 typedef struct _ll_node {
-    _ll_node *prv;
-    _ll_node *nxt;
+    linked_list_node *prv;
+    linked_list_node *nxt;
 
     void *data;
 } linked_list_node;
@@ -29,7 +29,7 @@ typedef struct {
 
 linked_list *new_linked_list(uint8_t chnl, size_t cs);
 void *ll_next(linked_list *ll);
-void *delete_linked_list(linked_list *ll);
+void delete_linked_list(linked_list *ll);
 
 #define NOTICE_MSG_BUF_LEN   50
 

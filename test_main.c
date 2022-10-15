@@ -1,5 +1,7 @@
 #include <stdio.h>
 
+#include "index/colors.h"
+
 int main(void) {
-    printf("Hello from test main\n");
+    printf("%s", MSG);
 }
