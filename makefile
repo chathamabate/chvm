@@ -4,9 +4,36 @@ CFLAGS	:=
 all: chvm
 test: test_chvm
 
-# The index directory will hold definitions which
-# can be used anywhere. (Probably all macros)
-index_hdrs		:= $(wildcard index/*.h)
+# Macro for printing build message.
+# $(call build_msg_template,$?,$@,prefix)
+define build_msg_template
+@printf "$(3) \x1b[37;3m%-25.25s\x1b[0m [$(1)]\n" "$(2)"
+endef
+
+# $(call link_msg_template,$@)
+define link_msg_template 
+@printf	"\n\x1b[3mLinking \x1b[1m$(1)\x1b[0m\n"
+endef
+
+define success_msg
+@printf "\n\x1b[92mBuild Successful\x1b[0m\n\n"
+endef
+
+core_prefix 	:= \x1b[95mC\x1b[0m
+app_prefix		:= \x1b[1mA\x1b[0m
+test_prefix 	:= \x1b[93mT\x1b[0m
+suite_prefix	:= \x1b[92mS\x1b[0m
+
+# Core code will depend on nothing.
+# Everything will depend on core code.
+# Core code will not have tests.
+core_hdrs		:= $(wildcard core_src/*.h)
+core_srcs		:= $(wildcard core_src/*.c)
+core_objs		:= $(subst .c,.o,$(core_srcs))
+
+core_src/%.o: core_src/%.c $(core_hdrs)
+	$(call build_msg_template,$?,$@,$(core_prefix))
+	@$(CC) -c -o $@ $< $(CFLAGS)
 
 # Testing code will not be templated in the makefile
 # as all modules depend on it. Testing code
@@ -15,8 +42,8 @@ testing_hdrs	:= $(wildcard testing_src/*.h)
 testing_srcs 	:= $(wildcard testing_src/*.c)
 testing_objs 	:= $(subst .c,.o,$(testing_srcs))
 
-testing_src/%.o: testing_src/%.c $(testing_hdrs) $(index_hdrs)
-	@printf "T %-25.25s <- [$?]\n" "$@"
+testing_src/%.o: testing_src/%.c $(testing_hdrs) $(core_hdrs)
+	$(call build_msg_template,$?,$@,$(test_prefix))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 modules	:=
@@ -45,13 +72,14 @@ $(1)_test_objs	:= $$(subst .c,.o,$$($(1)_test_srcs))
 
 $(1)_test_dep_hdrs	:= $$($(1)_test_hdrs) $$($(1)_hdrs) $$($(1)_dep_hdrs) $(testing_hdrs)
 
+# Regardless, in both situations, the core hdrs are dependencies also...
 
-$(1)_src/test/%.o: $(1)_src/test/%.c $$($(1)_test_dep_hdrs) $(index_hdrs)
-	@printf "T %-25.25s <- [$$?]\n" "$$@"
+$(1)_src/test/%.o: $(1)_src/test/%.c $$($(1)_test_dep_hdrs) $(core_hdrs)
+	$$(call build_msg_template,$$?,$$@,$(suite_prefix))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 
-$(1)_src/%.o: $(1)_src/%.c $$($(1)_hdrs) $$($(1)_dep_hdrs) $(index_hdrs)
-	@printf "S %-25.25s <- [$$?]\n" "$$@"
+$(1)_src/%.o: $(1)_src/%.c $$($(1)_hdrs) $$($(1)_dep_hdrs) $(core_hdrs)
+	$$(call build_msg_template,$$?,$$@,$(app_prefix))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 endef
 
@@ -67,28 +95,30 @@ $(eval $(call module_template,chasm,util chvm))
 	@echo "Rule not found for " $< " -> " $@
 
 # all_objs refers to pure source files objects. (NOT any test files)
-all_objs		:= $(foreach mod,$(modules),$($(mod)_objs))
+all_objs		:= $(core_objs) $(foreach mod,$(modules),$($(mod)_objs))
 
 # all_test_objs refers to all objs relating to testing.
 all_test_objs	:= $(testing_objs) $(foreach mod,$(modules),$($(mod)_test_objs))
 
 # Main will be entry point for normal program.
 ./main.o: ./main.c $(all_objs)
-	@printf "S %-25.25s <- [$?]\n" "$@"
+	$(call build_msg_template,$?,$@,$(app_prefix))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 chvm: ./main.o 
-	@printf "Building $@\n"
+	$(call link_msg_template,$@)
 	@$(CC) -o $@ ./main.o $(all_objs) $(CFLAGS)
+	$(success_msg)
 
 ./test_main.o: ./test_main.c $(all_objs) $(all_test_objs)
-	@printf "T %-25.25s <- [$?]\n" "$@"
+	$(call build_msg_template,$?,$@,$(test_prefix))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 test_chvm: ./test_main.o 
-	@printf "Building $@\n"
+	$(call link_msg_template,$@)
 	@$(CC) -o $@ ./test_main.o $(all_objs) $(all_test_objs) $(CFLAGS)
+	$(success_msg)
 
 clean:
-	rm chvm ./main.o $(all_objs) test_chvm ./test_main.o $(all_test_objs)
-
+	@printf "\x1b[91mCleaning Up...\x1b[0m\n"
+	-@rm chvm ./main.o $(all_objs) test_chvm ./test_main.o $(all_test_objs)
