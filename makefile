@@ -119,6 +119,32 @@ test_chvm: ./test_main.o
 	@$(CC) -o $@ ./test_main.o $(all_objs) $(all_test_objs) $(CFLAGS)
 	$(success_msg)
 
+# Here we could figure out all created objects than delete them
+# this way there will never be any error messages when 
+# cleaning up the project.
+
+existing_core_objs			:= $(wildcard core_src/*.o)
+existing_testing_objs		:= $(wildcard testing_src/*.o)
+existing_module_objs		:= $(foreach mod,$(modules),$(wildcard $(mod)_src/*.o))
+existing_module_test_objs	:= $(foreach mod,$(modules),$(wildcard $(mod)_src/test/*.o))
+existing_main_objs			:= $(wildcard *.o)
+existing_binaries			:= $(wildcard *chvm)
+
+existing_removeables		:= $(existing_core_objs) 
+existing_removeables		+= $(existing_testing_objs)
+existing_removeables		+= $(existing_module_objs)
+existing_removeables		+= $(existing_module_test_objs)
+existing_removeables		+= $(existing_main_objs)
+existing_removeables		+= $(existing_binaries)
+
+# $(call remove_template,removeable_file)
+define remove_template
+
+@printf	"\x1b[31;3m$(1)\x1b[0m\n"
+@rm $(1)
+
+endef
+
 clean:
 	@printf "\x1b[91mCleaning Up...\x1b[0m\n"
-	-@rm chvm ./main.o $(all_objs) test_chvm ./test_main.o $(all_test_objs)
+	$(foreach removeable,$(existing_removeables), $(call remove_template,$(removeable)))
