@@ -58,7 +58,7 @@ int main(void) {
         // Child proccess.
         close(fds[0]); // Potential error checking.
 
-        // write(fds[1], "Hello, World!", 14); 
+        write(fds[1], "Hello, World!", 14); 
         sleep(10);
         close(fds[1]);
     } else {

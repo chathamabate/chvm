@@ -1,5 +1,8 @@
 #include "chunit.h"
 
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "../core_src/mem.h"
 
 // All testing work should be done in here...
@@ -32,12 +35,28 @@ void delete_chunit_result(chunit_result *res) {
 }
 
 // Below calls will be called from the child process.
-void assert_true(int pipe_fd, int actual) {
 
+void assert_true(int pipe_fd, int actual) {
+    if (actual) {
+        return;
+    }
+
+    chunit_assert_tag buff[1] = {
+        CHUNIT_ASSERT_TRUE
+    };
+
+    if (write(pipe_fd, buff, sizeof(chunit_assert_tag)) != sizeof(chunit_assert_tag)) {
+        // Error with write... just exit.
+        close(pipe_fd); // Don't really care whether this errors or not.
+        exit(1);
+    } 
+    
+    close(pipe_fd); // Again, error case doesn't really matter.
+    exit(0);
 }
 
 void assert_false(int pipe_fd, int actual) {
-
+    // must figure out best way here....
 }
 
 void assert_non_null(int pipe_fd, void *ptr) {

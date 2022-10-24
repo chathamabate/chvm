@@ -1,4 +1,5 @@
 vmbin
 chvm
+test_chvm
 *.o
 *.swp
