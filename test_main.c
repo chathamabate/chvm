@@ -38,6 +38,12 @@ int main(void) {
     // All through status codes maybe????
     //
     // We are going to be forking big time!!
+    int i = 0;
+
+    if (&i) {
+        printf("DONE\n");
+        return 0;
+    }
     
     int fds[2]; 
     if (pipe(fds) == -1) {

@@ -3,101 +3,36 @@
 
 #include <stdint.h>
 
-// A unit test will pipe back to the parent process
-// information about its execution.
+// All errors will be piped back to the parent 
+// ... except for when 2 different errors.
+// 1) Would be when the test process exits due to a hard error.
+// 2) When there is an error communicating with the parent process.
 //
-// Primarily Assertion Errors with data...
-
-// If there is some form of assertion error...
-// The information must be piped back to the parent process.
-
-// What should happen here????
-// What does a testing suite even look like???
-//
-// Hmmmmm... how should this be handled.
-//
-
-typedef struct {
-    const char *name;
-    void (*runnable)(int pipe_fd);   
-} chunit_test;
-
-// Code to make assertions work...
-
-// A communication tag will signal
-// to the parent process exactly
-// what to look for in the pipe.
-typedef enum {
-    CHUNIT_ASSERT_TRUE,
-    CHUNIT_ASSERT_FALSE,
-    CHUNIT_ASSERT_NON_NULL,
-    CHUNIT_ASSERT_EQ_PTR,
-    CHUNIT_ASSERT_EQ_INT,
-    CHUNIT_ASSERT_EQ_UINT,
-    CHUNIT_ASSERT_EQ_CHAR,
-    CHUNIT_ASSERT_EQ_STR
-} chunit_assert_tag;
-
-// Some sort of test result union...
-// What about for strings tho???
-// Maybe a max string length...
-
-typedef struct {
-    void *expected;
-    void *actual;
-} chunit_ptr_cmpr;
-
-typedef struct {
-    int64_t expected;
-    int64_t actual; 
-} chunit_int_cmpr;
-
-typedef struct {
-    uint64_t expected;
-    uint64_t actual; 
-} chunit_uint_cmpr;
-
-typedef struct {
-    char expected;
-    char actual;
-} chunit_char_cmpr;
-
-typedef struct {
-    char *expected;
-    char *actual;
-} chunit_str_cmpr;
-
-typedef union {
-    chunit_ptr_cmpr ptr_cmpr;
-    chunit_int_cmpr int_cmpr;
-    chunit_uint_cmpr uint_cmpr;
-    chunit_char_cmpr char_cmpr;
-    chunit_str_cmpr str_cmpr;
-} chunit_cmpr;
-
-typedef struct {
-    chunit_assert_tag assert_tag;
-    chunit_cmpr cmpr;
-} chunit_assertion_failure;
+// NOTE, In the second case, the process should exit with the below
+// error code.
+#define CHUNIT_PIPE_ERROR 3
 
 typedef enum {
-    CHUNIT_SUCCESS,
-    CHUNIT_ASSERTION_ERROR,
-    CHUNIT_TIMEOUT,
-    CHUNIT_FATAL_ERROR
-} chunit_status;
+    // Single arg assertion fails.
+    // Just tag will be sent.
+    CHUNIT_ASSERT_TRUE_FAIL,
+    CHUNIT_ASSERT_FALSE_FAIL,
+    CHUNIT_ASSERT_NON_NULL_FAIL,
 
-typedef struct {
-    chunit_status s;
-    
-    // This will only be non null if s = CHUNIT_ASSERTION_ERROR.
-    chunit_assertion_failure *assertion_failure;
-} chunit_result;
+    // Double arg assertions fails.
+    // Tag, expected, actual will be sent.
+    CHUNIT_ASSERT_EQ_PTR_FAIL,
+    CHUNIT_ASSERT_EQ_INT_FAIL,
+    CHUNIT_ASSERT_EQ_UINT_FAIL,
+    CHUNIT_ASSERT_EQ_CHAR_FAIL,
 
-// This will create a new chunit result object
-// in dynamic memory.
-chunit_result *chunit_run_test(const chunit_test *test);
-void delete_chunit_result(chunit_result *res);
+    // Tag, expected len, expected, 
+    // actual len, actual will be sent.
+    CHUNIT_ASSERT_EQ_STR_FAIL,
+
+    // Memory Leak.
+    CHUNIT_MEMORY_LEAK,
+} chunit_comm_tag;
 
 void assert_true(int pipe_fd, int actual);
 void assert_false(int pipe_fd, int actual);
