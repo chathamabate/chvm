@@ -192,7 +192,7 @@ static void chunit_parent_process(int fds[2], pid_t pid, chunit_test_result *res
     }
     
     // At this point, our process has exited!
-
+   
 }
 
 static void chunit_child_process(int fds[2], const chunit_test *test) {
