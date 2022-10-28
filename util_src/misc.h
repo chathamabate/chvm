@@ -4,26 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct _ll_node linked_list_node;
-
-typedef struct _ll_node {
-    linked_list_node *prv;
-    linked_list_node *nxt;
-
-    void *data;
-} linked_list_node;
-
-typedef struct {
-    uint8_t chnl;
-    size_t cell_size;
-
-    linked_list_node *head;
-    linked_list_node *tail;
-} linked_list;
-
-linked_list *new_linked_list(uint8_t chnl, size_t cs);
-void *ll_next(linked_list *ll);
-void delete_linked_list(linked_list *ll);
 
 #define NOTICE_MSG_BUF_LEN   50
 

@@ -2,7 +2,16 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "testing_src/chunit.h"
+#include "core_src/mem.h"
+
 int main(void) {
+
+    int *arr = safe_malloc(5, sizeof(int) * 100);
+    arr[0] = 100;
+    safe_free(arr); 
+    display_channels();
+    return 0;
     // The question becomes.... 
     // What should testing look like?
     // Should there be timeouts?
@@ -38,12 +47,7 @@ int main(void) {
     // All through status codes maybe????
     //
     // We are going to be forking big time!!
-    int i = 0;
 
-    if (&i) {
-        printf("DONE\n");
-        return 0;
-    }
     
     int fds[2]; 
     if (pipe(fds) == -1) {
@@ -65,11 +69,12 @@ int main(void) {
         close(fds[0]); // Potential error checking.
 
         write(fds[1], "Hello, World!", 14); 
-        sleep(10);
         close(fds[1]);
     } else {
         // Parent process.
         close(fds[1]);
+        // THIS WORKS!!!!
+        sleep(5);
 
         char buff[20];
         read(fds[0], buff, 14); // Read is blocking!

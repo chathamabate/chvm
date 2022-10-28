@@ -5,11 +5,13 @@
 static uint32_t mem_chnls[MEM_CHANNELS];
 
 void *safe_malloc(uint8_t chnl, size_t size) {
-    void *ptr = malloc(chnl);
+    uint8_t *raw_ptr = malloc(size + 1);
 
-    if (ptr) {
+    if (raw_ptr) {
+        raw_ptr[0] = chnl;
         mem_chnls[chnl]++;
-        return ptr;
+
+        return (void *)(raw_ptr + 1);
     }
 
     printf("[Malloc] Process out of memory!\n");
@@ -19,10 +21,11 @@ void *safe_malloc(uint8_t chnl, size_t size) {
 }
 
 void *safe_realloc(void *ptr, size_t size) {
-    void *new_ptr = realloc(ptr, size);
+    uint8_t *raw_ptr = ((uint8_t *)ptr) - 1;
+    uint8_t *new_raw_ptr = realloc(raw_ptr, size + 1);
 
-    if (new_ptr) {
-        return new_ptr;
+    if (new_raw_ptr) {
+        return (void *)(new_raw_ptr + 1);
     }
 
     printf("[Realloc] Process out of memory!\n");
@@ -31,9 +34,12 @@ void *safe_realloc(void *ptr, size_t size) {
     exit(1);
 }
 
-void safe_free(uint8_t chnl, void *ptr) {
+void safe_free(void *ptr) {
+    uint8_t *raw_ptr = ((uint8_t *)ptr) - 1;
+    uint8_t chnl = raw_ptr[0];
     mem_chnls[chnl]--;
-    free(ptr);
+
+    free(raw_ptr);
 }
 
 #define DISPLAY_CHNL_ROW_WIDTH 4
@@ -50,4 +56,25 @@ void display_channels() {
             printf(", ");
         }
     }
+}
+
+uint8_t check_memory_leaks() {
+    uint8_t chnl;
+    for (chnl = 1; chnl < MEM_CHANNELS; chnl++) {
+        if (mem_chnls[chnl]) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+// TODO fix these up once testing is truly done...
+
+int safe_read(int fd, void *buf, size_t cnt) {
+    return -1; 
+}
+
+int safe_write(int fd, void *buf, size_t cnt) {
+    return -1;
 }
