@@ -8,11 +8,12 @@
 #include <signal.h>
 
 #include "../core_src/mem.h"
+#include "../core_src/sys.h"
 
 static void write_tag(int pipe_fd, const chunit_comm_tag tag) {
     // Attempt to write the tag to the pipe...
     // if htere is some error, exit with a pipe error.
-    if (write(pipe_fd, &tag, sizeof(chunit_comm_tag)) != sizeof(chunit_comm_tag)) {
+    if (safe_write(pipe_fd, &tag, sizeof(chunit_comm_tag))) {
         // NOTE, since there has been some sort of pipe error...
         // we won't even bother to close the pipe... just
         // exit.
@@ -22,13 +23,13 @@ static void write_tag(int pipe_fd, const chunit_comm_tag tag) {
 }
 
 static void write_data(int pipe_fd, void *buf, size_t size) {
-    if (write(pipe_fd, buf, size) != size) {
+    if (safe_write(pipe_fd, buf, size)) {
         exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
     } 
 }
 
 static void close_pipe_and_exit(int pipe_fd) {
-    if (close(pipe_fd)) {
+    if (safe_close(pipe_fd)) {
         // NOTE if there is any form of pipe error,
         // this should take precedence over any sort of 
         // soft error.

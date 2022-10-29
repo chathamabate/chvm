@@ -3,39 +3,6 @@
 
 #include <stdint.h>
 
-// NOTE : 
-// Here are some notes on what errors to look out for
-// when using system calls. (i.e. which do we need
-// to prepare for, and which do we not.)
-//
-// * It seems that by default all signals either terminate
-// the running process do nothing (ignored)
-// The only mysterious one would be SIGSTP and SIGCCONT
-// for stopping and continuing a process.
-// Here, we would expect that the system call would be interrupted
-// and then resumed in some special way.
-//
-// For all the following calls, I will assume interruption is possible
-// and that SA_RESTART is not default for any signal handlers.
-// By interruption is possible, I mean that it is possible a system
-// call is interrupted and then resumed (instead of the process just
-// being terminated)
-//
-//
-//
-// fork     : -1 always signals a fatal error, no retry.
-// waitpid  : -1 signals error, must
-//
-// kill
-//
-// pipe
-//
-// read
-//
-// write
-//
-// close
-//  
 
 // All errors will be piped back to the parent 
 // ... except for when 2 different errors.

@@ -17,10 +17,4 @@ void display_channels();
 // of the testing channel, 0 otherwise.
 uint8_t check_memory_leaks();
 
-// Both of the following calls return -1
-// on error, 0 on success.
-
-int safe_read(int fd, void *buf, size_t cnt);
-int safe_write(int fd, void *buf, size_t cnt);
-
 #endif

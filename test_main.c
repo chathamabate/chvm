@@ -1,16 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "testing_src/chunit.h"
 #include "core_src/mem.h"
 
 int main(void) {
+    pid_t p = fork();
 
-    int *arr = safe_malloc(5, sizeof(int) * 100);
-    arr[0] = 100;
-    safe_free(arr); 
-    display_channels();
+    if (p) {
+        sleep(5);
+        wait(NULL);
+        //
+        int res = kill(p, SIGKILL);
+
+        printf("Kill Res : %d\n", res);
+        // parent process...
+    } else {
+        printf("Exiting Child!\n");
+    }
+
     return 0;
     // The question becomes.... 
     // What should testing look like?
