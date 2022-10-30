@@ -69,12 +69,3 @@ uint8_t check_memory_leaks() {
     return 0;
 }
 
-// TODO fix these up once testing is truly done...
-
-int safe_read(int fd, void *buf, size_t cnt) {
-    return -1; 
-}
-
-int safe_write(int fd, void *buf, size_t cnt) {
-    return -1;
-}

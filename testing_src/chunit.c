@@ -10,10 +10,10 @@
 #include "../core_src/mem.h"
 #include "../core_src/sys.h"
 
-static void write_tag(int pipe_fd, const chunit_comm_tag tag) {
+static void write_result(int pipe_fd, const chunit_test_result res) {
     // Attempt to write the tag to the pipe...
     // if htere is some error, exit with a pipe error.
-    if (safe_write(pipe_fd, &tag, sizeof(chunit_comm_tag))) {
+    if (safe_write(pipe_fd, &res, sizeof(chunit_test_result))) {
         // NOTE, since there has been some sort of pipe error...
         // we won't even bother to close the pipe... just
         // exit.
@@ -30,9 +30,6 @@ static void write_data(int pipe_fd, void *buf, size_t size) {
 
 static void close_pipe_and_exit(int pipe_fd) {
     if (safe_close(pipe_fd)) {
-        // NOTE if there is any form of pipe error,
-        // this should take precedence over any sort of 
-        // soft error.
         exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
     }
 
@@ -44,7 +41,7 @@ void assert_true(int pipe_fd, int actual) {
         return;
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_TRUE_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_TRUE_FAIL);
     close_pipe_and_exit(pipe_fd);
 }
 
@@ -53,7 +50,7 @@ void assert_false(int pipe_fd, int actual) {
         return;
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_FALSE_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_FALSE_FAIL);
     close_pipe_and_exit(pipe_fd);
 }
 
@@ -62,7 +59,7 @@ void assert_non_null(int pipe_fd, void *ptr) {
         return;
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_NON_NULL_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_NON_NULL_FAIL);
     close_pipe_and_exit(pipe_fd);
 }
 
@@ -71,7 +68,7 @@ void assert_eq_ptr(int pipe_fd, void *expected, void *actual) {
         return;
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_EQ_PTR_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_EQ_PTR_FAIL);
 
     void *buf[2] = {expected, actual};
     write_data(pipe_fd, buf, sizeof(void *) * 2);
@@ -83,7 +80,7 @@ void assert_eq_int(int pipe_fd, int64_t expected, int64_t actual) {
         return; 
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_EQ_INT_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_EQ_INT_FAIL);
 
     int64_t buf[2] = {expected, actual};
     write_data(pipe_fd, buf, sizeof(int64_t) * 2);
@@ -95,7 +92,7 @@ void assert_eq_uint(int pipe_fd, uint64_t expected, uint64_t actual) {
         return; 
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_EQ_UINT_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_EQ_UINT_FAIL);
 
     uint64_t buf[2] = {expected, actual};
     write_data(pipe_fd, buf, sizeof(uint64_t) * 2);
@@ -107,7 +104,7 @@ void assert_eq_char(int pipe_fd, char expected, char actual) {
         return; 
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_EQ_CHAR_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_EQ_CHAR_FAIL);
 
     char buf[2] = {expected, actual};
     write_data(pipe_fd, buf, sizeof(char) * 2);
@@ -119,7 +116,7 @@ void assert_eq_str(int pipe_fd, char *expected, char *actual) {
         return;
     }
 
-    write_tag(pipe_fd, CHUNIT_ASSERT_EQ_STR_FAIL);
+    write_result(pipe_fd, CHUNIT_ASSERT_EQ_STR_FAIL);
     
     // NOTE, strings send by having the length be 
     // sent first, then the full string...
@@ -136,7 +133,9 @@ void assert_eq_str(int pipe_fd, char *expected, char *actual) {
     close_pipe_and_exit(pipe_fd);
 }
 
-// PARENT PROCESS CODE!
+// Parent process Code V2!
+
+// PARENT PROCESS CODE V1!
 
 // NOTE fds[1] = writing descriptor.
 // fds[0] = reading descriptor.

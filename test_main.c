@@ -5,21 +5,28 @@
 
 #include "testing_src/chunit.h"
 #include "core_src/mem.h"
+#include "core_src/data.h"
 
 int main(void) {
-    pid_t p = fork();
+    
+    // Looking good.
+    slist *sl = new_slist(0, sizeof(int));
 
-    if (p) {
-        sleep(5);
-        wait(NULL);
-        //
-        int res = kill(p, SIGKILL);
+    *(int *)sl_next(sl) = 10;
+    *(int *)sl_next(sl) = 100;
+    *(int *)sl_next(sl) = 64;
+    *(int *)sl_next(sl) = 10;
+    *(int *)sl_next(sl) = 100;
+    *(int *)sl_next(sl) = 10;
+    *(int *)sl_next(sl) = 10;
+    *(int *)sl_next(sl) = 64;
 
-        printf("Kill Res : %d\n", res);
-        // parent process...
-    } else {
-        printf("Exiting Child!\n");
+    int i;
+    for (i = 0; i < sl->len; i++) {
+        printf("%d\n", ((int *)sl->buf)[i]);
     }
+
+    printf("BUF CAP %llu\n", sl->cap);
 
     return 0;
     // The question becomes.... 

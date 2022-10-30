@@ -3,19 +3,19 @@
 
 #include <stdint.h>
 
-
-// All errors will be piped back to the parent 
-// ... except for when 2 different errors.
-// 1) Would be when the test process exits due to a hard error.
-// 2) When there is an error communicating with the parent process.
+// NOTE :
+// An assertion failure is not an error.
+// It reveals a bug to the user, but it is not
+// an error in the testing framework.
 //
-// NOTE, In the second case, the process should exit with the below
-// error code.
-#define CHUNIT_PIPE_ERROR_EXIT_CODE 3
+// However, a pipe error, or an error writing data...
+// these are errors in the program.
+// Not the fault of the user.
+// So, these situations I think should be treated differently.
 
-// 5 second timeout for all tests.
-#define CHUNIT_TIMEOUT_S 5
-
+// A test result is what is interpreted upon completion of a test.
+// Completion of a test implies there were no errors in the framework
+// when running the test.
 typedef enum {
     // To be communicated back to parent 
     // when all goes as expected.
@@ -41,16 +41,26 @@ typedef enum {
     // Memory Leak.
     CHUNIT_MEMORY_LEAK,
 
-    // NOTE, some comm tags will never be 
-    // directly from child to parent.
-    // They instead will be used by the
-    // parent after receiving info from
-    // the child. 
+    // Test took too long.
+    CHUNIT_TIMEOUT,
+
+    // Test had a fatal runtime error.
+    CHUNIT_FATAL_ERROR,
+} chunit_test_result;
+
+// This exit code should be used when there is a 
+// write error from the test to the parent.
+#define CHUNIT_PIPE_ERROR_EXIT_CODE 3
+
+// This enum is seeing whether or not an error
+// occured in the framework.
+typedef enum {
     CHUNIT_PIPE_ERROR,
     CHUNIT_FORK_ERROR,
-    CHUNIT_TIMEOUT,
-    CHUNIT_FATAL_ERROR,
-} chunit_comm_tag;
+} chunit_framework_status;
+
+// 5 second timeout for all tests.
+#define CHUNIT_TIMEOUT_S 5
 
 void assert_true(int pipe_fd, int actual);
 void assert_false(int pipe_fd, int actual);
