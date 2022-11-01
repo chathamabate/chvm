@@ -51,6 +51,8 @@ pid_t safe_waitpid_timed(pid_t pid, int *stat_loc, time_t timeout) {
 }
 
 int safe_kill_and_reap(pid_t pid) {
+    // NOTE, even if the pid identifies a zombie
+    // process, this will not error!
     if (kill(pid, SIGKILL)) {
         return -1;
     }

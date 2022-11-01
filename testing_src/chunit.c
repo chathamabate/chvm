@@ -160,8 +160,6 @@ void delete_test_run() {
 // NOTE fds[1] = writing descriptor.
 // fds[0] = reading descriptor.
 
-#define CHUNIT_SLEEP_TIME_MS 5
-
 static void chunit_child_process(int fds[2], const chunit_test *test) {
     // First, close the read end of the pipe.
     if (safe_close(fds[0])) {
@@ -179,55 +177,31 @@ static void chunit_child_process(int fds[2], const chunit_test *test) {
     close_pipe_and_exit(pipe_fd);
 }
 
-static void chunit_kill_child(chunit_test_run *tr, pid_t child) {
-    // Now time to kill.
-    if (kill(child, SIGKILL)) {
-        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_KILL_ERROR;
-    }
-    
-    // Reap our boy.
-    if (safe_waitpid(child, NULL, 0)) {
-        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_WAIT_ERROR;
-    }
-}
-
 static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // Attempt to close write end of pipe.
     if (safe_close(fds[1])) {
         chunit_test_run *ce_tr = new_test_error(CHUNIT_PIPE_ERROR);
-        chunit_kill_child(ce_tr, child);
+
+        // When there is an error killing the child,
+        // make sure to add in a termination error.
+        if (safe_kill_and_reap(child)) {
+            *(chunit_framework_error *)sl_next(ce_tr->errors) = 
+                CHUNIT_TERMINATION_ERROR;
+        }
+
         return ce_tr;
     }
 
     // Get read end of the pipe.
     int pipe_fd = fds[0];
-
-    // Now, wait for our boy to finish up.
     int stat;
-    time_t start = time(NULL);
-    while (1) {
-        int res = waitpid(child, &stat, WNOHANG);
+    
+    // Wait for our boy to finish up here!
+    pid_t res = safe_waitpid_timed(child, &stat, CHUNIT_TIMEOUT_S); 
 
-        if (res == -1) {
-            // NOTE, this will only happen if the child pid is 
-            // not valid... Nothing to kill then, just exit.
-            return new_test_error(CHUNIT_WAIT_ERROR);
-        }
 
-        if (res > 0) {
-            // We've reaped our boy.
-            break;
-        }
-
-        time_t curr = time(NULL);
-        if (curr - start >= CHUNIT_TIMEOUT_S) {
-            // time for a TIMEOUT! 
-            // In this case just kill our boy.  
-            // TODO... finsih this up.
-        }
-
-        usleep(CHUNIT_SLEEP_TIME_MS * 1000);
-    }
+    // TODO, fix this up here!...
+    // Almost done!
 
     return NULL;
 }

@@ -61,9 +61,8 @@ typedef enum {
 // occured in the framework.
 typedef enum {
     CHUNIT_PIPE_ERROR,
-    CHUNIT_KILL_ERROR,
     CHUNIT_FORK_ERROR,
-    CHUNIT_WAIT_ERROR,
+    CHUNIT_TERMINATION_ERROR,
 } chunit_framework_error;
 
 // 5 second timeout for all tests.
