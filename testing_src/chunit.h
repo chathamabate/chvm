@@ -2,6 +2,7 @@
 #define TESTING_CHUNIT_H
 
 #include <stdint.h>
+#include "../core_src/data.h"
 
 // NOTE :
 // An assertion failure is not an error.
@@ -17,6 +18,10 @@
 // Completion of a test implies there were no errors in the framework
 // when running the test.
 typedef enum {
+    // This error is for when a result
+    // is yet to be communicated from the test.
+    CHUNIT_VOID,
+
     // To be communicated back to parent 
     // when all goes as expected.
     CHUNIT_SUCCESS,
@@ -56,8 +61,10 @@ typedef enum {
 // occured in the framework.
 typedef enum {
     CHUNIT_PIPE_ERROR,
+    CHUNIT_KILL_ERROR,
     CHUNIT_FORK_ERROR,
-} chunit_framework_status;
+    CHUNIT_WAIT_ERROR,
+} chunit_framework_error;
 
 // 5 second timeout for all tests.
 #define CHUNIT_TIMEOUT_S 5
@@ -92,14 +99,25 @@ typedef union {
 } chunit_cmpr;
 
 typedef struct {
-    chunit_comm_tag tag;
+    // A list of framework errors.
+    slist *errors;
 
-    // Can be whatever is needed...
-    // I think this will always point to a compare
-    // object tho.
+    // Only to be interpreted when there 
+    // are no chunit errors.
+    chunit_test_result result;
+
+    // Finally, a data pointer to any other information
+    // needed to interpret the test run...
+    // i.e. assertions comparisons.
     void *data;
-} chunit_test_result;
+} chunit_test_run;
 
-chunit_test_result *run_test(const chunit_test *test);
+// Test runs are always in the test channel
+// of memory.
+chunit_test_run *new_test_run();
+chunit_test_run *new_test_error(chunit_framework_error err);
+void delete_test_run();
+
+chunit_test_run *run_test(const chunit_test *test);
 
 #endif

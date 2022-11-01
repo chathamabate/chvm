@@ -136,12 +136,125 @@ void assert_eq_str(int pipe_fd, char *expected, char *actual) {
 // Parent process Code V2!
 
 // PARENT PROCESS CODE V1!
+chunit_test_run *new_test_run() {
+    chunit_test_run *tr = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_run));
+    tr->errors = new_slist(MEM_CHNL_TESTING, sizeof(chunit_framework_error));
+
+    tr->result = CHUNIT_VOID;
+    tr->data = NULL;
+
+    return tr;
+}
+
+chunit_test_run *new_test_error(chunit_framework_error err) {
+    chunit_test_run *tr = new_test_run();
+    *(chunit_framework_error *)sl_next(tr->errors) = err;
+    return tr;
+}
+
+void delete_test_run() {
+    // TODO
+}
+
 
 // NOTE fds[1] = writing descriptor.
 // fds[0] = reading descriptor.
 
 #define CHUNIT_SLEEP_TIME_MS 5
 
+static void chunit_child_process(int fds[2], const chunit_test *test) {
+    // First, close the read end of the pipe.
+    if (safe_close(fds[0])) {
+        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
+    }
+
+    // Get write side of pipe.
+    int pipe_fd = fds[1];
+
+    // Run the test.
+    test->t(pipe_fd);
+
+    // If we've made it here, success!
+    write_result(pipe_fd, CHUNIT_SUCCESS);
+    close_pipe_and_exit(pipe_fd);
+}
+
+static void chunit_kill_child(chunit_test_run *tr, pid_t child) {
+    // Now time to kill.
+    if (kill(child, SIGKILL)) {
+        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_KILL_ERROR;
+    }
+    
+    // Reap our boy.
+    if (safe_waitpid(child, NULL, 0)) {
+        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_WAIT_ERROR;
+    }
+}
+
+static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
+    // Attempt to close write end of pipe.
+    if (safe_close(fds[1])) {
+        chunit_test_run *ce_tr = new_test_error(CHUNIT_PIPE_ERROR);
+        chunit_kill_child(ce_tr, child);
+        return ce_tr;
+    }
+
+    // Get read end of the pipe.
+    int pipe_fd = fds[0];
+
+    // Now, wait for our boy to finish up.
+    int stat;
+    time_t start = time(NULL);
+    while (1) {
+        int res = waitpid(child, &stat, WNOHANG);
+
+        if (res == -1) {
+            // NOTE, this will only happen if the child pid is 
+            // not valid... Nothing to kill then, just exit.
+            return new_test_error(CHUNIT_WAIT_ERROR);
+        }
+
+        if (res > 0) {
+            // We've reaped our boy.
+            break;
+        }
+
+        time_t curr = time(NULL);
+        if (curr - start >= CHUNIT_TIMEOUT_S) {
+            // time for a TIMEOUT! 
+            // In this case just kill our boy.  
+            // TODO... finsih this up.
+        }
+
+        usleep(CHUNIT_SLEEP_TIME_MS * 1000);
+    }
+
+    return NULL;
+}
+
+chunit_test_run *run_test(const chunit_test *test) {
+    int fds[2];
+
+    if (pipe(fds)) {
+        return new_test_error(CHUNIT_PIPE_ERROR);
+    }
+
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        return new_test_error(CHUNIT_FORK_ERROR);
+    }
+
+    if (pid == 0) {
+        // NOTE, we should not leave this call...
+        // i.e. chunit_child_process must exit!
+        chunit_child_process(fds, test);    
+    }
+
+    return chunit_parent_process(fds, pid);
+}
+
+/*
 // NOTE consider making this a core function some day.
 static void chunit_kill_child_and_wait(pid_t pid) {
     // Killing the child process should always work.
@@ -258,4 +371,4 @@ chunit_test_result *run_test(const chunit_test *test) {
     chunit_parent_process(fds, pid, result);
 
     return result;
-}
+}*/
