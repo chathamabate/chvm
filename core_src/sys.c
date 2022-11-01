@@ -3,6 +3,9 @@
 #include <sys/errno.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <time.h>
+#include <unistd.h>
+#include <signal.h>
 
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
     pid_t res;
@@ -16,6 +19,49 @@ pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
     }
 
     return res;
+}
+
+#define CORE_RETRY_DELAY_MS 5
+
+pid_t safe_waitpid_timed(pid_t pid, int *stat_loc, time_t timeout) {
+    time_t start = time(NULL);
+
+    pid_t res; 
+    while (1) {
+        res = safe_waitpid(pid, stat_loc, WNOHANG);
+
+        // Successful wait.
+        if (res > 0) {
+            return res;
+        }
+        
+        // Hard error from waitpid.
+        if (res == -1) {
+            return -1;
+        }
+
+        if (time(NULL) - start >= timeout) {
+            return -2;
+        }
+
+        usleep(1000 * CORE_RETRY_DELAY_MS);
+    }
+
+    // NOTE, should never make it here!
+}
+
+int safe_kill_and_reap(pid_t pid) {
+    if (kill(pid, SIGKILL)) {
+        return -1;
+    }
+
+    // If kill succeeds, this should work always.
+    // Test for errors just to be safe.
+    if (safe_waitpid(pid, NULL, 0) == -1) {
+        return -1;
+    }
+
+    return 0;
 }
 
 int safe_write(int fd, const void *buf, size_t cnt) {

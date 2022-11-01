@@ -27,6 +27,20 @@
 // Will return -1 on error, reaped pid on success.
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts);
 
+// This will use safe_waitpid with no hang to only wait for a certain
+// amount of time.
+//
+// Any sort of hard error returns -1.
+// A timeout returns -2.
+// Otherwise, you get back the normal waitpid respose.
+pid_t safe_waitpid_timed(pid_t pid, int *stat_loc, time_t timeout);
+
+//  Will attempt to kill the given process then subsequently reap
+//  it.
+//
+//  returns 0 on success, -1 on error.
+int safe_kill_and_reap(pid_t pid);
+
 //  Will return -1 on error, 0 on success.
 //
 //  NOTE : read will return -1 if EOF is found before cnt
