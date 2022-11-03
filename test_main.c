@@ -7,9 +7,11 @@
 #include "testing_src/chunit.h"
 #include "core_src/mem.h"
 #include "core_src/data.h"
+#include "core_src/log.h"
+
 
 int main(void) {
-    
+
     // The question becomes.... 
     // What should testing look like?
     // Should there be timeouts?

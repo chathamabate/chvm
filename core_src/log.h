@@ -1,6 +1,15 @@
 #ifndef CORE_LOG_H
 #define CORE_LOG_H
 
+#include <stdio.h>
+
+#define CORE_LOG_LEVEL 0
+
+// FIX THIS UP AT HOME!
+void NOTE(const char *format, ...);
+void WARN(const char *format, ...);
+void YELL(const char *format, ...);
+
 #define CC_RESET        "\x1b[0m"
 #define CC_BOLD         "\x1b[1m"
 #define CC_FAINT        "\x1b[2m"
