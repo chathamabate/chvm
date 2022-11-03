@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <signal.h>
 
@@ -9,26 +10,6 @@
 
 int main(void) {
     
-    // Looking good.
-    slist *sl = new_slist(0, sizeof(int));
-
-    *(int *)sl_next(sl) = 10;
-    *(int *)sl_next(sl) = 100;
-    *(int *)sl_next(sl) = 64;
-    *(int *)sl_next(sl) = 10;
-    *(int *)sl_next(sl) = 100;
-    *(int *)sl_next(sl) = 10;
-    *(int *)sl_next(sl) = 10;
-    *(int *)sl_next(sl) = 64;
-
-    int i;
-    for (i = 0; i < sl->len; i++) {
-        printf("%d\n", ((int *)sl->buf)[i]);
-    }
-
-    printf("BUF CAP %llu\n", sl->cap);
-
-    return 0;
     // The question becomes.... 
     // What should testing look like?
     // Should there be timeouts?
@@ -66,38 +47,30 @@ int main(void) {
     // We are going to be forking big time!!
 
     
-    int fds[2]; 
-    if (pipe(fds) == -1) {
-        printf("Error creating pipe\n");
-        return 1;
-    }
-
     pid_t pid = fork();
 
     if (pid < 0) {
         printf("Failure to create child process\n");
-        close(fds[0]);
-        close(fds[1]);
         return 1;
     }
 
     if (pid == 0) {
-        // Child proccess.
-        close(fds[0]); // Potential error checking.
+        
+        int arr[100];
+        arr[0] = 0;
+        int x = 1 / arr[0]; // This doesn't for some reason.
+        printf("%d", x);
+        exit(100);
 
-        write(fds[1], "Hello, World!", 14); 
-        close(fds[1]);
     } else {
-        // Parent process.
-        close(fds[1]);
-        // THIS WORKS!!!!
-        sleep(5);
+        int stat;
+        waitpid(pid, &stat, 0);
 
-        char buff[20];
-        read(fds[0], buff, 14); // Read is blocking!
-        close(fds[0]);
-
-        printf("%s\n", buff);
+        if (WIFEXITED(stat)) {
+            printf("NORMAL EXIT %d\n", WEXITSTATUS(stat));
+        } else {
+            printf("EXIT CODE %d\n", WEXITSTATUS(stat));
+        }
     }
 
     return 0;

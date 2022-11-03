@@ -192,16 +192,57 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
         return ce_tr;
     }
 
-    // Get read end of the pipe.
+    // Get read end of the pipe
     int pipe_fd = fds[0];
     int stat;
     
     // Wait for our boy to finish up here!
     pid_t res = safe_waitpid_timed(child, &stat, CHUNIT_TIMEOUT_S); 
 
+    // When there's a hard waitpid error, just return...
+    // don't worry about killing.
+    if (res == -1) {
+        return new_test_error(CHUNIT_TERMINATION_ERROR);
+    }
 
-    // TODO, fix this up here!...
-    // Almost done!
+    if (res == -2) {
+        // A timeout has occurred.
+        // Try to kill and reap the process.
+        if (safe_kill_and_reap(child)) {
+            return new_test_error(CHUNIT_TERMINATION_ERROR);
+        }
+
+        // If no error in termination, report a timeout.
+        chunit_test_run *timeout_tr = new_test_run();
+        timeout_tr->result = CHUNIT_TIMEOUT;
+
+        return timeout_tr;
+    }
+
+    // Here the program terminated on its own...
+    // check to see if it errored out.
+
+    // If the child didn't exit normally, return a fatal
+    // error. (User's fault)
+    if (!WIFEXITED(stat)) {
+        // Otherwise, their error.
+        chunit_test_run *fatal_tr = new_test_run(); 
+        fatal_tr->result = CHUNIT_FATAL_ERROR;
+        return fatal_tr;
+    }
+
+    // If we make it here, we must've exited normally.
+
+    // Check if there was some pipe error. (OUR ERROR)
+    if (WEXITSTATUS(stat) == CHUNIT_PIPE_ERROR_EXIT_CODE) {
+        return new_test_error(CHUNIT_PIPE_ERROR);
+    }
+
+    // This means the process terminated on it's own
+    // and it wasn't some fatal error/pipe error.
+    // Now we must interpret the results.
+    
+    
 
     return NULL;
 }

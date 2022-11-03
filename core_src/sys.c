@@ -68,9 +68,10 @@ int safe_kill_and_reap(pid_t pid) {
 
 int safe_write(int fd, const void *buf, size_t cnt) {
     ssize_t bytes_left = cnt;
+    const char *ptr = buf;
 
     while (bytes_left > 0) {
-        ssize_t res = write(fd, buf, bytes_left);
+        ssize_t res = write(fd, ptr, bytes_left);
 
         // Error situation.
         if (res == -1) {
@@ -85,6 +86,9 @@ int safe_write(int fd, const void *buf, size_t cnt) {
 
         // Otherwise, update bytes left.
         bytes_left -= res;
+        
+        // Advance pointer.
+        ptr += res;
     }
 
     // Success!
@@ -93,8 +97,10 @@ int safe_write(int fd, const void *buf, size_t cnt) {
 
 int safe_read(int fd, void *buf, size_t cnt) {
     ssize_t bytes_left = cnt; 
+    char *ptr = buf;
+
     while (bytes_left > 0) {
-        ssize_t res = read(fd, buf, bytes_left);
+        ssize_t res = read(fd, ptr, bytes_left);
 
         if (res == 0) {
             // EOF found, but not expected.
@@ -113,6 +119,7 @@ int safe_read(int fd, void *buf, size_t cnt) {
         // No error... just account for bytes
         // read.
         bytes_left -= res;
+        ptr += res;
     }
 
     return 0;

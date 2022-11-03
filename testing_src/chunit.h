@@ -47,7 +47,7 @@ typedef enum {
     CHUNIT_MEMORY_LEAK,
 
     // Test took too long.
-    CHUNIT_TIMEOUT,
+    CHUNIT_TIMEOUT, 
 
     // Test had a fatal runtime error.
     CHUNIT_FATAL_ERROR,
