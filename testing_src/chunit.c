@@ -135,7 +135,6 @@ void assert_eq_str(int pipe_fd, char *expected, char *actual) {
 
 // Parent process Code V2!
 
-// PARENT PROCESS CODE V1!
 chunit_test_run *new_test_run() {
     chunit_test_run *tr = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_run));
     tr->errors = new_slist(MEM_CHNL_TESTING, sizeof(chunit_framework_error));
@@ -143,6 +142,12 @@ chunit_test_run *new_test_run() {
     tr->result = CHUNIT_VOID;
     tr->data = NULL;
 
+    return tr;
+}
+
+chunit_test_run *new_test_result(chunit_test_result res) {
+    chunit_test_run *tr = new_test_run();
+    tr->result = res;
     return tr;
 }
 
@@ -206,15 +211,16 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     }
 
     if (res == -2) {
+        // NOTE should the user still know there was a 
+        // timeout? yes, give as much info as possible!
+        chunit_test_run *timeout_tr = new_test_result(CHUNIT_TIMEOUT);
+
         // A timeout has occurred.
         // Try to kill and reap the process.
         if (safe_kill_and_reap(child)) {
-            return new_test_error(CHUNIT_TERMINATION_ERROR);
+            *(chunit_framework_error *)sl_next(timeout_tr->errors) = 
+                CHUNIT_TERMINATION_ERROR;
         }
-
-        // If no error in termination, report a timeout.
-        chunit_test_run *timeout_tr = new_test_run();
-        timeout_tr->result = CHUNIT_TIMEOUT;
 
         return timeout_tr;
     }
@@ -225,10 +231,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // If the child didn't exit normally, return a fatal
     // error. (User's fault)
     if (!WIFEXITED(stat)) {
-        // Otherwise, their error.
-        chunit_test_run *fatal_tr = new_test_run(); 
-        fatal_tr->result = CHUNIT_FATAL_ERROR;
-        return fatal_tr;
+        return new_test_result(CHUNIT_FATAL_ERROR);
     }
 
     // If we make it here, we must've exited normally.
@@ -242,9 +245,38 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // and it wasn't some fatal error/pipe error.
     // Now we must interpret the results.
     
+    // TODO : finish result interpretation.
     
+    chunit_test_result t_res;
+    
+    // Read comm tag.
+    if (safe_read(pipe_fd, &t_res, sizeof(chunit_test_result))) {
+        return new_test_error(CHUNIT_PIPE_ERROR);
+    }
 
-    return NULL;
+    chunit_test_run *tr;
+
+    switch (t_res) {
+        case CHUNIT_SUCCESS:
+        case CHUNIT_MEMORY_LEAK:
+        case CHUNIT_ASSERT_TRUE_FAIL:
+        case CHUNIT_ASSERT_FALSE_FAIL:
+        case CHUNIT_ASSERT_NON_NULL_FAIL:
+            tr = new_test_result(res);
+            break;
+
+
+        default:
+            tr = new_test_error(CHUNIT_BAD_TEST_RESULT);
+            break;
+    }
+
+    if (safe_close(pipe_fd)) {
+        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_PIPE_ERROR;
+    }
+
+    return tr;
+
 }
 
 chunit_test_run *run_test(const chunit_test *test) {

@@ -62,6 +62,7 @@ typedef enum {
 typedef enum {
     CHUNIT_PIPE_ERROR,
     CHUNIT_FORK_ERROR,
+    CHUNIT_BAD_TEST_RESULT,
     CHUNIT_TERMINATION_ERROR,
 } chunit_framework_error;
 
@@ -114,6 +115,7 @@ typedef struct {
 // Test runs are always in the test channel
 // of memory.
 chunit_test_run *new_test_run();
+chunit_test_run *new_test_result(chunit_test_result res);
 chunit_test_run *new_test_error(chunit_framework_error err);
 void delete_test_run();
 
