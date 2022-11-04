@@ -3,12 +3,36 @@
 
 #include <stdio.h>
 
-#define CORE_LOG_LEVEL 0
+#define CORE_LOG_LEVEL 3
 
-// FIX THIS UP AT HOME!
-void NOTE(const char *format, ...);
-void WARN(const char *format, ...);
-void YELL(const char *format, ...);
+// Here are the three different logging
+// macros. (E for error, W for warn, N for note)
+
+#define E(fs, ...) printf("E : " fs "\n", __VA_ARGS__)
+#define W(fs, ...) printf("W : " fs "\n", __VA_ARGS__)
+#define N(fs, ...) printf("N : " fs "\n", __VA_ARGS__)
+
+// Log level 3 enables all log types.
+
+#if CORE_LOG_LEVEL == 2
+    #undef N
+    #define N(fs, ...)
+#elif CORE_LOG_LEVEL == 1
+    #undef W
+    #define W(fs, ...)
+
+    #undef N
+    #define N(fs, ...)
+#elif CORE_LOG_LEVEL == 0
+    #undef E
+    #define E(fs, ...)
+
+    #undef W
+    #define W(fs, ...)
+
+    #undef N
+    #define N(fs, ...)
+#endif
 
 #define CC_RESET        "\x1b[0m"
 #define CC_BOLD         "\x1b[1m"

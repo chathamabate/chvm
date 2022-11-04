@@ -9,8 +9,17 @@
 #include "core_src/data.h"
 #include "core_src/log.h"
 
+// This works!!!
+#define P(fs, ...) printf(fs "\n", __VA_ARGS__)
+
 
 int main(void) {
+
+    E("HELLO %d", 10);
+    W("HELLO %d", 10);
+    N("HELLO %d", 10);
+
+    return 1;
 
     // The question becomes.... 
     // What should testing look like?
