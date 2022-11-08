@@ -10,14 +10,19 @@
 #include "core_src/log.h"
 
 // This works!!!
-#define P(fs, ...) printf(fs "\n", __VA_ARGS__)
-
 
 int main(void) {
 
-    E("HELLO %d", 10);
-    W("HELLO %d", 10);
-    N("HELLO %d", 10);
+    S("HEELO");
+    W("HEELO");
+    Nf("HELLO %d", 10);
+
+    if (fork()) {
+        W("HEELO");
+        N("Hello From parent");
+    } else {
+        N("Hello from child");
+    }
 
     return 1;
 

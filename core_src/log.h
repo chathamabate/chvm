@@ -1,38 +1,8 @@
 #ifndef CORE_LOG_H
 #define CORE_LOG_H
 
+#include <unistd.h>
 #include <stdio.h>
-
-#define CORE_LOG_LEVEL 3
-
-// Here are the three different logging
-// macros. (E for error, W for warn, N for note)
-
-#define E(fs, ...) printf("E : " fs "\n", __VA_ARGS__)
-#define W(fs, ...) printf("W : " fs "\n", __VA_ARGS__)
-#define N(fs, ...) printf("N : " fs "\n", __VA_ARGS__)
-
-// Log level 3 enables all log types.
-
-#if CORE_LOG_LEVEL == 2
-    #undef N
-    #define N(fs, ...)
-#elif CORE_LOG_LEVEL == 1
-    #undef W
-    #define W(fs, ...)
-
-    #undef N
-    #define N(fs, ...)
-#elif CORE_LOG_LEVEL == 0
-    #undef E
-    #define E(fs, ...)
-
-    #undef W
-    #define W(fs, ...)
-
-    #undef N
-    #define N(fs, ...)
-#endif
 
 #define CC_RESET        "\x1b[0m"
 #define CC_BOLD         "\x1b[1m"
@@ -75,5 +45,53 @@
 #define CC_BRIGHT_BG_MAGENTA    "\x1b[105m"
 #define CC_BRIGHT_BG_CYAN       "\x1b[106m"
 #define CC_BRIGHT_BG_WHITE      "\x1b[107m"
+
+#define CORE_LOG_PID_PREFIX "(%d) "
+
+#define CORE_LOG_S_PREFIX "[" CC_BRIGHT_MAGENTA "S" CC_RESET "] " CC_MAGENTA 
+#define CORE_LOG_W_PREFIX "[" CC_BRIGHT_BLUE "W" CC_RESET "] " CC_BLUE
+#define CORE_LOG_N_PREFIX "[" CC_BOLD "N" CC_RESET "] "  
+
+#define CORE_LOG_S(fs) CORE_LOG_PID_PREFIX CORE_LOG_S_PREFIX fs CC_RESET "\n"
+#define CORE_LOG_W(fs) CORE_LOG_PID_PREFIX CORE_LOG_W_PREFIX fs CC_RESET "\n"
+#define CORE_LOG_N(fs) CORE_LOG_PID_PREFIX CORE_LOG_N_PREFIX fs CC_RESET "\n"
+
+#define CORE_LOG_LEVEL 2
+
+// Here are the three different logging
+// macros. (S for scream, W for warn, N for note)
+
+#define S(fs) printf(CORE_LOG_S(fs), getpid())
+#define W(fs) printf(CORE_LOG_W(fs), getpid())
+#define N(fs) printf(CORE_LOG_N(fs), getpid())
+
+#define Sf(fs, ...) printf(CORE_LOG_S(fs), getpid(), __VA_ARGS__)
+#define Wf(fs, ...) printf(CORE_LOG_W(fs), getpid(), __VA_ARGS__)
+#define Nf(fs, ...) printf(CORE_LOG_N(fs), getpid(), __VA_ARGS__)
+
+#if CORE_LOG_LEVEL < 1
+    #undef S
+    #define S(fs)
+    
+    #undef Sf
+    #define Sf(fs, ...)
+#endif
+
+#if CORE_LOG_LEVEL < 2
+    #undef W
+    #define W(fs)
+
+    #undef Wf
+    #define Wf(fs, ...)
+#endif
+
+#if CORE_LOG_LEVEL < 3
+    #undef N
+    #define N(fs)
+
+    #undef Nf
+    #define Nf(fs, ...)
+#endif
+
 
 #endif
