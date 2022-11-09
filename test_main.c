@@ -13,16 +13,6 @@
 
 int main(void) {
 
-    S("HEELO");
-    W("HEELO");
-    Nf("HELLO %d", 10);
-
-    if (fork()) {
-        W("HEELO");
-        N("Hello From parent");
-    } else {
-        N("Hello from child");
-    }
 
     return 1;
 

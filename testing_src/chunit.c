@@ -121,14 +121,15 @@ void assert_eq_str(int pipe_fd, char *expected, char *actual) {
     // NOTE, strings send by having the length be 
     // sent first, then the full string...
     // NO null terminators.
-    
-    size_t len = strlen(expected);
-    write_data(pipe_fd, &len, sizeof(size_t));
-    write_data(pipe_fd, expected, len);
 
-    len = strlen(actual);
-    write_data(pipe_fd, &len, sizeof(size_t));
-    write_data(pipe_fd, actual, len);
+    size_t sizes[2] = {strlen(expected) + 1, strlen(actual) + 1};
+
+    // Write both string sizes first.
+    write_data(pipe_fd, sizes, sizeof(size_t) * 2);
+
+    // Then write both strings.
+    write_data(pipe_fd, expected, sizes[0]);
+    write_data(pipe_fd, actual, sizes[1]);
 
     close_pipe_and_exit(pipe_fd);
 }
@@ -158,7 +159,7 @@ chunit_test_run *new_test_error(chunit_framework_error err) {
 }
 
 void delete_test_run() {
-    // TODO
+    // TODO delete test run based on what the result is.
 }
 
 
@@ -176,9 +177,16 @@ static void chunit_child_process(int fds[2], const chunit_test *test) {
 
     // Run the test.
     test->t(pipe_fd);
+    
+    // NOTE here we check for memory leaks.
+    // If there was non testing memory used before forking,
+    // it will always cause a memory leak here.
+    if (check_memory_leaks()) {
+        write_result(pipe_fd, CHUNIT_MEMORY_LEAK);
+    } else {
+        write_result(pipe_fd, CHUNIT_SUCCESS);
+    }
 
-    // If we've made it here, success!
-    write_result(pipe_fd, CHUNIT_SUCCESS);
     close_pipe_and_exit(pipe_fd);
 }
 
@@ -254,20 +262,28 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
         return new_test_error(CHUNIT_PIPE_ERROR);
     }
 
-    chunit_test_run *tr;
+    // NOTE, consider creating a results interpretation helper function.
+
+    chunit_test_run *tr = new_test_run();
 
     switch (t_res) {
+        // No data field needed in below cases.
         case CHUNIT_SUCCESS:
         case CHUNIT_MEMORY_LEAK:
         case CHUNIT_ASSERT_TRUE_FAIL:
         case CHUNIT_ASSERT_FALSE_FAIL:
         case CHUNIT_ASSERT_NON_NULL_FAIL:
-            tr = new_test_result(res);
+            tr->result = t_res;
             break;
 
+        case CHUNIT_ASSERT_EQ_PTR_FAIL:
+            tr->data = safe_malloc(MEM_CHNL_TESTING, sizeof(void *) * 2);
+            // What if if safe read throws and error though???
+            safe_read(pipe_fd, tr->data, sizeof(void *) * 2);
+            break;
 
         default:
-            tr = new_test_error(CHUNIT_BAD_TEST_RESULT);
+            *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_BAD_TEST_RESULT;
             break;
     }
 
@@ -276,7 +292,6 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     }
 
     return tr;
-
 }
 
 chunit_test_run *run_test(const chunit_test *test) {

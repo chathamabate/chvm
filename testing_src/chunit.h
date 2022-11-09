@@ -18,7 +18,7 @@
 // Completion of a test implies there were no errors in the framework
 // when running the test.
 typedef enum {
-    // This error is for when a result
+    // This result is for when a result
     // is yet to be communicated from the test.
     CHUNIT_VOID,
 
@@ -90,6 +90,7 @@ typedef struct {
     void (*t)(int pipe_fd);
 } chunit_test;
 
+/* Maybe I don't really need this rn. 
 typedef union {
     void       *ptr_c[2];
     int64_t     int_c[2];
@@ -97,6 +98,7 @@ typedef union {
     char        char_c[2];
     char       *str_c[2]; 
 } chunit_cmpr;
+*/
 
 typedef struct {
     // A list of framework errors.
