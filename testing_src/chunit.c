@@ -1,4 +1,4 @@
-#include "chunit.h"
+#include "./chunit.h"
 
 #include <stdlib.h>
 #include <sys/wait.h>
@@ -9,132 +9,9 @@
 
 #include "../core_src/mem.h"
 #include "../core_src/sys.h"
+#include "./assert.h"
 
-static void write_result(int pipe_fd, const chunit_test_result res) {
-    // Attempt to write the tag to the pipe...
-    // if htere is some error, exit with a pipe error.
-    if (safe_write(pipe_fd, &res, sizeof(chunit_test_result))) {
-        // NOTE, since there has been some sort of pipe error...
-        // we won't even bother to close the pipe... just
-        // exit.
-        
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
-    }
-}
-
-static void write_data(int pipe_fd, void *buf, size_t size) {
-    if (safe_write(pipe_fd, buf, size)) {
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
-    } 
-}
-
-static void close_pipe_and_exit(int pipe_fd) {
-    if (safe_close(pipe_fd)) {
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
-    }
-
-    exit(0);
-}
-
-void assert_true(int pipe_fd, int actual) {
-    if (actual) {
-        return;
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_TRUE_FAIL);
-    close_pipe_and_exit(pipe_fd);
-}
-
-void assert_false(int pipe_fd, int actual) {
-    if (!actual) {
-        return;
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_FALSE_FAIL);
-    close_pipe_and_exit(pipe_fd);
-}
-
-void assert_non_null(int pipe_fd, void *ptr) {
-    if (ptr) {
-        return;
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_NON_NULL_FAIL);
-    close_pipe_and_exit(pipe_fd);
-}
-
-void assert_eq_ptr(int pipe_fd, void *expected, void *actual) {
-    if (expected == actual) {
-        return;
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_EQ_PTR_FAIL);
-
-    void *buf[2] = {expected, actual};
-    write_data(pipe_fd, buf, sizeof(void *) * 2);
-    close_pipe_and_exit(pipe_fd);
-}
-
-void assert_eq_int(int pipe_fd, int64_t expected, int64_t actual) {
-    if (expected == actual) {
-        return; 
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_EQ_INT_FAIL);
-
-    int64_t buf[2] = {expected, actual};
-    write_data(pipe_fd, buf, sizeof(int64_t) * 2);
-    close_pipe_and_exit(pipe_fd);
-}
-
-void assert_eq_uint(int pipe_fd, uint64_t expected, uint64_t actual) {
-    if (expected == actual) {
-        return; 
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_EQ_UINT_FAIL);
-
-    uint64_t buf[2] = {expected, actual};
-    write_data(pipe_fd, buf, sizeof(uint64_t) * 2);
-    close_pipe_and_exit(pipe_fd);
-}
-
-void assert_eq_char(int pipe_fd, char expected, char actual) {
-    if (expected == actual) {
-        return; 
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_EQ_CHAR_FAIL);
-
-    char buf[2] = {expected, actual};
-    write_data(pipe_fd, buf, sizeof(char) * 2);
-    close_pipe_and_exit(pipe_fd);
-}
-
-void assert_eq_str(int pipe_fd, char *expected, char *actual) {
-    if (strcmp(expected, actual) == 0) {
-        return;
-    }
-
-    write_result(pipe_fd, CHUNIT_ASSERT_EQ_STR_FAIL);
-    
-    // NOTE, strings send by having the length be 
-    // sent first, then the full string...
-    // NO null terminators.
-
-    size_t sizes[2] = {strlen(expected) + 1, strlen(actual) + 1};
-
-    // Write both string sizes first.
-    write_data(pipe_fd, sizes, sizeof(size_t) * 2);
-
-    // Then write both strings.
-    write_data(pipe_fd, expected, sizes[0]);
-    write_data(pipe_fd, actual, sizes[1]);
-
-    close_pipe_and_exit(pipe_fd);
-}
-
-// Parent process Code V2!
+// Parent process and Child process code for CHUNIT.
 
 chunit_test_run *new_test_run() {
     chunit_test_run *tr = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_run));
@@ -165,42 +42,54 @@ void delete_test_run() {
 
 // NOTE fds[1] = writing descriptor.
 // fds[0] = reading descriptor.
+//
 
-static void chunit_child_process(int fds[2], const chunit_test *test) {
-    // First, close the read end of the pipe.
-    if (safe_close(fds[0])) {
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
+static void attempt_safe_kill_and_reap(chunit_test_run *tr, pid_t pid) {
+    if (safe_kill_and_reap(pid)) {
+        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_TERMINATION_ERROR;
+    }
+}
+
+static void attempt_safe_close(chunit_test_run *tr, int pipe_fd) {
+    if (safe_close(pipe_fd)) {
+        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_PIPE_ERROR;
+    }
+}
+
+static void attempt_read_cmpr_and_close(chunit_test_run *tr, int pipe_fd, 
+        chunit_test_result res, size_t c_size) {
+    void *buf = safe_malloc(MEM_CHNL_TESTING, c_size * 2);
+
+    if (safe_read(pipe_fd, buf, c_size * 2)) {
+        *(chunit_framework_error *)sl_next(tr->errors) = 
+            CHUNIT_PIPE_ERROR;
+
+        safe_free(buf);
+
+        // No closing here.
+        return;
     }
 
-    // Get write side of pipe.
-    int pipe_fd = fds[1];
+    // Successful read!
+    tr->data = buf;
+    tr->result = res;
 
-    // Run the test.
-    test->t(pipe_fd);
-    
-    // NOTE here we check for memory leaks.
-    // If there was non testing memory used before forking,
-    // it will always cause a memory leak here.
-    if (check_memory_leaks()) {
-        write_result(pipe_fd, CHUNIT_MEMORY_LEAK);
-    } else {
-        write_result(pipe_fd, CHUNIT_SUCCESS);
-    }
-
-    close_pipe_and_exit(pipe_fd);
+    // Do this here instead of later.
+    attempt_safe_close(tr, pipe_fd);
 }
 
 static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
+    // NOTE : going forward in the parent process... 
+    // If there is a non-pipe error, we must close the read end of
+    // the pipe before exiting!
+
     // Attempt to close write end of pipe.
     if (safe_close(fds[1])) {
         chunit_test_run *ce_tr = new_test_error(CHUNIT_PIPE_ERROR);
+        attempt_safe_kill_and_reap(ce_tr, child);
 
-        // When there is an error killing the child,
-        // make sure to add in a termination error.
-        if (safe_kill_and_reap(child)) {
-            *(chunit_framework_error *)sl_next(ce_tr->errors) = 
-                CHUNIT_TERMINATION_ERROR;
-        }
+        // Since this is a pipe error, don't try to close
+        // read end of the pipe.
 
         return ce_tr;
     }
@@ -215,20 +104,17 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // When there's a hard waitpid error, just return...
     // don't worry about killing.
     if (res == -1) {
-        return new_test_error(CHUNIT_TERMINATION_ERROR);
+        chunit_test_run *we_tr = new_test_error(CHUNIT_TERMINATION_ERROR);
+        attempt_safe_close(we_tr, pipe_fd);
+
+        return we_tr;
     }
 
+    // There's been a timeout, kill, reap, close, and return.
     if (res == -2) {
-        // NOTE should the user still know there was a 
-        // timeout? yes, give as much info as possible!
         chunit_test_run *timeout_tr = new_test_result(CHUNIT_TIMEOUT);
-
-        // A timeout has occurred.
-        // Try to kill and reap the process.
-        if (safe_kill_and_reap(child)) {
-            *(chunit_framework_error *)sl_next(timeout_tr->errors) = 
-                CHUNIT_TERMINATION_ERROR;
-        }
+        attempt_safe_kill_and_reap(timeout_tr, child);
+        attempt_safe_close(timeout_tr, pipe_fd);
 
         return timeout_tr;
     }
@@ -239,14 +125,27 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // If the child didn't exit normally, return a fatal
     // error. (User's fault)
     if (!WIFEXITED(stat)) {
-        return new_test_result(CHUNIT_FATAL_ERROR);
+        chunit_test_run *f_tr = new_test_result(CHUNIT_FATAL_ERROR);
+        attempt_safe_close(f_tr, pipe_fd);
+
+        return f_tr;
     }
 
     // If we make it here, we must've exited normally.
 
     // Check if there was some pipe error. (OUR ERROR)
     if (WEXITSTATUS(stat) == CHUNIT_PIPE_ERROR_EXIT_CODE) {
+        // pipe doesn't need to be closed.
         return new_test_error(CHUNIT_PIPE_ERROR);
+    }
+
+    // This is a positive exit status outside of the pipe error exit code.
+    if (WEXITSTATUS(stat) > 0) {
+        // Ashamed of the copy and paste which occured here.
+        chunit_test_run *f_tr = new_test_result(CHUNIT_FATAL_ERROR);
+        attempt_safe_close(f_tr, pipe_fd);
+
+        return f_tr;
     }
 
     // This means the process terminated on it's own
@@ -265,6 +164,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // NOTE, consider creating a results interpretation helper function.
 
     chunit_test_run *tr = new_test_run();
+    size_t str_sizes[2];
 
     switch (t_res) {
         // No data field needed in below cases.
@@ -274,25 +174,87 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
         case CHUNIT_ASSERT_FALSE_FAIL:
         case CHUNIT_ASSERT_NON_NULL_FAIL:
             tr->result = t_res;
-            break;
+            attempt_safe_close(tr, pipe_fd);
+
+            return tr;
 
         case CHUNIT_ASSERT_EQ_PTR_FAIL:
-            tr->data = safe_malloc(MEM_CHNL_TESTING, sizeof(void *) * 2);
-            // What if if safe read throws and error though???
-            safe_read(pipe_fd, tr->data, sizeof(void *) * 2);
-            break;
+            attempt_read_cmpr_and_close(tr, pipe_fd, 
+                    CHUNIT_ASSERT_EQ_PTR_FAIL, sizeof(void *));
+
+            return tr;
+
+        case CHUNIT_ASSERT_EQ_INT_FAIL:
+            attempt_read_cmpr_and_close(tr, pipe_fd, 
+                    CHUNIT_ASSERT_EQ_INT_FAIL, sizeof(int64_t));
+
+            return tr;
+
+        case CHUNIT_ASSERT_EQ_UINT_FAIL:
+            attempt_read_cmpr_and_close(tr, pipe_fd, 
+                    CHUNIT_ASSERT_EQ_UINT_FAIL, sizeof(uint64_t));
+
+            return tr;
+
+        case CHUNIT_ASSERT_EQ_CHAR_FAIL:
+            attempt_read_cmpr_and_close(tr, pipe_fd, 
+                    CHUNIT_ASSERT_EQ_CHAR_FAIL, sizeof(char));
+
+            return tr;
+
+        case CHUNIT_ASSERT_EQ_STR_FAIL:
+            // Read sizes first.
+            if (safe_read(pipe_fd, str_sizes, sizeof(size_t) * 2)) {
+                *(chunit_framework_error *)sl_next(tr->errors) = 
+                    CHUNIT_PIPE_ERROR;
+
+                return tr;
+            }
+
+            char *expected = safe_malloc(MEM_CHNL_TESTING, str_sizes[0]);
+
+            // Read expected.
+            if (safe_read(pipe_fd, expected, str_sizes[0])) {
+                *(chunit_framework_error *)sl_next(tr->errors) = 
+                    CHUNIT_PIPE_ERROR;
+
+                safe_free(expected);
+                return tr;
+            }
+
+            char *actual = safe_malloc(MEM_CHNL_TESTING, str_sizes[1]);
+
+            // Read actual.
+            if (safe_read(pipe_fd, actual, str_sizes[1])) {
+                *(chunit_framework_error *)sl_next(tr->errors) = 
+                    CHUNIT_PIPE_ERROR;
+
+                safe_free(expected);
+                safe_free(actual);
+                return tr;
+            }
+
+            // We have successfully read both strings!
+            tr->result = CHUNIT_ASSERT_EQ_STR_FAIL;
+            tr->data = safe_malloc(MEM_CHNL_TESTING, sizeof(char *) * 2);
+
+            // Copy in string pointers.
+            ((char **)(tr->data))[0] = expected;
+            ((char **)(tr->data))[1] = actual;
+
+            attempt_safe_close(tr, pipe_fd);
+            
+            return tr; 
 
         default:
             *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_BAD_TEST_RESULT;
-            break;
-    }
+            attempt_safe_close(tr, pipe_fd);
 
-    if (safe_close(pipe_fd)) {
-        *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_PIPE_ERROR;
+            return tr;
     }
-
-    return tr;
 }
+
+// NOTE, the pipes should always be closed!!!
 
 chunit_test_run *run_test(const chunit_test *test) {
     int fds[2];
@@ -316,121 +278,3 @@ chunit_test_run *run_test(const chunit_test *test) {
     return chunit_parent_process(fds, pid);
 }
 
-/*
-// NOTE consider making this a core function some day.
-static void chunit_kill_child_and_wait(pid_t pid) {
-    // Killing the child process should always work.
-    kill(pid, SIGKILL);
-
-    // Keep waiting until we get this fucker.
-    while (waitpid(pid, NULL, 0) == -1);
-}
-
-static void chunit_parent_process(int fds[2], pid_t pid, chunit_test_result *result) {
-    // NOTE errors in parent process should trigger killing the child process.
-    result->data = NULL;
-    
-    // First attempt to close writing pipe.
-    if (close(fds[1])) {
-        result->tag = CHUNIT_PIPE_ERROR;
-        chunit_kill_child_and_wait(pid);
-
-        // finally, return.
-        return;
-    }
-
-    int stat;
-    time_t start = time(NULL); // This will be in seconds.
-
-    // First we wait for the process to exit.
-    while (1) {
-        pid_t ret_pid;
-        while ((ret_pid = waitpid(pid, &stat, WNOHANG)) == -1);
-        
-        // Here the child process has ended! 
-        if (ret_pid) {
-            break;
-        }
-
-        // If the child process has not ended, let's
-        // make sure we haven't timed out.
-        time_t curr = time(NULL);
-        if (curr - start >= CHUNIT_TIMEOUT_S) {
-            // Time for a timeout my friend.
-            result->tag = CHUNIT_TIMEOUT;
-            chunit_kill_child_and_wait(pid);
-            return;
-        }
-
-        // Otherwise... lets sleep for a bit and come back later.
-        usleep(CHUNIT_SLEEP_TIME_MS * 1000);
-    }
-    
-    // At this point, our process has exited!
-   
-}
-
-static void chunit_child_process(int fds[2], const chunit_test *test) {
-    // In the child process, we must close the read end of the pipe.
-    if (close(fds[0])) {
-        // Pipe close error. Forget about the pipe, just exit.
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
-    }     
-
-    int pipe_fd = fds[1];
-    test->t(pipe_fd);
-
-    // NOTE if we've made it here, all assertions must've been correct.
-    // Now, we make sure all memory channels besides the testing 
-    // channel have count zero.
-    if (check_memory_leaks()) {
-        write_tag(pipe_fd, CHUNIT_MEMORY_LEAK);
-    }
-
-    // Finally, just close and exit my friend.
-    close_pipe_and_exit(pipe_fd);
-}
-
-chunit_test_result *run_test(const chunit_test *test) {
-    // Only ever dynamically make space for this in the parent process.
-    chunit_test_result *result;
-
-    // First set up communication pipe.
-    int fds[2];
-    if (pipe(fds) == -1) {
-        result = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_result));
-        result->tag = CHUNIT_PIPE_ERROR;
-        result->data = NULL;
-
-        return result;
-    }
-
-    // Time to fork my friend...
-    pid_t pid = fork();
-
-    if (pid == -1)  {
-        result = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_result));
-        result->tag = CHUNIT_FORK_ERROR;
-        result->data = NULL;
-
-        // Attempt to close pipe...
-        // error here will not take precedence over
-        // fork error.
-        close(fds[0]);
-        close(fds[1]);
-
-        return result;
-    } 
-
-    if (pid == 0) {
-        chunit_child_process(fds, test);
-
-        // Should never make it to this line.
-        return NULL; 
-    }
-
-    result = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_result));
-    chunit_parent_process(fds, pid, result);
-
-    return result;
-}*/

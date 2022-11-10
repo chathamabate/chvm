@@ -18,8 +18,7 @@
 // Completion of a test implies there were no errors in the framework
 // when running the test.
 typedef enum {
-    // This result is for when a result
-    // is yet to be communicated from the test.
+    // This is for when a result was unable to be interpreted.
     CHUNIT_VOID,
 
     // To be communicated back to parent 
@@ -69,16 +68,6 @@ typedef enum {
 // 5 second timeout for all tests.
 #define CHUNIT_TIMEOUT_S 5
 
-void assert_true(int pipe_fd, int actual);
-void assert_false(int pipe_fd, int actual);
-void assert_non_null(int pipe_fd, void *ptr);
-
-void assert_eq_ptr(int pipe_fd, void *expected, void *actual);
-void assert_eq_int(int pipe_fd, int64_t expected, int64_t actual);
-void assert_eq_uint(int pipe_fd, uint64_t expected, uint64_t actual);
-void assert_eq_char(int pipe_fd, char expected, char actual);
-void assert_eq_str(int pipe_fd, char *expected, char *actual);
-
 // Parent process organization...
 
 typedef struct {
@@ -90,7 +79,6 @@ typedef struct {
     void (*t)(int pipe_fd);
 } chunit_test;
 
-/* Maybe I don't really need this rn. 
 typedef union {
     void       *ptr_c[2];
     int64_t     int_c[2];
@@ -98,7 +86,6 @@ typedef union {
     char        char_c[2];
     char       *str_c[2]; 
 } chunit_cmpr;
-*/
 
 typedef struct {
     // A list of framework errors.
