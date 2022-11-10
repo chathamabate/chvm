@@ -35,10 +35,30 @@ chunit_test_run *new_test_error(chunit_framework_error err) {
     return tr;
 }
 
-void delete_test_run() {
-    // TODO delete test run based on what the result is.
-}
+void delete_test_run(chunit_test_run *tr) {
+    switch (tr->result) {
+        // Simple comparisons.
+        case CHUNIT_ASSERT_EQ_PTR_FAIL:
+        case CHUNIT_ASSERT_EQ_INT_FAIL:
+        case CHUNIT_ASSERT_EQ_UINT_FAIL:
+        case CHUNIT_ASSERT_EQ_CHAR_FAIL:
+            safe_free(tr->data);
+            break;
 
+        case CHUNIT_ASSERT_EQ_STR_FAIL:
+            safe_free(((char **)(tr->data))[0]); // Free Expected.
+            safe_free(((char **)(tr->data))[1]); // Free Actual.
+            safe_free(tr->data); // Free buffer.
+            break;
+
+        default:
+            // Otherwise, nothing should be in data.
+            break;
+    }
+
+    delete_slist(tr->errors);
+    safe_free(tr);
+}
 
 // NOTE fds[1] = writing descriptor.
 // fds[0] = reading descriptor.

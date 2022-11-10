@@ -106,7 +106,7 @@ typedef struct {
 chunit_test_run *new_test_run();
 chunit_test_run *new_test_result(chunit_test_result res);
 chunit_test_run *new_test_error(chunit_framework_error err);
-void delete_test_run();
+void delete_test_run(chunit_test_run *tr);
 
 chunit_test_run *run_test(const chunit_test *test);
 
