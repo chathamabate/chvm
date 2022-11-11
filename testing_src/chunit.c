@@ -11,26 +11,28 @@
 #include "../core_src/sys.h"
 #include "./assert.h"
 
+
 // Parent process and Child process code for CHUNIT.
 
-chunit_test_run *new_test_run() {
+chunit_test_run *new_test_run(pid_t c) {
     chunit_test_run *tr = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_run));
     tr->errors = new_slist(MEM_CHNL_TESTING, sizeof(chunit_framework_error));
 
+    tr->child = c;
     tr->result = CHUNIT_VOID;
     tr->data = NULL;
 
     return tr;
 }
 
-chunit_test_run *new_test_result(chunit_test_result res) {
-    chunit_test_run *tr = new_test_run();
+chunit_test_run *new_test_result(pid_t c, chunit_test_result res) {
+    chunit_test_run *tr = new_test_run(c);
     tr->result = res;
     return tr;
 }
 
-chunit_test_run *new_test_error(chunit_framework_error err) {
-    chunit_test_run *tr = new_test_run();
+chunit_test_run *new_test_error(pid_t c, chunit_framework_error err) {
+    chunit_test_run *tr = new_test_run(c);
     *(chunit_framework_error *)sl_next(tr->errors) = err;
     return tr;
 }
@@ -64,8 +66,8 @@ void delete_test_run(chunit_test_run *tr) {
 // fds[0] = reading descriptor.
 //
 
-static void attempt_safe_kill_and_reap(chunit_test_run *tr, pid_t pid) {
-    if (safe_kill_and_reap(pid)) {
+static void attempt_safe_kill_and_reap(chunit_test_run *tr) {
+    if (safe_kill_and_reap(tr->child)) {
         *(chunit_framework_error *)sl_next(tr->errors) = CHUNIT_TERMINATION_ERROR;
     }
 }
@@ -105,8 +107,8 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
 
     // Attempt to close write end of pipe.
     if (safe_close(fds[1])) {
-        chunit_test_run *ce_tr = new_test_error(CHUNIT_PIPE_ERROR);
-        attempt_safe_kill_and_reap(ce_tr, child);
+        chunit_test_run *ce_tr = new_test_error(child, CHUNIT_PIPE_ERROR);
+        attempt_safe_kill_and_reap(ce_tr);
 
         // Since this is a pipe error, don't try to close
         // read end of the pipe.
@@ -124,7 +126,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // When there's a hard waitpid error, just return...
     // don't worry about killing.
     if (res == -1) {
-        chunit_test_run *we_tr = new_test_error(CHUNIT_TERMINATION_ERROR);
+        chunit_test_run *we_tr = new_test_error(child, CHUNIT_TERMINATION_ERROR);
         attempt_safe_close(we_tr, pipe_fd);
 
         return we_tr;
@@ -132,8 +134,8 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
 
     // There's been a timeout, kill, reap, close, and return.
     if (res == -2) {
-        chunit_test_run *timeout_tr = new_test_result(CHUNIT_TIMEOUT);
-        attempt_safe_kill_and_reap(timeout_tr, child);
+        chunit_test_run *timeout_tr = new_test_result(child, CHUNIT_TIMEOUT);
+        attempt_safe_kill_and_reap(timeout_tr);
         attempt_safe_close(timeout_tr, pipe_fd);
 
         return timeout_tr;
@@ -145,7 +147,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // If the child didn't exit normally, return a fatal
     // error. (User's fault)
     if (!WIFEXITED(stat)) {
-        chunit_test_run *f_tr = new_test_result(CHUNIT_FATAL_ERROR);
+        chunit_test_run *f_tr = new_test_result(child, CHUNIT_FATAL_ERROR);
         attempt_safe_close(f_tr, pipe_fd);
 
         return f_tr;
@@ -156,13 +158,13 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     // Check if there was some pipe error. (OUR ERROR)
     if (WEXITSTATUS(stat) == CHUNIT_PIPE_ERROR_EXIT_CODE) {
         // pipe doesn't need to be closed.
-        return new_test_error(CHUNIT_PIPE_ERROR);
+        return new_test_error(child, CHUNIT_PIPE_ERROR);
     }
 
     // This is a positive exit status outside of the pipe error exit code.
     if (WEXITSTATUS(stat) > 0) {
         // Ashamed of the copy and paste which occured here.
-        chunit_test_run *f_tr = new_test_result(CHUNIT_FATAL_ERROR);
+        chunit_test_run *f_tr = new_test_result(child, CHUNIT_FATAL_ERROR);
         attempt_safe_close(f_tr, pipe_fd);
 
         return f_tr;
@@ -178,12 +180,12 @@ static chunit_test_run *chunit_parent_process(int fds[2], pid_t child) {
     
     // Read comm tag.
     if (safe_read(pipe_fd, &t_res, sizeof(chunit_test_result))) {
-        return new_test_error(CHUNIT_PIPE_ERROR);
+        return new_test_error(child, CHUNIT_PIPE_ERROR);
     }
 
     // NOTE, consider creating a results interpretation helper function.
 
-    chunit_test_run *tr = new_test_run();
+    chunit_test_run *tr = new_test_run(child);
     size_t str_sizes[2];
 
     switch (t_res) {
@@ -280,13 +282,13 @@ chunit_test_run *run_test(const chunit_test *test) {
     int fds[2];
 
     if (pipe(fds)) {
-        return new_test_error(CHUNIT_PIPE_ERROR);
+        return new_test_error(-1, CHUNIT_PIPE_ERROR);
     }
 
     pid_t pid = fork();
 
     if (pid == -1) {
-        return new_test_error(CHUNIT_FORK_ERROR);
+        return new_test_error(-1, CHUNIT_FORK_ERROR);
     }
 
     if (pid == 0) {

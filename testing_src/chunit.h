@@ -19,7 +19,7 @@
 // when running the test.
 typedef enum {
     // This is for when a result was unable to be interpreted.
-    CHUNIT_VOID,
+    CHUNIT_VOID = 0,
 
     // To be communicated back to parent 
     // when all goes as expected.
@@ -50,6 +50,7 @@ typedef enum {
 
     // Test had a fatal runtime error.
     CHUNIT_FATAL_ERROR,
+    
 } chunit_test_result;
 
 // This exit code should be used when there is a 
@@ -59,7 +60,7 @@ typedef enum {
 // This enum is seeing whether or not an error
 // occured in the framework.
 typedef enum {
-    CHUNIT_PIPE_ERROR,
+    CHUNIT_PIPE_ERROR = 0,
     CHUNIT_FORK_ERROR,
     CHUNIT_BAD_TEST_RESULT,
     CHUNIT_TERMINATION_ERROR,
@@ -79,15 +80,10 @@ typedef struct {
     void (*t)(int pipe_fd);
 } chunit_test;
 
-typedef union {
-    void       *ptr_c[2];
-    int64_t     int_c[2];
-    uint64_t    uint_c[2];
-    char        char_c[2];
-    char       *str_c[2]; 
-} chunit_cmpr;
-
 typedef struct {
+    // Pid of the child process.
+    pid_t child;
+
     // A list of framework errors.
     slist *errors;
 
@@ -103,9 +99,9 @@ typedef struct {
 
 // Test runs are always in the test channel
 // of memory.
-chunit_test_run *new_test_run();
-chunit_test_run *new_test_result(chunit_test_result res);
-chunit_test_run *new_test_error(chunit_framework_error err);
+chunit_test_run *new_test_run(pid_t c);
+chunit_test_run *new_test_result(pid_t c, chunit_test_result res);
+chunit_test_run *new_test_error(pid_t c, chunit_framework_error err);
 void delete_test_run(chunit_test_run *tr);
 
 chunit_test_run *run_test(const chunit_test *test);
