@@ -26,16 +26,10 @@ const char *CHUNIT_FE_NAMES[CHUNIT_TERMINATION_ERROR + 1] = {
     "Termination Error",
 };
 
-void print_test_run(chunit_test_run *tr) {
-    printf("PID : %d\n", tr->child);
-    printf("RES : %s\n", CHUNIT_TR_NAMES[tr->result]);
-    printf("ERR : \n");
-
-    uint64_t err_i;
-    for (err_i = 0; err_i < tr->errors->len; err_i++) {
-        chunit_framework_error err = 
-            ((chunit_framework_error *)(tr->errors->buf))[err_i];
-
-        printf("    : %s\n", CHUNIT_FE_NAMES[err]);
-    }
+static void print_test_run(const char *prefix, chunit_test_run *tr) {
 }
+
+void chunit_print_test_run(chunit_test_run *tr) {
+    print_test_run("", tr);
+}
+

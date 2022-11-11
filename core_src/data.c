@@ -30,8 +30,16 @@ void sl_add(slist *sl, void *buf) {
     }
 
     // Get pointer of next cell.
-    void *dest = ((uint8_t *)sl->buf) + (sl->len * sl->cell_size);
+    void *dest = (uint8_t *)(sl->buf) + (sl->len * sl->cell_size);
     memcpy(dest, buf, sl->cell_size);
     sl->len++;
+}
+
+void *sl_get(slist *sl, uint64_t i) {
+    if (i >= sl->len) {
+        return NULL;
+    }
+
+    return (uint8_t *)(sl->buf) + (i * sl->cell_size);
 }
 

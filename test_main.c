@@ -25,13 +25,12 @@ const chunit_test TEST = {
 };
 
 int main(void) {
-    chunit_test_run *tr = run_test(&TEST);
-
-    
-    print_test_run(tr);
-
-    delete_test_run(tr);
-    display_channels();
+    // FLAMES
+    printf(CC_BRIGHT_GREEN " " UC_TL_CORNER UC_HORIZ_LINE "\n");
+    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
+    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
+    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
+    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
 
     return 1;
 }

@@ -6,6 +6,8 @@
 
 void chunit_child_process(int fds[2], const chunit_test *test);
 
+// Below are the only chunit calls which do not
+// come with chunit prefix.
 void assert_true(int pipe_fd, int actual);
 void assert_false(int pipe_fd, int actual);
 void assert_non_null(int pipe_fd, void *ptr);

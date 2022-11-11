@@ -22,9 +22,9 @@ typedef struct {
     void *buf;
 } slist; // Simple list.
 
-
 slist *new_slist(uint8_t chnl, size_t cs);
 void delete_slist(slist *sl);
 void sl_add(slist *sl, void *buf);
+void *sl_get(slist *sl, uint64_t i);
 
 #endif

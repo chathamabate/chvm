@@ -104,29 +104,50 @@ typedef struct {
     void *data;
 } chunit_test_run;
 
-// Test runs are always in the test channel
-// of memory.
-chunit_test_run *new_test_run(const chunit_test *test, pid_t c);
-void delete_test_run(chunit_test_run *tr);
-
 // Run a singular test.
-chunit_test_run *run_test(const chunit_test *test);
+chunit_test_run *chunit_run_test(const chunit_test *test);
+
+// This is used for correctly deleting a test_run
+// given its result type.
+void chunit_delete_test_run(chunit_test_run *tr);
 
 typedef struct {
     const char *name;
     const uint64_t tests_len;
-    const chunit_test *tests;
+    const chunit_test *tests[];  // An array of pointers ot tests.
 } chunit_test_suite;
 
-// Run a singular suite.
-// A simple list containing every result which did not
-// succeed will be returned....
-slist *run_suite(const chunit_test_suite *suite);
+typedef struct {
+    const chunit_test_suite *suite;
+
+    // Slist of chunit_test_run *
+    slist *test_runs; 
+} chunit_test_suite_run;
+
+chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite);
+
+// Delete a test suite run.
+// WARNING, this will delete all test runs contained in tsr.
+void chunit_delete_test_suite_run(chunit_test_suite_run *tsr);
+
+// NOTE test module is a repeat of
+// test suite to add just one more level of hierachy.
 
 typedef struct {
     const char *name;
     const uint64_t suites_len;
-    const chunit_test_suite *suites;
-} chunit_test_module;
+    const chunit_test_suite *suites[];
+} chunit_test_module; 
+
+typedef struct {
+    const chunit_test_module *mod;
+
+    // Slist of chunit_test_suite_run *
+    slist *test_suite_runs;
+} chunit_test_module_run;
+
+chunit_test_module_run *chunit_run_module(const chunit_test_module *mod);
+
+void chunit_delete_test_module_run(chunit_test_module_run *tmr);
 
 #endif

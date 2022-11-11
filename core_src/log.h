@@ -46,6 +46,31 @@
 #define CC_BRIGHT_BG_CYAN       "\x1b[106m"
 #define CC_BRIGHT_BG_WHITE      "\x1b[107m"
 
+// Time for Cool SYMBOLS!!!
+
+// UC for unicode.
+
+#define UC_STAR             "\u203B"
+#define UC_UP_ARR           "\u21E7"   
+#define UC_CIRCLE_DIV       "\u2298"
+#define UC_SHIP_WHEEL       "\u2388"
+#define UC_FISHEYE          "\u25C9"
+#define UC_HALF_CIRCLE      "\u25D0"
+
+#define UC_VERTICAL_LINE    "\u2503"
+#define UC_HORIZ_LINE       "\u2501"
+
+#define UC_TL_CORNER        "\u250F"
+#define UC_TR_CORNER        "\u2513"
+#define UC_BR_CORNER        "\u251B"
+#define UC_BL_CORNER        "\u2517"
+
+// EJ for emoji
+#define EJ_CHECK            "\u2705"
+#define EJ_CROSS            "\u274C"
+
+#define EJ_ORANGE_CIRCLE    "\U0001F7E0"
+
 #define CORE_LOG_PID_PREFIX "(%d) "
 
 #define CORE_LOG_S_PREFIX "[" CC_BRIGHT_MAGENTA "S" CC_RESET "] " CC_MAGENTA 
