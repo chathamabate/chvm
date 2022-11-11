@@ -26,7 +26,7 @@ const chunit_test TEST = {
 
 int main(void) {
     // FLAMES
-    printf(CC_BRIGHT_GREEN " " UC_TL_CORNER UC_HORIZ_LINE "\n");
+    printf(CC_GREEN  " " UC_TL_CORNER UC_HORIZ_LINE " Hello 1\n");
     printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
     printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
     printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
