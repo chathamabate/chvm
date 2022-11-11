@@ -1,6 +1,7 @@
 #include "./data.h"
 #include "./mem.h"
 #include <stddef.h>
+#include <string.h>
 
 #define SL_INITIAL_CAP 1
 
@@ -21,7 +22,7 @@ void delete_slist(slist *sl) {
     safe_free(sl);
 }
 
-void *sl_next(slist *sl) {
+void sl_add(slist *sl, void *buf) {
     if (sl->len == sl->cap) {
         // Realloc time.
         sl->cap *= 2;
@@ -29,10 +30,8 @@ void *sl_next(slist *sl) {
     }
 
     // Get pointer of next cell.
-    void *ptr = ((uint8_t *)sl->buf) + (sl->len * sl->cell_size);
-
-    // Push length.
+    void *dest = ((uint8_t *)sl->buf) + (sl->len * sl->cell_size);
+    memcpy(dest, buf, sl->cell_size);
     sl->len++;
-
-    return ptr;
 }
+

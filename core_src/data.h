@@ -25,7 +25,6 @@ typedef struct {
 
 slist *new_slist(uint8_t chnl, size_t cs);
 void delete_slist(slist *sl);
-
-void *sl_next(slist *sl);
+void sl_add(slist *sl, void *buf);
 
 #endif

@@ -2,6 +2,7 @@
 #define TESTING_CHUNIT_H
 
 #include <stdint.h>
+#include <time.h>
 #include "../core_src/data.h"
 
 // NOTE :
@@ -73,6 +74,7 @@ typedef enum {
 
 typedef struct {
     const char *name;
+    const time_t timeout; // Length of test run (in seconds)
 
     // NOTE, this will be the runnable test itself.
     // It must be given a pipe file descriptor
@@ -81,7 +83,12 @@ typedef struct {
 } chunit_test;
 
 typedef struct {
-    // Pid of the child process.
+    // The test which this run originates from.
+    const chunit_test *test;
+
+    // Pid of the child process. 
+    // This is only useful if there was a termination
+    // error.
     pid_t child;
 
     // A list of framework errors.
@@ -99,11 +106,27 @@ typedef struct {
 
 // Test runs are always in the test channel
 // of memory.
-chunit_test_run *new_test_run(pid_t c);
-chunit_test_run *new_test_result(pid_t c, chunit_test_result res);
-chunit_test_run *new_test_error(pid_t c, chunit_framework_error err);
+chunit_test_run *new_test_run(const chunit_test *test, pid_t c);
 void delete_test_run(chunit_test_run *tr);
 
+// Run a singular test.
 chunit_test_run *run_test(const chunit_test *test);
+
+typedef struct {
+    const char *name;
+    const uint64_t tests_len;
+    const chunit_test *tests;
+} chunit_test_suite;
+
+// Run a singular suite.
+// A simple list containing every result which did not
+// succeed will be returned....
+slist *run_suite(const chunit_test_suite *suite);
+
+typedef struct {
+    const char *name;
+    const uint64_t suites_len;
+    const chunit_test_suite *suites;
+} chunit_test_module;
 
 #endif
