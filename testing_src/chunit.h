@@ -120,6 +120,9 @@ typedef struct {
 typedef struct {
     const chunit_test_suite *suite;
 
+    // Whether or not all test runs succeeded.
+    uint8_t successful;
+
     // Slist of chunit_test_run *
     slist *test_runs; 
 } chunit_test_suite_run;
@@ -141,6 +144,9 @@ typedef struct {
 
 typedef struct {
     const chunit_test_module *mod;
+
+    // Whether or not all suites succeeded.
+    uint8_t successful;
 
     // Slist of chunit_test_suite_run *
     slist *test_suite_runs;

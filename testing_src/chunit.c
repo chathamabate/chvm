@@ -299,6 +299,7 @@ static chunit_test_suite_run *new_test_suite_run(const chunit_test_suite *suite)
         safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_suite_run));
 
     tsr->suite = suite;
+    tsr->successful = 1;
     tsr->test_runs = new_slist(MEM_CHNL_TESTING, sizeof(chunit_test_run *));
 
     return tsr;
@@ -311,6 +312,12 @@ chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite) {
     for (i = 0; i < tsr->suite->tests_len; i++) {
         chunit_test_run *tr = chunit_run_test(suite->tests[i]);
         sl_add(tsr->test_runs, &tr); // add test run to result list.
+        
+        if (tsr->successful && 
+                (tr->result != CHUNIT_SUCCESS || tr->errors->len > 0)) {
+
+            tsr->successful = 0;
+        }
     }
 
     return tsr;
@@ -337,6 +344,7 @@ new_test_module_run(const chunit_test_module *mod) {
         safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_module_run));
 
     tmr->mod = mod;
+    tmr->successful = 1;
     tmr->test_suite_runs = 
         new_slist(MEM_CHNL_TESTING, sizeof(chunit_test_suite_run *));
 
@@ -350,6 +358,10 @@ chunit_test_module_run *chunit_run_module(const chunit_test_module *mod) {
     for (i = 0; i < mod->suites_len; i++) {
         chunit_test_suite_run *tsr = chunit_run_suite(mod->suites[i]);
         sl_add(tmr->test_suite_runs, &tsr);
+
+        if (tmr->successful && !(tsr->successful)) {
+            tmr->successful = 0;
+        }
     }
 
     return tmr;

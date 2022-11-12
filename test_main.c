@@ -15,9 +15,11 @@
 //
 
 void test_dummy(int pipe_fd) {
+    exit(3);
+    safe_malloc(10, 10);
     int x = 10;
     int b = 32;
-    assert_eq_ptr(pipe_fd, &x, &x);
+    assert_eq_ptr(pipe_fd, &b, &x);
 }
 
 const chunit_test TEST = {

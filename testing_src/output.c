@@ -28,7 +28,6 @@ const char *CHUNIT_FE_NAMES[CHUNIT_TERMINATION_ERROR + 1] = {
     "Termination Error",
 };
 
-
 // N for normal.
 // S for strong.
 
@@ -99,16 +98,22 @@ static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
             break;
 
         case CHUNIT_MEMORY_LEAK:
+            // Nothing really to do here.
             break;
 
         case CHUNIT_TIMEOUT:
+            printf("%s" S_WARN BULLET_PREFIX CC_RESET N_WARN
+                    "Process exceeded specified time limit (%lu)" CC_RESET "\n", 
+                    prefix, tr->test->timeout);
             break;
 
         default:
+            // Other types are not warnings.
+            // Should never make it here.
             break;
     }
 
-    printf(S_WARN UC_BL_CORNER UC_HORIZ_LINE CC_RESET "\n");
+    printf("%s" S_WARN UC_BL_CORNER UC_HORIZ_LINE CC_RESET "\n", prefix);
 }
 
 static void print_tr_fail(const char *prefix, chunit_test_run *tr) {
@@ -139,7 +144,7 @@ static void print_tr_framework_err(const char *prefix, chunit_test_run *tr) {
         }
     }
     
-    printf(S_FRER UC_BL_CORNER UC_HORIZ_LINE CC_RESET "\n");
+    printf("%s" S_FRER UC_BL_CORNER UC_HORIZ_LINE CC_RESET "\n", prefix);
 
 }
 
@@ -158,4 +163,24 @@ static void print_test_run(const char *prefix, chunit_test_run *tr) {
 void chunit_print_test_run(chunit_test_run *tr) {
     print_test_run("", tr);
 }
+
+
+static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr, 
+        uint8_t verbose) {
+    const char *prefix;
+
+    if (tsr->successful) {
+        if (verbose) {
+            printf("%s" S_SUCC UC_TL_CORNER UC_HORIZ_LINE "%s " )
+        }
+
+    } else {
+
+    }
+}
+
+void chunit_print_test_suite_run(chunit_test_suite_run *tsr, uint8_t verbose) {
+    print_test_suite_run("", tsr, verbose);
+}
+
 
