@@ -15,7 +15,9 @@
 //
 
 void test_dummy(int pipe_fd) {
-    while(1) {} // SHUH YEH
+    int x = 10;
+    int b = 32;
+    assert_eq_ptr(pipe_fd, &x, &x);
 }
 
 const chunit_test TEST = {
@@ -25,12 +27,10 @@ const chunit_test TEST = {
 };
 
 int main(void) {
-    // FLAMES
-    printf(CC_GREEN  " " UC_TL_CORNER UC_HORIZ_LINE " Hello 1\n");
-    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
-    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
-    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
-    printf(CC_BRIGHT_GREEN UC_SHIP_WHEEL UC_VERTICAL_LINE  "\n");
+    chunit_test_run *tr = chunit_run_test(&TEST);
 
-    return 1;
+    chunit_print_test_run(tr);
+
+    chunit_delete_test_run(tr);
+    return 0;
 }
