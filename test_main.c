@@ -16,11 +16,11 @@
 //
 
 void test_dummy(int pipe_fd) {
-    assert_eq_str(pipe_fd, "Hello", "World");
+    safe_malloc(1, 1);
 }
 
 void test_dummy2(int pipe_fd) {
-    exit(3);
+    assert_true(pipe_fd, 0);
 }
 
 const chunit_test TEST = {
@@ -39,10 +39,9 @@ const chunit_test_suite SUITE = {
     .name = "Suite 1",
     .tests = {
         &TEST,
-        &TEST,
         &TEST2
     },
-    .tests_len = 3,
+    .tests_len = 2,
 };
 
 int main(void) {

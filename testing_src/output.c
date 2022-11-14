@@ -177,15 +177,15 @@ void chunit_print_test_run(chunit_test_run *tr) {
 static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr) {
     if (tsr->successes == tsr->suite->tests_len) {
         printf("%s" HEADER_FMT(S_SUCC) 
-                N_SUCC " (%" PRIu64 ")" CC_RESET "\n", 
-                prefix, tsr->suite->name, tsr->suite->tests_len);
+                N_SUCC " (%" PRIu64 " of %" PRIu64 " Tests Succeeded)" CC_RESET "\n", 
+                prefix, tsr->suite->name, tsr->successes, tsr->suite->tests_len);
     } else {
         printf("%s" TL_CORNER_FMT(S_FAIL) 
-                N_FAIL " (%" PRIu64 "/%" PRIu64 ")" CC_RESET "\n",
-                prefix, tsr->suite->name, tsr->successes, tsr->suite->tests_len);
+                N_FAIL " (%" PRIu64  " of %" PRIu64 " Tests Failed)" CC_RESET "\n",
+                prefix, tsr->suite->name, tsr->suite->tests_len - tsr->successes, tsr->suite->tests_len);
 
         // Here we must make our new prefix!
-        const char *new_prefix = 
+        char *new_prefix = 
             concat_str(MEM_CHNL_TESTING, prefix, S_FAIL UC_VERTICAL_LINE " " CC_RESET);
 
         uint64_t i;
@@ -197,6 +197,8 @@ static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr)
                 print_test_run(new_prefix, tr);
             }
         }
+
+        safe_free(new_prefix);
 
         printf("%s" BL_CORNER_FMT(S_FAIL) "\n", prefix);
     }
@@ -213,6 +215,27 @@ static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr)
 
 void chunit_print_test_suite_run(chunit_test_suite_run *tsr) {
     print_test_suite_run("", tsr);
+}
+
+#define S_MOD
+
+// Don't really need to give a prefix for this.
+void chunit_print_test_module_run(chunit_test_module_run *tmr) {
+    if (tmr->mod->suites_len == 0) {
+        printf(HEADER_FMT(S_MOD) "\n", tmr->mod->name);
+    } else {
+        printf(TL_CORNER_FMT(S_MOD) "\n", tmr->mod->name);
+        
+        uint64_t i;
+        for (i = 0; i < tmr->test_suite_runs->len; i++) {
+            chunit_test_suite_run *tsr = 
+                *(chunit_test_suite_run **)sl_get(tmr->test_suite_runs, i);
+
+            print_test_suite_run(S_MOD UC_VERTICAL_LINE " " CC_RESET, tsr);
+        }
+
+        printf(BL_CORNER_FMT(S_MOD) "\n");
+    }
 }
 
 
