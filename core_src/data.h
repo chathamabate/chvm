@@ -3,6 +3,9 @@
 
 #include <stdlib.h>
 
+// Potentially put this in a string file someday.
+char *concat_str(uint8_t chnl, const char *s1, const char *s2);
+
 // This file contains data defintions that
 // are core to the entire system.
 // i.e. are requited for the testing framework...

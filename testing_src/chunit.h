@@ -121,7 +121,7 @@ typedef struct {
     const chunit_test_suite *suite;
 
     // Whether or not all test runs succeeded.
-    uint8_t successful;
+    uint64_t successes;
 
     // Slist of chunit_test_run *
     slist *test_runs; 

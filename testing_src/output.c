@@ -1,9 +1,10 @@
 
 #include "./output.h"
-#include "chunit.h"
+#include "./chunit.h"
 #include <stdio.h>
 #include "../core_src/log.h"
 #include <inttypes.h>
+#include "../core_src/mem.h"
 
 const char *CHUNIT_TR_NAMES[CHUNIT_FATAL_ERROR + 1] = {
     "Void",
@@ -54,14 +55,20 @@ const char *CHUNIT_FE_NAMES[CHUNIT_TERMINATION_ERROR + 1] = {
     PRINT_RESULT(prefix, s_style, n_style, plh, "Expected : ", exp); \
     PRINT_RESULT(prefix, s_style, n_style, plh, "Acutal   : ", act)
 
+#define TL_CORNER_FMT(s) s UC_TL_CORNER UC_HORIZ_LINE " %s" CC_RESET
+#define HEADER_FMT(s) s UC_HORIZ_LINE UC_HORIZ_LINE " %s" CC_RESET
+#define SEG_FMT(s) s UC_HORIZ_LINE UC_HORIZ_LINE CC_RESET
+#define BL_CORNER_FMT(s) s UC_BL_CORNER UC_HORIZ_LINE CC_RESET
+
+
 static void print_tr_success(const char *prefix, chunit_test_run *tr) {
-    printf("%s" S_SUCC UC_HORIZ_LINE UC_HORIZ_LINE " %s" CC_RESET 
+    printf("%s" HEADER_FMT(S_SUCC) 
             N_SUCC " (Success)" CC_RESET "\n", 
             prefix, tr->test->name);
 }
 
 static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
-    printf("%s" S_WARN UC_TL_CORNER UC_HORIZ_LINE " %s" CC_RESET 
+    printf("%s" TL_CORNER_FMT(S_WARN) 
             N_WARN " (Warning)" CC_RESET "\n", 
             prefix, tr->test->name);
 
@@ -113,17 +120,17 @@ static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
             break;
     }
 
-    printf("%s" S_WARN UC_BL_CORNER UC_HORIZ_LINE CC_RESET "\n", prefix);
+    printf("%s" BL_CORNER_FMT(S_WARN) "\n", prefix);
 }
 
 static void print_tr_fail(const char *prefix, chunit_test_run *tr) {
-    printf("%s" S_FAIL UC_HORIZ_LINE UC_HORIZ_LINE " %s" CC_RESET 
+    printf("%s" HEADER_FMT(S_FAIL) 
             N_FAIL " (Failure)" CC_RESET "\n", 
             prefix, tr->test->name);
 }
 
 static void print_tr_framework_err(const char *prefix, chunit_test_run *tr) {
-    printf("%s" S_FRER UC_TL_CORNER UC_HORIZ_LINE " %s" CC_RESET 
+    printf("%s" TL_CORNER_FMT(S_FRER)
             N_FRER " (Framework Error)" CC_RESET "\n", 
             prefix, tr->test->name);
 
@@ -144,7 +151,7 @@ static void print_tr_framework_err(const char *prefix, chunit_test_run *tr) {
         }
     }
     
-    printf("%s" S_FRER UC_BL_CORNER UC_HORIZ_LINE CC_RESET "\n", prefix);
+    printf("%s" BL_CORNER_FMT(S_FRER) "\n", prefix);
 
 }
 
@@ -154,6 +161,9 @@ static void print_test_run(const char *prefix, chunit_test_run *tr) {
     } else if (tr->result == CHUNIT_FATAL_ERROR) {
         print_tr_fail(prefix, tr);
     } else if (tr->result == CHUNIT_SUCCESS) {
+        // This is actually fine with me.
+        // We will only output as a success if and only if
+        // The result is success and there were no framework errors.
         print_tr_success(prefix, tr);
     } else {
         print_tr_warn(prefix, tr);
@@ -164,23 +174,45 @@ void chunit_print_test_run(chunit_test_run *tr) {
     print_test_run("", tr);
 }
 
+static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr) {
+    if (tsr->successes == tsr->suite->tests_len) {
+        printf("%s" HEADER_FMT(S_SUCC) 
+                N_SUCC " (%" PRIu64 ")" CC_RESET "\n", 
+                prefix, tsr->suite->name, tsr->suite->tests_len);
+    } else {
+        printf("%s" TL_CORNER_FMT(S_FAIL) 
+                N_FAIL " (%" PRIu64 "/%" PRIu64 ")" CC_RESET "\n",
+                prefix, tsr->suite->name, tsr->successes, tsr->suite->tests_len);
 
-static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr, 
-        uint8_t verbose) {
-    const char *prefix;
+        // Here we must make our new prefix!
+        const char *new_prefix = 
+            concat_str(MEM_CHNL_TESTING, prefix, S_FAIL UC_VERTICAL_LINE " " CC_RESET);
 
-    if (tsr->successful) {
-        if (verbose) {
-            printf("%s" S_SUCC UC_TL_CORNER UC_HORIZ_LINE "%s " )
+        uint64_t i;
+        for (i = 0; i < tsr->test_runs->len; i++) {
+            chunit_test_run *tr = *(chunit_test_run **)sl_get(tsr->test_runs, i);
+
+            // If we find an unsuccessful test, print it out.
+            if (tr->result != CHUNIT_SUCCESS || tr->errors->len > 0) {
+                print_test_run(new_prefix, tr);
+            }
         }
 
-    } else {
-
+        printf("%s" BL_CORNER_FMT(S_FAIL) "\n", prefix);
     }
 }
 
-void chunit_print_test_suite_run(chunit_test_suite_run *tsr, uint8_t verbose) {
-    print_test_suite_run("", tsr, verbose);
+// A suite run will print all failed tests.
+// If there were no failed tests, just a single line saying
+// the name of the suite and how many tests passed.
+//
+// How should it say the tests passed?
+// How about if they failed?
+//
+// 100 / 100 
+
+void chunit_print_test_suite_run(chunit_test_suite_run *tsr) {
+    print_test_suite_run("", tsr);
 }
 
 

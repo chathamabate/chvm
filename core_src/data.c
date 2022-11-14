@@ -3,6 +3,20 @@
 #include <stddef.h>
 #include <string.h>
 
+char *concat_str(uint8_t chnl, const char *s1, const char *s2) {
+    unsigned long l1 = strlen(s1);
+    unsigned long l2 = strlen(s2);
+
+    char *new_str = safe_malloc(chnl, 
+            (l1 + l2 + 1) * sizeof(char));
+
+    memcpy(new_str, s1, l1);
+    memcpy(new_str + l1, s2, l2);
+    new_str[l1 + l2] = '\0';
+
+    return new_str;
+}
+
 #define SL_INITIAL_CAP 1
 
 slist *new_slist(uint8_t chnl, size_t cs) {
