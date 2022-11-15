@@ -17,4 +17,6 @@ void display_channels();
 // of the testing channel, 0 otherwise.
 uint8_t check_memory_leaks();
 
+uint8_t get_chnl(void *ptr);
+
 #endif

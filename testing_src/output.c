@@ -53,7 +53,7 @@ const char *CHUNIT_FE_NAMES[CHUNIT_TERMINATION_ERROR + 1] = {
 
 #define PRINT_COMPARISON(prefix, s_style, n_style, plh, exp, act) \
     PRINT_RESULT(prefix, s_style, n_style, plh, "Expected : ", exp); \
-    PRINT_RESULT(prefix, s_style, n_style, plh, "Acutal   : ", act)
+    PRINT_RESULT(prefix, s_style, n_style, plh, "Actual   : ", act)
 
 #define TL_CORNER_FMT(s) s UC_TL_CORNER UC_HORIZ_LINE " %s" CC_RESET
 #define HEADER_FMT(s) s UC_HORIZ_LINE UC_HORIZ_LINE " %s" CC_RESET

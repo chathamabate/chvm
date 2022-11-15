@@ -37,7 +37,7 @@ core_src/%.o: core_src/%.c $(core_hdrs)
 
 # Testing code will not be templated in the makefile
 # as all modules depend on it. Testing code
-# will depend on nothing.
+# will depend only on core code.
 testing_hdrs	:= $(wildcard testing_src/*.h)
 testing_srcs 	:= $(wildcard testing_src/*.c)
 testing_objs 	:= $(subst .c,.o,$(testing_srcs))

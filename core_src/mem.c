@@ -69,3 +69,7 @@ uint8_t check_memory_leaks() {
     return 0;
 }
 
+uint8_t get_chnl(void *ptr) {
+    return ((uint8_t *)ptr)[-1];
+}
+
