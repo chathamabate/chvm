@@ -91,6 +91,27 @@ $(eval $(call module_template,chasm,util chvm))
 
 # ------------------------------------------------------
 
+# Template for a binary entrance.
+# $(1) name of the binary and entrance .c file (Should be the same)
+# $(2) modules directly used in the entrance c file. 
+#      The module template from above should do all the dependency heavy
+#      lifting.
+define binary_template
+
+# Get all dependency headers.
+# How do we deal with what objects are needed for which entr???
+# This is important!!
+$(1)_dep_hdrs	:= $$(foreach mod,$(2),$$(wildcard $$(mod)_src/*.h)) 
+$(1)_dep_srcs	:= $$(foreach mod,$(2),$$(wildcard $$(mod)_src/*.c)) 
+$(1)_dep_objs	:= 
+
+ent/$(1).o: entrances/$(1).c $(1)_dep_hdrs 
+	@echo "Building entrance object"
+	@$(CC) -c -o $$@ $$< $(CFLAGS)
+
+bin/$(1): 
+endef
+
 %.o: %.c
 	@echo "Rule not found for " $< " -> " $@
 
@@ -99,6 +120,9 @@ all_objs		:= $(core_objs) $(foreach mod,$(modules),$($(mod)_objs))
 
 # all_test_objs refers to all objs relating to testing.
 all_test_objs	:= $(testing_objs) $(foreach mod,$(modules),$($(mod)_test_objs))
+
+# Ok, but what about target definitions....
+# Binary folder???
 
 # Main will be entry point for normal program.
 ./main.o: ./main.c $(all_objs)
