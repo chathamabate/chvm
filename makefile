@@ -1,13 +1,12 @@
 CC 		:= gcc
 CFLAGS	:= 
 
-all: chvm
-test: test_chvm
+all: test
 
 # Macro for printing build message.
 # $(call build_msg_template,$?,$@,prefix)
 define build_msg_template
-@printf "$(3) \x1b[37;3m%-25.25s\x1b[0m [$(1)]\n" "$(2)"
+@printf "$(3) \x1b[37;3m%-30.30s\x1b[0m [$(1)]\n" "$(2)"
 endef
 
 # $(call link_msg_template,$@)
@@ -56,29 +55,42 @@ $(1)_hdrs	:= $$(wildcard $(1)_src/*.h)
 $(1)_srcs	:= $$(wildcard $(1)_src/*.c)
 $(1)_objs	:= $$(subst .c,.o,$$($(1)_srcs))
 
-$(1)_dep_hdrs	:= $$(foreach mod,$(2),$$(wildcard $$(mod)_src/*.h)) 
+# This macro defines all headers to watch when updating
+# object files in this module.
+#
+# A module object file is dependent on a few things.
+#
+# The corresponding C file.
+# All header files in the module.
+# All header files in all dependency modules.
+# All core headers.
+$(1)_dep_hdrs	:= $$($(1)_hdrs) $$(foreach mod,$(2),$$($$(mod)_hdrs)) $(core_hdrs)
 
 $(1)_test_hdrs	:= $$(wildcard $(1)_src/test/*.h)
 $(1)_test_srcs	:= $$(wildcard $(1)_src/test/*.c)
 $(1)_test_objs	:= $$(subst .c,.o,$$($(1)_test_srcs))
 
+# This macro defines all headers to watch when updating
+# test object files in this module.
+#
 # A test object file is dependent on many things...
 #
-# The test file source.
-# The headers in this modules test folder.
-# The headers in this module.
-# The headers in this module's dependency modules.
-# Finally, the headers in the testing src folder.
+# The test C file.	
+# All headers in this module's test folder.
+# *All headers in this module.
+# *All headers in all dependency modules.
+# All core testing headers.
+# *All core headers.
+#
+# * indicates all headers which are already included in 
+# the normal dependency headers macro.
+$(1)_test_dep_hdrs	:= $$($(1)_test_hdrs) $(testing_hdrs) $$($(1)_dep_hdrs)
 
-$(1)_test_dep_hdrs	:= $$($(1)_test_hdrs) $$($(1)_hdrs) $$($(1)_dep_hdrs) $(testing_hdrs)
-
-# Regardless, in both situations, the core hdrs are dependencies also...
-
-$(1)_src/test/%.o: $(1)_src/test/%.c $$($(1)_test_dep_hdrs) $(core_hdrs)
+$(1)_src/test/%.o: $(1)_src/test/%.c $$($(1)_test_dep_hdrs)
 	$$(call build_msg_template,$$?,$$@,$(suite_prefix))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 
-$(1)_src/%.o: $(1)_src/%.c $$($(1)_hdrs) $$($(1)_dep_hdrs) $(core_hdrs)
+$(1)_src/%.o: $(1)_src/%.c $$($(1)_dep_hdrs)
 	$$(call build_msg_template,$$?,$$@,$(app_prefix))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 endef
@@ -91,57 +103,39 @@ $(eval $(call module_template,chasm,util chvm))
 
 # ------------------------------------------------------
 
-# Template for a binary entrance.
-# $(1) name of the binary and entrance .c file (Should be the same)
-# $(2) modules directly used in the entrance c file. 
-#      The module template from above should do all the dependency heavy
-#      lifting.
-define binary_template
+# All module testing headers.
+all_mod_test_hdrs := $(foreach mod,$(modules),$($(mod)_test_hdrs))
 
-# Get all dependency headers.
-# How do we deal with what objects are needed for which entr???
-# This is important!!
-$(1)_dep_hdrs	:= $$(foreach mod,$(2),$$(wildcard $$(mod)_src/*.h)) 
-$(1)_dep_srcs	:= $$(foreach mod,$(2),$$(wildcard $$(mod)_src/*.c)) 
-$(1)_dep_objs	:= 
-
-ent/$(1).o: entrances/$(1).c $(1)_dep_hdrs 
-	@echo "Building entrance object"
-	@$(CC) -c -o $$@ $$< $(CFLAGS)
-
-bin/$(1): 
-endef
-
-%.o: %.c
-	@echo "Rule not found for " $< " -> " $@
-
-# all_objs refers to pure source files objects. (NOT any test files)
-all_objs		:= $(core_objs) $(foreach mod,$(modules),$($(mod)_objs))
-
-# all_test_objs refers to all objs relating to testing.
-all_test_objs	:= $(testing_objs) $(foreach mod,$(modules),$($(mod)_test_objs))
-
-# Ok, but what about target definitions....
-# Binary folder???
-
-# Main will be entry point for normal program.
-./main.o: ./main.c $(all_objs)
-	$(call build_msg_template,$?,$@,$(app_prefix))
-	@$(CC) -c -o $@ $< $(CFLAGS)
-
-chvm: ./main.o 
-	$(call link_msg_template,$@)
-	@$(CC) -o $@ ./main.o $(all_objs) $(CFLAGS)
-	$(success_msg)
-
-./test_main.o: ./test_main.c $(all_objs) $(all_test_objs)
+# test.c should only reference testing code and core code.
+# The dependencies will be as follows....
+#
+# The c file.
+# All module testing headers.
+# All core testing headers.
+# All core headers.
+test.o: test.c $(all_mod_test_hdrs) $(testing_hdrs) $(core_hdrs)
 	$(call build_msg_template,$?,$@,$(test_prefix))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
-test_chvm: ./test_main.o 
+# This is all normal object files.
+all_mod_objs 		:= $(core_objs) $(foreach mod,$(modules),$($(mod)_objs))
+
+# This is all testing objects.
+all_test_objs 		:= $(testing_objs) $(foreach mod,$(modules),$($(mod)_test_objs)) 
+
+# Combination of the above 2 macros.
+all_objs			:= $(all_mod_objs) $(all_test_objs)
+
+# test.c will be the test entry point, always at the top 
+# level directory.
+# To create the test binary, every single object must be up to date!
+test: test.o $(all_objs)
 	$(call link_msg_template,$@)
-	@$(CC) -o $@ ./test_main.o $(all_objs) $(all_test_objs) $(CFLAGS)
+	@$(CC) -o $@ ./test.o $(all_objs) $(CFLAGS)
 	$(success_msg)
+
+%.o: %.c
+	@echo "Rule not found for " $< " -> " $@
 
 # Here we could figure out all created objects than delete them
 # this way there will never be any error messages when 
@@ -152,14 +146,12 @@ existing_testing_objs		:= $(wildcard testing_src/*.o)
 existing_module_objs		:= $(foreach mod,$(modules),$(wildcard $(mod)_src/*.o))
 existing_module_test_objs	:= $(foreach mod,$(modules),$(wildcard $(mod)_src/test/*.o))
 existing_main_objs			:= $(wildcard *.o)
-existing_binaries			:= $(wildcard *chvm)
 
 existing_removeables		:= $(existing_core_objs) 
 existing_removeables		+= $(existing_testing_objs)
 existing_removeables		+= $(existing_module_objs)
 existing_removeables		+= $(existing_module_test_objs)
 existing_removeables		+= $(existing_main_objs)
-existing_removeables		+= $(existing_binaries)
 
 # $(call remove_template,removeable_file)
 define remove_template

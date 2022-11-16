@@ -6,6 +6,7 @@
 // Returns a positive value if both values are equal, otherwise 0.
 typedef uint8_t (*equator)(void *val_ptr1, void *val_ptr2);
 
+
 typedef struct util_linked_list util_ll;
 
 util_ll *new_linked_list(uint8_t chnl, size_t cs);

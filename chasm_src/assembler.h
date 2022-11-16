@@ -1,6 +1,7 @@
 #ifndef ASSEMBLER_H
 #define ASSEMBLER_H
 
+
 // This file will describe the assembly language
 // syntax for writing chvm binaries.
 //
