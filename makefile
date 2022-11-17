@@ -3,23 +3,51 @@ CFLAGS	:=
 
 all: test
 
+max_line_len := 120
+
+# $(1) will be the list of dependencies.
+define print_dependency_list
+@path_len=0; \
+line=$(firstword $(1));\
+line_len=$${#line};\
+for x in $(wordlist 2,$(words $(1)),$(1)); \
+	do ((path_len = $${#x})); \
+	((line_len += path_len + 1)); \
+	if ((line_len > $(max_line_len))); \
+		then ((line_len = path_len)); \
+		printf "\x1b[37;3m$$line\x1b[0m\n"; \
+		line=$$x; \
+		(( line_len = path_len )); \
+	else line+=" $$x"; \
+	fi; \
+done; \
+printf "\x1b[37;3m$$line\x1b[0m\n"
+endef
+
+word_list := hello world, my name is chatham
+# Macros work!!!
+hello: 
+	$(call print_dependency_list,hello orld my friend)
+
 # Macro for printing build message.
-# $(call build_msg_template,$?,$@,prefix)
-define build_msg_template
-@printf "$(3) \x1b[37;3m%-30.30s\x1b[0m [$(1)]\n" "$(2)"
+# $(call print_build_msg,$?,$@,prefix)
+define print_build_msg
+@printf "$(3) $(2)\n"
+$(call print_dependency_list,$(1))
+@printf "\n"
 endef
 
-# $(call link_msg_template,$@)
-define link_msg_template 
-@printf	"\n\x1b[3mLinking \x1b[1m$(1)\x1b[0m\n"
+# $(call print_link_msg,$@)
+define print_link_msg 
+@printf	"\x1b[3mLinking \x1b[1m$(1)\x1b[0m\n\n"
 endef
 
-define success_msg
-@printf "\n\x1b[92mBuild Successful\x1b[0m\n\n"
+define print_success_msg
+@printf "\x1b[92mBuild Successful\x1b[0m\n\n"
 endef
 
 core_prefix 	:= \x1b[95mC\x1b[0m
-app_prefix		:= \x1b[1mA\x1b[0m
+mod_prefix		:= \x1b[96mM\x1b[0m
 test_prefix 	:= \x1b[93mT\x1b[0m
 suite_prefix	:= \x1b[92mS\x1b[0m
 
@@ -31,7 +59,7 @@ core_srcs		:= $(wildcard core_src/*.c)
 core_objs		:= $(subst .c,.o,$(core_srcs))
 
 core_src/%.o: core_src/%.c $(core_hdrs)
-	$(call build_msg_template,$?,$@,$(core_prefix))
+	$(call print_build_msg,$?,$@,$(core_prefix))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 # Testing code will not be templated in the makefile
@@ -42,7 +70,7 @@ testing_srcs 	:= $(wildcard testing_src/*.c)
 testing_objs 	:= $(subst .c,.o,$(testing_srcs))
 
 testing_src/%.o: testing_src/%.c $(testing_hdrs) $(core_hdrs)
-	$(call build_msg_template,$?,$@,$(test_prefix))
+	$(call print_build_msg,$?,$@,$(test_prefix))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 modules	:=
@@ -87,11 +115,11 @@ $(1)_test_objs	:= $$(subst .c,.o,$$($(1)_test_srcs))
 $(1)_test_dep_hdrs	:= $$($(1)_test_hdrs) $(testing_hdrs) $$($(1)_dep_hdrs)
 
 $(1)_src/test/%.o: $(1)_src/test/%.c $$($(1)_test_dep_hdrs)
-	$$(call build_msg_template,$$?,$$@,$(suite_prefix))
+	$$(call print_build_msg,$$?,$$@,$(suite_prefix))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 
 $(1)_src/%.o: $(1)_src/%.c $$($(1)_dep_hdrs)
-	$$(call build_msg_template,$$?,$$@,$(app_prefix))
+	$$(call print_build_msg,$$?,$$@,$(mod_prefix))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 endef
 
@@ -114,7 +142,7 @@ all_mod_test_hdrs := $(foreach mod,$(modules),$($(mod)_test_hdrs))
 # All core testing headers.
 # All core headers.
 test.o: test.c $(all_mod_test_hdrs) $(testing_hdrs) $(core_hdrs)
-	$(call build_msg_template,$?,$@,$(test_prefix))
+	$(call print_build_msg,$?,$@,$(test_prefix))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 # This is all normal object files.
@@ -130,9 +158,9 @@ all_objs			:= $(all_mod_objs) $(all_test_objs)
 # level directory.
 # To create the test binary, every single object must be up to date!
 test: test.o $(all_objs)
-	$(call link_msg_template,$@)
+	$(call print_link_msg,$@)
 	@$(CC) -o $@ ./test.o $(all_objs) $(CFLAGS)
-	$(success_msg)
+	$(print_success_msg)
 
 %.o: %.c
 	@echo "Rule not found for " $< " -> " $@
@@ -145,13 +173,15 @@ existing_core_objs			:= $(wildcard core_src/*.o)
 existing_testing_objs		:= $(wildcard testing_src/*.o)
 existing_module_objs		:= $(foreach mod,$(modules),$(wildcard $(mod)_src/*.o))
 existing_module_test_objs	:= $(foreach mod,$(modules),$(wildcard $(mod)_src/test/*.o))
-existing_main_objs			:= $(wildcard *.o)
+existing_test_main_obj		:= $(wildcard test.o)
+existing_test_exec			:= $(wildcard test)
 
 existing_removeables		:= $(existing_core_objs) 
 existing_removeables		+= $(existing_testing_objs)
 existing_removeables		+= $(existing_module_objs)
 existing_removeables		+= $(existing_module_test_objs)
-existing_removeables		+= $(existing_main_objs)
+existing_removeables		+= $(existing_test_main_obj)
+existing_removeables		+= $(existing_test_exec)
 
 # $(call remove_template,removeable_file)
 define remove_template

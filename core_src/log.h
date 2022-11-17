@@ -46,8 +46,6 @@
 #define CC_BRIGHT_BG_CYAN       "\x1b[106m"
 #define CC_BRIGHT_BG_WHITE      "\x1b[107m"
 
-// Time for Cool SYMBOLS!!!
-
 // UC for unicode.
 
 #define UC_STAR             "\u203B"
