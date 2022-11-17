@@ -3,7 +3,12 @@ CFLAGS	:=
 
 all: test
 
-max_line_len := 120
+max_dep_len  	:= 100
+
+dep_f_type_len		:= 2
+dep_f_name_len		:= 30
+
+dep_prefix_len 		:= $$(( $(dep_f_type_len) + $(dep_f_name_len) ))
 
 # $(1) will be the list of dependencies.
 define print_dependency_list
@@ -13,9 +18,10 @@ line_len=$${#line};\
 for x in $(wordlist 2,$(words $(1)),$(1)); \
 	do ((path_len = $${#x})); \
 	((line_len += path_len + 1)); \
-	if ((line_len > $(max_line_len))); \
+	if ((line_len > $(max_dep_len))); \
 		then ((line_len = path_len)); \
 		printf "\x1b[37;3m$$line\x1b[0m\n"; \
+		printf "%$(dep_prefix_len).$(dep_prefix_len)s"; \
 		line=$$x; \
 		(( line_len = path_len )); \
 	else line+=" $$x"; \
@@ -24,15 +30,10 @@ done; \
 printf "\x1b[37;3m$$line\x1b[0m\n"
 endef
 
-word_list := hello world, my name is chatham
-# Macros work!!!
-hello: 
-	$(call print_dependency_list,hello orld my friend)
-
 # Macro for printing build message.
-# $(call print_build_msg,$?,$@,prefix)
+# $(call print_build_msg,$?,$@,prefix,prefix_style)
 define print_build_msg
-@printf "$(3) $(2)\n"
+@printf "$(4)%-$(dep_f_type_len).$(dep_f_type_len)s\x1b[0m%-$(dep_f_name_len).$(dep_f_name_len)s" "$(3)" "$(2)"
 $(call print_dependency_list,$(1))
 @printf "\n"
 endef
@@ -46,10 +47,17 @@ define print_success_msg
 @printf "\x1b[92mBuild Successful\x1b[0m\n\n"
 endef
 
-core_prefix 	:= \x1b[95mC\x1b[0m
-mod_prefix		:= \x1b[96mM\x1b[0m
-test_prefix 	:= \x1b[93mT\x1b[0m
-suite_prefix	:= \x1b[92mS\x1b[0m
+core_prefix 		:= C
+core_prefix_style	:= \x1b[95m
+
+mod_prefix			:= M
+mod_prefix_style	:= \x1b[96m
+
+test_prefix 		:= T
+test_prefix_style 	:= \x1b[93m
+
+suite_prefix		:= S
+suite_prefix_style	:= \x1b[92m
 
 # Core code will depend on nothing.
 # Everything will depend on core code.
@@ -59,7 +67,7 @@ core_srcs		:= $(wildcard core_src/*.c)
 core_objs		:= $(subst .c,.o,$(core_srcs))
 
 core_src/%.o: core_src/%.c $(core_hdrs)
-	$(call print_build_msg,$?,$@,$(core_prefix))
+	$(call print_build_msg,$?,$@,$(core_prefix),$(core_prefix_style))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 # Testing code will not be templated in the makefile
@@ -70,7 +78,7 @@ testing_srcs 	:= $(wildcard testing_src/*.c)
 testing_objs 	:= $(subst .c,.o,$(testing_srcs))
 
 testing_src/%.o: testing_src/%.c $(testing_hdrs) $(core_hdrs)
-	$(call print_build_msg,$?,$@,$(test_prefix))
+	$(call print_build_msg,$?,$@,$(test_prefix),$(test_prefix_style))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 modules	:=
@@ -115,11 +123,11 @@ $(1)_test_objs	:= $$(subst .c,.o,$$($(1)_test_srcs))
 $(1)_test_dep_hdrs	:= $$($(1)_test_hdrs) $(testing_hdrs) $$($(1)_dep_hdrs)
 
 $(1)_src/test/%.o: $(1)_src/test/%.c $$($(1)_test_dep_hdrs)
-	$$(call print_build_msg,$$?,$$@,$(suite_prefix))
+	$$(call print_build_msg,$$?,$$@,$(suite_prefix),$(suite_prefix_style))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 
 $(1)_src/%.o: $(1)_src/%.c $$($(1)_dep_hdrs)
-	$$(call print_build_msg,$$?,$$@,$(mod_prefix))
+	$$(call print_build_msg,$$?,$$@,$(mod_prefix),$(mod_prefix_style))
 	@$(CC) -c -o $$@ $$< $(CFLAGS)
 endef
 
@@ -142,7 +150,7 @@ all_mod_test_hdrs := $(foreach mod,$(modules),$($(mod)_test_hdrs))
 # All core testing headers.
 # All core headers.
 test.o: test.c $(all_mod_test_hdrs) $(testing_hdrs) $(core_hdrs)
-	$(call print_build_msg,$?,$@,$(test_prefix))
+	$(call print_build_msg,$?,$@,$(test_prefix),$(test_prefix_style))
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 # This is all normal object files.
