@@ -6,6 +6,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdio.h>
 
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
     pid_t res;

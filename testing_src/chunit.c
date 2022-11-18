@@ -1,5 +1,6 @@
 #include "./chunit.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -322,16 +323,14 @@ chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite,
 
     uint64_t i;
     for (i = 0; i < tsr->suite->tests_len; i++) {
-        void *test_context = NULL;
+        chunit_test_run *tr;
         if (decorator) {
-            test_context = decorator->get_test_context(suite, i, suite_context);
-        }
-
-        chunit_test_run *tr = chunit_run_test(suite->tests[i], 
-                decorator->test_decorator, test_context);
-        
-        if (test_context) {
+            void *test_context = decorator->get_test_context(suite, i, suite_context);
+            tr = chunit_run_test(suite->tests[i], 
+                    decorator->test_decorator, test_context);
             decorator->cleanup_test_context(test_context);
+        } else {
+            tr = chunit_run_test(suite->tests[i], NULL, NULL);
         }
 
         sl_add(tsr->test_runs, &tr); // add test run to result list.
@@ -378,16 +377,15 @@ chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
 
     uint64_t i;
     for (i = 0; i < mod->suites_len; i++) {
-        void *suite_context = NULL;
+
+        chunit_test_suite_run *tsr;
         if (decorator) {
-            suite_context = decorator->get_suite_context(mod, i, mod_context);
-        }
-
-        chunit_test_suite_run *tsr = chunit_run_suite(mod->suites[i], 
-                decorator->suite_decorator, suite_context);
-
-        if (suite_context) {
+            void *suite_context = decorator->get_suite_context(mod, i, mod_context);
+            tsr = chunit_run_suite(mod->suites[i], 
+                    decorator->suite_decorator, suite_context);
             decorator->cleanup_suite_context(suite_context);
+        } else {
+            tsr = chunit_run_suite(mod->suites[i], NULL, NULL);
         }
 
         sl_add(tmr->test_suite_runs, &tsr);
@@ -417,7 +415,6 @@ void chunit_delete_test_module_run(chunit_test_module_run *tmr) {
 typedef struct {
     const chunit_test_module *mod;
     uint64_t suite_i;
-    uint64_t test_i;
 
     uint64_t total_tests;   
     uint64_t completed_tests;
@@ -426,27 +423,119 @@ typedef struct {
 #define TESTING_CHUNIT_PBAR_WIDTH 10
 #define TESTING_CHUNIT_PBAR_CHAR  '#'
 
-static void chunit_pbar_start_test(const chunit_test *test, 
-        pid_t pid, void *test_context) {
-    chunit_pbar_context *pbar_c = (chunit_pbar_context *)test_context;
-
-    char pbar[TESTING_CHUNIT_PBAR_WIDTH];
+static void chunit_fill_pbar(char pbar[], uint64_t amt, uint64_t tot) {
     uint16_t progress =  (uint16_t)(TESTING_CHUNIT_PBAR_WIDTH * 
-            (pbar_c->completed_tests / (float)(pbar_c->total_tests)));
+            (amt / (double)(tot)));
 
     uint16_t i;
     for (i = 0; i < progress; i++) {
-        pbar[i] = 
+        pbar[i] = TESTING_CHUNIT_PBAR_CHAR;
     }
 
+    for (; i < TESTING_CHUNIT_PBAR_WIDTH; i++) {
+        pbar[i] = ' ';
+    }
+    
+    pbar[TESTING_CHUNIT_PBAR_WIDTH] = '\0';
+}
+
+static void chunit_pbar_start_test(const chunit_test *test, 
+        pid_t pid, void *test_context) {
+
+    chunit_pbar_context *pbar_c = (chunit_pbar_context *)test_context;
+    char pbar[TESTING_CHUNIT_PBAR_WIDTH + 1];
+    chunit_fill_pbar(pbar, pbar_c->completed_tests, pbar_c->total_tests);
+
+    const chunit_test_module *mod = pbar_c->mod;
+    const chunit_test_suite *suite = mod->suites[pbar_c->suite_i];
+
     // Module Name ( progress bar ) suite_name test_name
+    printf("%-20.20s(%s) %s/%s [%d]\n", pbar_c->mod->name, pbar, 
+            pbar_c->mod->suites[pbar_c->suite_i]->name,
+            test->name, pid);
+
+    // fflush(stdout);
 }
 
 static void chunit_pbar_end_test(chunit_test_run *run, void *test_context) {
-    // What do we need to print here???
+    chunit_pbar_context *pbar_c = (chunit_pbar_context *)test_context;
+    pbar_c->completed_tests++;
+
+    if (pbar_c->completed_tests == pbar_c->total_tests) {
+        char pbar[TESTING_CHUNIT_PBAR_WIDTH + 1];
+
+        // Manually fill entire progress bar.
+        uint16_t i;
+        for (i = 0; i < TESTING_CHUNIT_PBAR_WIDTH; i++) {
+            pbar[i] = TESTING_CHUNIT_PBAR_CHAR;    
+        }
+
+        pbar[TESTING_CHUNIT_PBAR_WIDTH] = '\0';
+
+        printf("\r%-20.20s(%s) COMPLETE\n", pbar_c->mod->name, pbar);
+    }
 }
 
 static const chunit_test_decorator CHUNIT_PBAR_TEST_DEC = {
     .start_test = chunit_pbar_start_test,
     .end_test = chunit_pbar_end_test
 };
+
+static void *chunit_pbar_get_test_context(const chunit_test_suite *suite, 
+        uint64_t i, void *suite_context) {
+    // Here we are just passing along the context from the module.
+    return suite_context;
+}
+ 
+static void chunit_pbar_cleanup_test_context(void *test_context) {
+    // Same thing here, nothing to be done.
+}
+
+static const chunit_test_suite_decorator CHUNIT_PBAR_TEST_SUITE_DEC = {
+    .test_decorator = &CHUNIT_PBAR_TEST_DEC,
+
+    .get_test_context = chunit_pbar_get_test_context,
+    .cleanup_test_context = chunit_pbar_cleanup_test_context,
+};
+
+
+static void *chunit_pbar_get_suite_context(const chunit_test_module *mod,
+        uint64_t i, void *mod_context) {
+    chunit_pbar_context *pbar_c = (chunit_pbar_context *)mod_context; 
+    pbar_c->suite_i = i;    // Here just update the suite index.
+    return pbar_c; 
+}
+
+static void chunit_pbar_cleanup_suite_context(void *suite_context) {
+    // Don't need to do anything here!
+}
+
+static const chunit_test_module_decorator CHUNIT_PBAR_MOD_DEC = {
+    .suite_decorator = &CHUNIT_PBAR_TEST_SUITE_DEC,
+
+    .get_suite_context = chunit_pbar_get_suite_context,
+    .cleanup_suite_context = chunit_pbar_cleanup_test_context,
+};
+
+chunit_test_module_run *chunit_run_module_pb(const chunit_test_module *mod) {
+    chunit_pbar_context *mod_context = 
+        safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_pbar_context));
+
+    mod_context->mod = mod;
+    mod_context->suite_i = 0;           // This will be written over.
+    mod_context->completed_tests = 0;   // This will be incrememnted.
+    mod_context->total_tests = 0;
+
+    uint64_t i;
+    for (i = 0; i < mod->suites_len; i++) {
+        mod_context->total_tests += mod->suites[i]->tests_len;
+    }
+
+    chunit_test_module_run *tmr = 
+        chunit_run_module(mod, &CHUNIT_PBAR_MOD_DEC, mod_context);
+
+    safe_free(mod_context);
+
+    return tmr;
+}
+

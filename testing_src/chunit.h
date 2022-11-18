@@ -186,4 +186,6 @@ chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
 
 void chunit_delete_test_module_run(chunit_test_module_run *tmr);
 
+chunit_test_module_run *chunit_run_module_pb(const chunit_test_module *mod);
+
 #endif
