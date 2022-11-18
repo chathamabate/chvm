@@ -30,7 +30,7 @@ static void test_ll_next(int pipe_fd) {
     assert_eq_uint(pipe_fd, 2, ll_len(ll));
 
     delete_linked_list(ll);
-};
+}
 
 static const chunit_test LL_NEXT = {
     .name = "Linked List Next",

@@ -9,6 +9,7 @@
 #include <signal.h>
 
 #include "../core_src/mem.h"
+#include "../core_src/log.h"
 #include "../core_src/sys.h"
 #include "./assert.h"
 
@@ -303,7 +304,7 @@ chunit_test_run *chunit_run_test(const chunit_test *test,
         decorator->end_test(tr, test_context);
     }
 
-    return chunit_parent_process(fds, test, pid);
+    return tr;
 }
 
 static chunit_test_suite_run *new_test_suite_run(const chunit_test_suite *suite) {
@@ -420,7 +421,7 @@ typedef struct {
     uint64_t completed_tests;
 } chunit_pbar_context;
 
-#define TESTING_CHUNIT_PBAR_WIDTH 10
+#define TESTING_CHUNIT_PBAR_WIDTH 20
 #define TESTING_CHUNIT_PBAR_CHAR  '#'
 
 static void chunit_fill_pbar(char pbar[], uint64_t amt, uint64_t tot) {
@@ -433,11 +434,14 @@ static void chunit_fill_pbar(char pbar[], uint64_t amt, uint64_t tot) {
     }
 
     for (; i < TESTING_CHUNIT_PBAR_WIDTH; i++) {
-        pbar[i] = ' ';
+        pbar[i] = '_';
     }
     
     pbar[TESTING_CHUNIT_PBAR_WIDTH] = '\0';
 }
+
+#define TESTING_CHUNIT_PBAR_FMT "\33[2K\r" CC_BRIGHT_BLUE "%-20.20s"  \
+    CC_BRIGHT_MAGENTA "%s" CC_RESET
 
 static void chunit_pbar_start_test(const chunit_test *test, 
         pid_t pid, void *test_context) {
@@ -450,11 +454,13 @@ static void chunit_pbar_start_test(const chunit_test *test,
     const chunit_test_suite *suite = mod->suites[pbar_c->suite_i];
 
     // Module Name ( progress bar ) suite_name test_name
-    printf("%-20.20s(%s) %s/%s [%d]\n", pbar_c->mod->name, pbar, 
+    printf(TESTING_CHUNIT_PBAR_FMT " %s" CC_BOLD CC_BRIGHT_MAGENTA " :: " CC_RESET
+            CC_ITALIC CC_FAINT "%s [%d]" CC_RESET, pbar_c->mod->name, pbar, 
             pbar_c->mod->suites[pbar_c->suite_i]->name,
             test->name, pid);
 
-    // fflush(stdout);
+    // Could do an error check... but ehh. not that important.
+    fflush(stdout);
 }
 
 static void chunit_pbar_end_test(chunit_test_run *run, void *test_context) {
@@ -472,7 +478,8 @@ static void chunit_pbar_end_test(chunit_test_run *run, void *test_context) {
 
         pbar[TESTING_CHUNIT_PBAR_WIDTH] = '\0';
 
-        printf("\r%-20.20s(%s) COMPLETE\n", pbar_c->mod->name, pbar);
+        printf(TESTING_CHUNIT_PBAR_FMT CC_BRIGHT_GREEN 
+                " Done" CC_RESET "\n", pbar_c->mod->name, pbar);
     }
 }
 
