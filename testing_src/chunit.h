@@ -104,8 +104,15 @@ typedef struct {
     void *data;
 } chunit_test_run;
 
+// Here is a test decorator.
+typedef struct {
+    void (*start_test)(const chunit_test *test, pid_t pid, void *test_context);
+    void (*end_test)(chunit_test_run *run, void *test_context);
+} chunit_test_decorator;
+
 // Run a singular test.
-chunit_test_run *chunit_run_test(const chunit_test *test);
+chunit_test_run *chunit_run_test(const chunit_test *test, 
+        const chunit_test_decorator *decorator, void *test_context);
 
 // This is used for correctly deleting a test_run
 // given its result type.
@@ -127,7 +134,20 @@ typedef struct {
     slist *test_runs; 
 } chunit_test_suite_run;
 
-chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite);
+typedef struct {
+    // The decorator to be used on every test.
+    const chunit_test_decorator *test_decorator;
+
+    void *(*get_test_context)(const chunit_test_suite *suite, 
+            uint64_t i, void *suite_context);
+
+    void (*cleanup_test_context)(void *test_context);
+} chunit_test_suite_decorator;
+
+// This function includes special functionality for callbacks when tests 
+// start and exit.
+chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite, 
+        const chunit_test_suite_decorator *decorator, void *suite_context);
 
 // Delete a test suite run.
 // WARNING, this will delete all test runs contained in tsr.
@@ -149,10 +169,20 @@ typedef struct {
     uint8_t successful;
 
     // Slist of chunit_test_suite_run *
-    slist *test_suite_runs;
+    slist *test_suite_runs; 
 } chunit_test_module_run;
 
-chunit_test_module_run *chunit_run_module(const chunit_test_module *mod);
+typedef struct {
+    const chunit_test_suite_decorator *suite_decorator;
+
+    void *(*get_suite_context)(const chunit_test_module *mod,
+            uint64_t i, void *mod_context);
+
+    void (*cleanup_suite_context)(void *suite_context);
+} chunit_test_module_decorator;
+
+chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
+        const chunit_test_module_decorator *decorator, void *mod_context);
 
 void chunit_delete_test_module_run(chunit_test_module_run *tmr);
 

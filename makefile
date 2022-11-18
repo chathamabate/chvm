@@ -10,6 +10,9 @@ dep_f_name_len		:= 30
 
 dep_prefix_len 		:= $$(( $(dep_f_type_len) + $(dep_f_name_len) ))
 
+# Below is a hacked togehter bash script made for 
+# printing dependecies nicely during the build process.
+#
 # $(1) will be the list of dependencies.
 define print_dependency_list
 @path_len=0; \

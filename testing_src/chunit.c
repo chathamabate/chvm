@@ -268,7 +268,8 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
     }
 }
 
-chunit_test_run *chunit_run_test(const chunit_test *test) {
+chunit_test_run *chunit_run_test(const chunit_test *test,
+        const chunit_test_decorator *decorator, void *test_context) {
     int fds[2];
 
     if (pipe(fds)) {
@@ -291,6 +292,16 @@ chunit_test_run *chunit_run_test(const chunit_test *test) {
         chunit_child_process(fds, test);    
     }
 
+    if (decorator) {
+        decorator->start_test(test, pid, test_context);
+    }
+
+    chunit_test_run *tr = chunit_parent_process(fds, test, pid);
+    
+    if (decorator) {
+        decorator->end_test(tr, test_context);
+    }
+
     return chunit_parent_process(fds, test, pid);
 }
 
@@ -305,14 +316,25 @@ static chunit_test_suite_run *new_test_suite_run(const chunit_test_suite *suite)
     return tsr;
 }
 
-chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite) {
+chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite, 
+        const chunit_test_suite_decorator *decorator, void *suite_context) {
     chunit_test_suite_run *tsr = new_test_suite_run(suite);
 
     uint64_t i;
     for (i = 0; i < tsr->suite->tests_len; i++) {
-        chunit_test_run *tr = chunit_run_test(suite->tests[i]);
-        sl_add(tsr->test_runs, &tr); // add test run to result list.
+        void *test_context = NULL;
+        if (decorator) {
+            test_context = decorator->get_test_context(suite, i, suite_context);
+        }
 
+        chunit_test_run *tr = chunit_run_test(suite->tests[i], 
+                decorator->test_decorator, test_context);
+        
+        if (test_context) {
+            decorator->cleanup_test_context(test_context);
+        }
+
+        sl_add(tsr->test_runs, &tr); // add test run to result list.
 
         if (tr->result == CHUNIT_SUCCESS && tr->errors->len == 0) {
             tsr->successes++;
@@ -350,12 +372,24 @@ new_test_module_run(const chunit_test_module *mod) {
     return tmr;
 }
 
-chunit_test_module_run *chunit_run_module(const chunit_test_module *mod) {
+chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
+        const chunit_test_module_decorator *decorator, void *mod_context) {
     chunit_test_module_run *tmr = new_test_module_run(mod);
 
     uint64_t i;
     for (i = 0; i < mod->suites_len; i++) {
-        chunit_test_suite_run *tsr = chunit_run_suite(mod->suites[i]);
+        void *suite_context = NULL;
+        if (decorator) {
+            suite_context = decorator->get_suite_context(mod, i, mod_context);
+        }
+
+        chunit_test_suite_run *tsr = chunit_run_suite(mod->suites[i], 
+                decorator->suite_decorator, suite_context);
+
+        if (suite_context) {
+            decorator->cleanup_suite_context(suite_context);
+        }
+
         sl_add(tmr->test_suite_runs, &tsr);
 
         if (tmr->successful && !(tsr->successes == tsr->suite->tests_len)) {
@@ -378,3 +412,41 @@ void chunit_delete_test_module_run(chunit_test_module_run *tmr) {
     safe_free(tmr);
 }
 
+// Some popular decorators!
+
+typedef struct {
+    const chunit_test_module *mod;
+    uint64_t suite_i;
+    uint64_t test_i;
+
+    uint64_t total_tests;   
+    uint64_t completed_tests;
+} chunit_pbar_context;
+
+#define TESTING_CHUNIT_PBAR_WIDTH 10
+#define TESTING_CHUNIT_PBAR_CHAR  '#'
+
+static void chunit_pbar_start_test(const chunit_test *test, 
+        pid_t pid, void *test_context) {
+    chunit_pbar_context *pbar_c = (chunit_pbar_context *)test_context;
+
+    char pbar[TESTING_CHUNIT_PBAR_WIDTH];
+    uint16_t progress =  (uint16_t)(TESTING_CHUNIT_PBAR_WIDTH * 
+            (pbar_c->completed_tests / (float)(pbar_c->total_tests)));
+
+    uint16_t i;
+    for (i = 0; i < progress; i++) {
+        pbar[i] = 
+    }
+
+    // Module Name ( progress bar ) suite_name test_name
+}
+
+static void chunit_pbar_end_test(chunit_test_run *run, void *test_context) {
+    // What do we need to print here???
+}
+
+static const chunit_test_decorator CHUNIT_PBAR_TEST_DEC = {
+    .start_test = chunit_pbar_start_test,
+    .end_test = chunit_pbar_end_test
+};
