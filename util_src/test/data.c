@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+#include "../../core_src/mem.h"
+
 static uint8_t int64_eq(void *vp1, void *vp2) {
     return *(int64_t *)vp1 == *(int64_t *)vp2;
 }

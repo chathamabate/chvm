@@ -2,6 +2,7 @@
 #define CORE_DATA_H
 
 #include <stdlib.h>
+#include "./mem.h"
 
 // Potentially put this in a string file someday.
 char *concat_str(uint8_t chnl, const char *s1, const char *s2);
@@ -26,7 +27,12 @@ typedef struct {
 } slist; // Simple list.
 
 slist *new_slist(uint8_t chnl, size_t cs);
-void delete_slist(slist *sl);
+
+static inline void delete_slist(slist *sl) {
+    safe_free(sl->buf);
+    safe_free(sl);
+}
+
 void sl_add(slist *sl, void *buf);
 void *sl_get(slist *sl, uint64_t i);
 

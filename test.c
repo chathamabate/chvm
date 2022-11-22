@@ -15,8 +15,11 @@
 #include "./util_src/data.h"
 
 #include "./util_src/test/mod.h"
+#include "./gc_src/mem.h"
 
 // This works!!!
+#include <pthread.h>
+
 
 int main(void) {
     chunit_test_module_run *tmr = chunit_run_module_pb(&UTIL_TEST_MOD);

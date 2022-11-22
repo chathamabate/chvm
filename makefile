@@ -1,5 +1,5 @@
 CC 		:= gcc
-CFLAGS	:= 
+CFLAGS	:= -pthread
 
 all: test
 
@@ -137,6 +137,7 @@ endef
 # PUT MODULE DEFINITIONS HERE---------------------------
 
 $(eval $(call module_template,util,))
+$(eval $(call module_template,gc,util))
 $(eval $(call module_template,chvm,util))
 $(eval $(call module_template,chasm,util chvm))
 

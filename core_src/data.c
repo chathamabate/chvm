@@ -31,11 +31,6 @@ slist *new_slist(uint8_t chnl, size_t cs) {
     return sl;
 }
 
-void delete_slist(slist *sl) {
-    safe_free(sl->buf);
-    safe_free(sl);
-}
-
 void sl_add(slist *sl, void *buf) {
     if (sl->len == sl->cap) {
         // Realloc time.

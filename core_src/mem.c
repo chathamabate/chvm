@@ -1,31 +1,56 @@
 #include "mem.h"
 
+#include <pthread.h>
 #include <stdio.h>
 
+// There should be a read/write lock on each channel??
+// Or maybe just one, not to be overkill.
 static uint32_t mem_chnls[MEM_CHANNELS];
+static pthread_rwlock_t chnls_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-void *safe_malloc(uint8_t chnl, size_t size) {
+void *try_safe_malloc(uint8_t chnl, size_t size) {
     uint8_t *raw_ptr = malloc(size + 1);
 
     if (raw_ptr) {
+        
         raw_ptr[0] = chnl;
         mem_chnls[chnl]++;
 
         return (void *)(raw_ptr + 1);
     }
 
-    printf("[Malloc] Process out of memory!\n");
+    return NULL;
+}
+
+void *safe_malloc(uint8_t chnl, size_t size) {
+    void *ptr = try_safe_malloc(chnl, size);
+
+    if (ptr) {
+        return ptr;
+    }
+
+    printf("[Safe Malloc] Process out of memory!\n");
     display_channels();
 
     exit(1);
 }
 
-void *safe_realloc(void *ptr, size_t size) {
+void *try_safe_realloc(void *ptr, size_t size) {
     uint8_t *raw_ptr = ((uint8_t *)ptr) - 1;
     uint8_t *new_raw_ptr = realloc(raw_ptr, size + 1);
 
     if (new_raw_ptr) {
         return (void *)(new_raw_ptr + 1);
+    }
+
+    return NULL;
+}
+
+void *safe_realloc(void *ptr, size_t size) {
+    void *new_ptr = try_safe_realloc(ptr, size);
+    
+    if (new_ptr) {
+        return new_ptr;
     }
 
     printf("[Realloc] Process out of memory!\n");
@@ -67,9 +92,5 @@ uint8_t check_memory_leaks() {
     }
 
     return 0;
-}
-
-uint8_t get_chnl(void *ptr) {
-    return ((uint8_t *)ptr)[-1];
 }
 
