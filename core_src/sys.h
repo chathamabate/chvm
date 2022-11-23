@@ -1,6 +1,7 @@
 #ifndef CORE_SYS_H
 #define CORE_SYS_H
 
+#include "data.h"
 #include <sys/_types/_ssize_t.h>
 #include <unistd.h>
 // Here are some wrappers on popular system functions.
@@ -37,8 +38,23 @@
 // the parent process at any point without worrying about
 // non terminating child processes.
 
+typedef enum {
+    CORE_CHILD_UNREAPED = 0,
+    CORE_CHILD_REAPED,
+    CORE_CHILD_KILL_OR_REAP_ERROR,
+} core_child_status;
+
 typedef struct {
-   
+
+} core_child_state;
+
+typedef struct {
+    // This will be a list of children which are yet
+    // to be killed and reaped.
+    slist *children;   
+
+    // What should happen if there is an error terminating 
+    // earlier in the program???
 } core_state;
 
 // Will return -1 on error, reaped pid on success.
