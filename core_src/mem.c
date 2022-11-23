@@ -12,7 +12,6 @@ void *try_safe_malloc(uint8_t chnl, size_t size) {
     uint8_t *raw_ptr = malloc(size + 1);
 
     if (raw_ptr) {
-        
         raw_ptr[0] = chnl;
         mem_chnls[chnl]++;
 

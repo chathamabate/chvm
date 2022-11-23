@@ -24,6 +24,23 @@
 // call is interrupted and then resumed (instead of the process just
 // being terminated)
 
+// NOTE : 
+// I will be adding a safe fork as well as a global core state.
+// This will be for using fork specifically.
+// The global core state will keep track of all processes which
+// have been spawned by this process.
+// When exiting, this process will always attempt to kill all children.
+// Any errors will be noted and printed so that the user knows
+// what processes to check for.
+//
+// The point of this addition is to allow for exiting from 
+// the parent process at any point without worrying about
+// non terminating child processes.
+
+typedef struct {
+   
+} core_state;
+
 // Will return -1 on error, reaped pid on success.
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts);
 
@@ -49,9 +66,5 @@ int safe_write(int fd, const void *buf, size_t cnt);
 int safe_read(int fd, void *buf, size_t cnt);
 int safe_close(int fd);
 
-// No need for a wrapper for the following functions.
-// These functions only return -1 in the case of a serious error.
-//
-// fork, kill, pipe
 
 #endif

@@ -19,6 +19,10 @@ char *concat_str(uint8_t chnl, const char *s1, const char *s2) {
 
 #define SL_INITIAL_CAP 1
 
+static inline void *sl_get_unsafe(slist *sl, uint64_t i) {
+    return (uint8_t *)(sl->buf) + (i * sl->cell_size);
+}
+
 slist *new_slist(uint8_t chnl, size_t cs) {
     slist *sl = safe_malloc(chnl, sizeof(slist));
     
@@ -49,6 +53,29 @@ void *sl_get(slist *sl, uint64_t i) {
         return NULL;
     }
 
-    return (uint8_t *)(sl->buf) + (i * sl->cell_size);
+    return sl_get_unsafe(sl, i);
+}
+
+void sl_remove(slist *sl, uint64_t i) {
+    if (i >= sl->len) {
+        return;
+    }
+    
+    // Avoid doing all this coping if not needed.
+    if (i == sl->len - 1) {
+        sl->len--;
+        return;
+    }
+
+    uint8_t chnl = get_chnl(sl);
+    size_t temp_buf_size = (sl->len - 1 - i) * sl->cell_size;
+    void *temp_buf = safe_malloc(chnl, temp_buf_size);
+    
+    memcpy(temp_buf, sl_get(sl, i + 1), temp_buf_size);
+    memcpy(sl_get(sl, i), temp_buf, temp_buf_size);
+
+    sl->len--;
+
+    safe_free(temp_buf);
 }
 
