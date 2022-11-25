@@ -2,7 +2,9 @@
 #define CORE_SYS_H
 
 #include "data.h"
+#include <stdint.h>
 #include <sys/_pthread/_pthread_mutex_t.h>
+#include <sys/_pthread/_pthread_rwlock_t.h>
 #include <sys/_types/_pid_t.h>
 #include <sys/_types/_ssize_t.h>
 #include <unistd.h>
@@ -46,14 +48,21 @@
 // that they modify.
 
 typedef struct {
+    // This is whether or not we are working with the
+    // root process... Only the root process will be allowed
+    // to fork.
+    uint8_t root;
+
+    // Lock to make all operations on core_state
+    // atomic.
+    pthread_rwlock_t core_lock;
+
     // This will be a list of children which are yet
-    // to be killed and reaped.
+    // to be killed and reaped on exit.
     slist *children;   
-    pthread_mutex_t lock_children;
 
     uint8_t num_mem_chnls;
     uint64_t *mem_chnls;
-    pthread_mutex_t lock_mem_chnls;
 } core_state;
 
 // NOTE here is a global variable which will be used
@@ -63,7 +72,20 @@ typedef struct {
 extern core_state *_core_state;
 
 // Give us the number of mem chanels to use.
-void init_core_state(uint8_t nmcs);
+// NOTE, this must be called before using any other system
+// calls wrappers. Additionally, this should never be 
+// called in a child process.
+//
+// returns 0 on success, -1 on error.
+int init_core_state(uint8_t nmcs);
+
+// Safe exit should always be called over normal exit
+// once the core has been set up.
+// It will kill all child processes before exiting.
+// 
+// If check_mem is non zero, memory leaks will be
+// checked before exiting.
+void safe_exit(int code, uint8_t check_mem);
 
 // Will return -1 on error, reaped pid on success.
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts);

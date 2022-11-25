@@ -26,8 +26,15 @@ typedef struct {
     void *buf;
 } slist; // Simple list.
 
-slist *new_slist(uint8_t chnl, size_t cs);
+// These guys will be sued before memory channels are
+// set up in the core state.
+slist *new_slist_unsafe(size_t cs);
+static inline void delete_slist_unsafe(slist *sl) {
+    free(sl->buf);
+    free(sl);
+}
 
+slist *new_slist(uint8_t chnl, size_t cs);
 static inline void delete_slist(slist *sl) {
     safe_free(sl->buf);
     safe_free(sl);

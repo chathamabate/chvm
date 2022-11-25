@@ -1,6 +1,7 @@
 #include "./data.h"
 #include "./mem.h"
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 char *concat_str(uint8_t chnl, const char *s1, const char *s2) {
@@ -19,20 +20,39 @@ char *concat_str(uint8_t chnl, const char *s1, const char *s2) {
 
 #define SL_INITIAL_CAP 1
 
-static inline void *sl_get_unsafe(slist *sl, uint64_t i) {
-    return (uint8_t *)(sl->buf) + (i * sl->cell_size);
+static inline void slist_init_statics(slist *sl, size_t cs) {
+    sl->cell_size = cs;
+    sl->cap = SL_INITIAL_CAP;
+    sl->len = 0;
+}
+
+slist *new_slist_unsafe(size_t cs) {
+    slist *sl = malloc(sizeof(slist));
+    if (!sl) {
+        return sl;
+    }
+
+    slist_init_statics(sl, cs);    
+    sl->buf = malloc(sl->cell_size * sl->cap);
+
+    if (!sl->buf) {
+        free(sl);
+        return NULL;
+    }
+
+    return sl;
 }
 
 slist *new_slist(uint8_t chnl, size_t cs) {
     slist *sl = safe_malloc(chnl, sizeof(slist));
-    
-    sl->cell_size = cs;
-    sl->cap = SL_INITIAL_CAP;
-    sl->len = 0;
-
+    slist_init_statics(sl, cs);    
     sl->buf = safe_malloc(chnl, sl->cell_size * sl->cap);
 
     return sl;
+}
+
+static inline void *sl_get_unsafe(slist *sl, uint64_t i) {
+    return (uint8_t *)(sl->buf) + (i * sl->cell_size);
 }
 
 void sl_add(slist *sl, void *buf) {
