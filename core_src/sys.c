@@ -1,4 +1,5 @@
 #include "./sys.h"
+#include <stdlib.h>
 #include <sys/_types/_ssize_t.h>
 #include <sys/errno.h>
 #include <sys/wait.h>
@@ -7,6 +8,19 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
+
+core_state *_core_state = NULL;
+
+// Give us the number of mem chanels to use.
+void init_core_state(uint8_t nmcs) {
+    // We will not be using safe malloc until we have the core setup.
+    if ((_core_state = malloc(sizeof(core_state))) == NULL) {
+        // We oughta exit here I guess...
+        // The thing is that simple list uses safe malloc I believe!
+    }
+
+    
+}
 
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
     pid_t res;

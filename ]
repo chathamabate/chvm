@@ -2,7 +2,6 @@
 #define CORE_SYS_H
 
 #include "data.h"
-#include <sys/_pthread/_pthread_mutex_t.h>
 #include <sys/_types/_pid_t.h>
 #include <sys/_types/_ssize_t.h>
 #include <unistd.h>
@@ -50,20 +49,12 @@ typedef struct {
     // to be killed and reaped.
     slist *children;   
     pthread_mutex_t lock_children;
-
-    uint8_t num_mem_chnls;
-    uint64_t *mem_chnls;
-    pthread_mutex_t lock_mem_chnls;
 } core_state;
 
-// NOTE here is a global variable which will be used
-// throughout program use.
-//
-// The user should NEVER access this directly.
-extern core_state *_core_state;
-
-// Give us the number of mem chanels to use.
-void init_core_state(uint8_t nmcs);
+void init_core_state();
+    // Should we have exit condiitons in here???
+    // If there is a core_state setup error....
+}
 
 // Will return -1 on error, reaped pid on success.
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts);
