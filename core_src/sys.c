@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <sys/_types/_pid_t.h>
+#include <sys/_types/_sigset_t.h>
 #include <sys/_types/_ssize_t.h>
 #include <sys/errno.h>
 #include <inttypes.h>
@@ -86,45 +87,72 @@ void cl_remove(child_list *cl, uint64_t i) {
     cl->len--;
 }
 
+// When we receive a SIGINT, just redirect to safe_exit.
+static void safe_sigint_handler(int signo) {
+    (void)signo;
+
+    safe_exit(0);
+}
+
 core_state *_core_state = NULL;
 
 // Give us the number of mem chanels to use.
-int init_core_state(uint8_t nmcs) {
+void init_core_state(uint8_t nmcs) {
     // We will not be using safe malloc until we have the core setup.
     if (!(_core_state = malloc(sizeof(core_state)))) {
-        return -1;
+        core_log("Unable to allocate core state.");
+        exit(1);
     }
 
     _core_state->root = 1;
     pthread_rwlock_init(&(_core_state->core_lock), NULL);
 
-    if (!(_core_state->children = new_slist_unsafe(sizeof(pid_t)))) {
-        free(_core_state);
-        _core_state = NULL;
-
-        return -1;
+    if (!(_core_state->children = new_child_list())) {
+        core_log("Unable to allocate child list.");
+        exit(1);
     }
 
     // Create mem channels array.
     _core_state->num_mem_chnls = nmcs;
     if (!(_core_state->mem_chnls = malloc(nmcs * sizeof(uint64_t)))) {
-        delete_slist_unsafe(_core_state->children);
-        free(_core_state);
-        _core_state = NULL;
-
-        return -1;
+        core_log("Unable to allocate memory channels.");
+        exit(1);
     }
 
-    return 0;
+    // Finally, install the standard safe sig int handler.
+    signal(SIGINT, safe_sigint_handler); 
+}
+
+static void edit_sigint(int how) {
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+
+    pthread_sigmask(how, &set, NULL);
+}
+
+void _rdlock_core_state() {
+    edit_sigint(SIG_BLOCK);
+    pthread_rwlock_rdlock(&(_core_state->core_lock));
+}
+
+void _wrlock_core_state() {
+    edit_sigint(SIG_BLOCK);
+    pthread_rwlock_wrlock(&(_core_state->core_lock));
+}
+
+void _unlock_core_state() {
+    // NOTE : The order is essential HERE!
+    pthread_rwlock_unlock(&(_core_state->core_lock));
+    edit_sigint(SIG_UNBLOCK);
 }
 
 int safe_fork() {
-    // First, lets get the write lock.
-    pthread_rwlock_wrlock(&(_core_state->core_lock));
+    _wrlock_core_state();
 
     // For now, we can only fork from the root process.
     if (!(_core_state->root)) {
-        pthread_rwlock_unlock(&(_core_state->core_lock));
+        _unlock_core_state();
         return -1;
     }
 
@@ -132,7 +160,7 @@ int safe_fork() {
 
     // Vanilla fork error.
     if (fres == -1) {
-        pthread_rwlock_unlock(&(_core_state->core_lock));
+        _unlock_core_state();
         return -1;
     }
 
@@ -142,22 +170,27 @@ int safe_fork() {
 
         // No children list is needed for the child
         // process.
-        delete_slist_unsafe(_core_state->children);
+        delete_child_list(_core_state->children);
         _core_state->children = NULL;
          
-        pthread_rwlock_unlock(&(_core_state->core_lock));
+        _unlock_core_state();
         return 0;
     }
 
     // Parent process. Add the child pid to our children list.
-    sl_add(_core_state->children, &fres);
+    if (cl_add(_core_state->children, fres) == -1) {
+        // There's been an error adding the child to the list...
+        // what should we do... Maybe just tell the user.
+        core_logf("Child process %d was unable to be recorded. Confirm its termination.", 
+                fres); 
+    }
 
-    pthread_rwlock_unlock(&(_core_state->core_lock));
+    _unlock_core_state();
     return fres;
 }
 
 void safe_exit(int code) {
-    pthread_rwlock_wrlock(&(_core_state->core_lock));
+    _wrlock_core_state();
 
     if (_core_state->root) {
         // Now, we are going to iterate over the child processes
@@ -165,7 +198,7 @@ void safe_exit(int code) {
         
         uint64_t i;
         for (i = 0; i < _core_state->children->len; i++) {
-            pid_t child = *(pid_t *)sl_get(_core_state->children, i);
+            pid_t child = cl_get(_core_state->children, i);
             
             // This should never error if core is used correctly...
             int err = kill(child, SIGKILL);
@@ -183,7 +216,7 @@ void safe_exit(int code) {
         }
 
         // Delete children.
-        delete_slist_unsafe(_core_state->children);
+        delete_child_list(_core_state->children);
     }
 
     uint8_t chnl;
@@ -222,10 +255,10 @@ pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
     // Here we successfully reaped a child process.
     // We must remove it from the core children list.
     if (res > 0) {
-        pthread_rwlock_wrlock(&(_core_state->core_lock));
+        _wrlock_core_state();
         uint64_t i;
         for (i = 0; i < _core_state->children->len; i++) {
-            if (*(pid_t *)sl_get(_core_state->children, i) == res) {
+            if (cl_get(_core_state->children, i) == res) {
                 break;
             } 
         }
@@ -233,10 +266,10 @@ pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
         if (i == _core_state->children->len) {
             core_logf("Unknown child process was reaped %d.", res);
         } else {
-            sl_remove(_core_state->children, i);
+            cl_remove(_core_state->children, i);
         }
 
-        pthread_rwlock_unlock(&(_core_state->core_lock));
+        _unlock_core_state();
     }
 
     return res;
@@ -282,76 +315,6 @@ int safe_kill_and_reap(pid_t pid) {
     // Test for errors just to be safe.
     if (safe_waitpid(pid, NULL, 0) == -1) {
         return -1;
-    }
-
-    return 0;
-}
-
-int safe_write(int fd, const void *buf, size_t cnt) {
-    ssize_t bytes_left = cnt;
-    const char *ptr = buf;
-
-    while (bytes_left > 0) {
-        ssize_t res = write(fd, ptr, bytes_left);
-
-        // Error situation.
-        if (res == -1) {
-            if (errno != EINTR) {
-                return -1;
-            }
-
-            // If it was simply an interruption,
-            // just try again.
-            continue;
-        }
-
-        // Otherwise, update bytes left.
-        bytes_left -= res;
-        
-        // Advance pointer.
-        ptr += res;
-    }
-
-    // Success!
-    return 0;
-}
-
-int safe_read(int fd, void *buf, size_t cnt) {
-    ssize_t bytes_left = cnt; 
-    char *ptr = buf;
-
-    while (bytes_left > 0) {
-        ssize_t res = read(fd, ptr, bytes_left);
-
-        if (res == 0) {
-            // EOF found, but not expected.
-            return -1;
-        }
-
-        if (res == -1) {
-            if (errno != EINTR) {
-                return -1;
-            }
-
-            // Try again after interruption.
-            continue;
-        }
-
-        // No error... just account for bytes
-        // read.
-        bytes_left -= res;
-        ptr += res;
-    }
-
-    return 0;
-}
-
-int safe_close(int fd) {
-    // close returns 0 on success, -1 on error.
-    while (close(fd)) {
-        if (errno != EINTR) {
-            return -1;
-        }
     }
 
     return 0;

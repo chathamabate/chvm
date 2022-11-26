@@ -2,18 +2,17 @@
 
 #include <pthread.h>
 #include <stdio.h>
-
-// There should be a read/write lock on each channel??
-// Or maybe just one, not to be overkill.
-static uint32_t mem_chnls[MEM_CHANNELS];
-static pthread_rwlock_t chnls_lock = PTHREAD_RWLOCK_INITIALIZER;
+#include "./sys.h"
 
 void *try_safe_malloc(uint8_t chnl, size_t size) {
     uint8_t *raw_ptr = malloc(size + 1);
 
     if (raw_ptr) {
         raw_ptr[0] = chnl;
-        mem_chnls[chnl]++;
+
+        _wrlock_core_state();
+        _core_state->mem_chnls[chnl]++;
+        _unlock_core_state();
 
         return (void *)(raw_ptr + 1);
     }
@@ -28,10 +27,11 @@ void *safe_malloc(uint8_t chnl, size_t size) {
         return ptr;
     }
 
-    printf("[Safe Malloc] Process out of memory!\n");
-    display_channels();
+    core_log("Process failed to malloc.");
+    safe_exit(1);
 
-    exit(1);
+    // Should never make it here.
+    return NULL;
 }
 
 void *try_safe_realloc(void *ptr, size_t size) {
@@ -52,44 +52,36 @@ void *safe_realloc(void *ptr, size_t size) {
         return new_ptr;
     }
 
-    printf("[Realloc] Process out of memory!\n");
-    display_channels();
+    core_log("Process failed to realloc.");
+    safe_exit(1);
 
-    exit(1);
+    // Should never make it here.
+    return NULL;
 }
 
 void safe_free(void *ptr) {
     uint8_t *raw_ptr = ((uint8_t *)ptr) - 1;
     uint8_t chnl = raw_ptr[0];
-    mem_chnls[chnl]--;
+
+    _wrlock_core_state();
+    _core_state->mem_chnls[chnl]--;
+    _unlock_core_state();
 
     free(raw_ptr);
 }
 
-#define DISPLAY_CHNL_ROW_WIDTH 4
-
-void display_channels() {
-    uint8_t i; 
-
-    for (i = 0; i < MEM_CHANNELS; i++) {
-        printf("%d: %d", i, mem_chnls[i]);
-
-        if ((i + 1) % DISPLAY_CHNL_ROW_WIDTH == 0) {
-            printf("\n");
-        } else {
-            printf(", ");
-        }
-    }
-}
-
 uint8_t check_memory_leaks() {
+    _rdlock_core_state();
     uint8_t chnl;
     for (chnl = 1; chnl < MEM_CHANNELS; chnl++) {
-        if (mem_chnls[chnl]) {
+        // Check if a memory leak exists.
+        if (_core_state->mem_chnls[chnl]) {
+            _unlock_core_state();
             return 1;
         }
     }
 
+    _unlock_core_state();
     return 0;
 }
 

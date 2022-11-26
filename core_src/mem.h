@@ -19,7 +19,6 @@ void *try_safe_realloc(void *ptr, size_t size);
 void *safe_realloc(void *ptr, size_t size);
 
 void safe_free(void *ptr);
-void display_channels();
 
 // This returns 1 if there is any memory used outside
 // of the testing channel, 0 otherwise.

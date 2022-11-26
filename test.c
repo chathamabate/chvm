@@ -25,13 +25,12 @@
 
 int main(void) {
 
+    // What about a sigINT.. this is important!!!
     init_core_state(8);
-
-    safe_fork();
-    safe_fork();
-    safe_fork();
-
     
+    if (safe_fork() == 0) {
+        return 1;
+    }
 
     // chunit_test_module_run *tmr = chunit_run_module_pb(&UTIL_TEST_MOD);
     // chunit_print_test_module_run(tmr);

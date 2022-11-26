@@ -10,6 +10,7 @@
 #include <sys/_types/_ssize_t.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 
 // Here are some wrappers on popular system functions.
 // The intention is to help simplify error handling.
@@ -49,14 +50,14 @@
 // All system call wrappers will be atomic on the core state
 // that they modify.
 
-#define CORE_LOG_PREFIX CC_BRIGHT_MAGENTA CC_BOLD "[*] " CC_RESET \
+#define CORE_LOG_PREFIX CC_BRIGHT_MAGENTA CC_BOLD "[%d] " CC_RESET \
     CC_FAINT CC_ITALIC
 
 #define core_log(msg) \
-    printf(CORE_LOG_PREFIX msg CC_RESET "\n")
+    printf(CORE_LOG_PREFIX msg CC_RESET "\n", getpid())
 
 #define core_logf(msg, ...) \
-    printf(CORE_LOG_PREFIX msg CC_RESET "\n", __VA_ARGS__)
+    printf(CORE_LOG_PREFIX msg CC_RESET "\n", getpid(), __VA_ARGS__)
 
 typedef struct child_list_struct child_list;
 
@@ -72,7 +73,7 @@ typedef struct {
 
     // This will be a list of children which are yet
     // to be killed and reaped on exit.
-    child_list *cl;
+    child_list *children;
 
     uint8_t num_mem_chnls;
     uint64_t *mem_chnls;
@@ -84,13 +85,22 @@ typedef struct {
 // The user should NEVER access this directly.
 extern core_state *_core_state;
 
+
 // Give us the number of mem chanels to use.
 // NOTE, this must be called before using any other system
 // calls wrappers. Additionally, this should never be 
 // called in a child process.
 //
-// returns 0 on success, -1 on error.
-int init_core_state(uint8_t nmcs);
+// This will exit if there is an error setting up
+// the core.
+void init_core_state(uint8_t nmcs);
+
+// The lock wrappers on core will also block SIGINT.
+// This way, this way SIGINT will never interrupt a thread
+// which is working on the core state.
+void _rdlock_core_state();
+void _wrlock_core_state();
+void _unlock_core_state();
 
 int safe_fork();
 
@@ -117,14 +127,5 @@ pid_t safe_waitpid_timed(pid_t pid, int *stat_loc, time_t timeout);
 //
 //  returns 0 on success, -1 on error.
 int safe_kill_and_reap(pid_t pid);
-
-//  Will return -1 on error, 0 on success.
-//
-//  NOTE : read will return -1 if EOF is found before cnt
-//  number of bytes is found!
-int safe_write(int fd, const void *buf, size_t cnt);
-int safe_read(int fd, void *buf, size_t cnt);
-int safe_close(int fd);
-
 
 #endif

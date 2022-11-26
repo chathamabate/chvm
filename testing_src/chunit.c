@@ -11,6 +11,7 @@
 #include "../core_src/mem.h"
 #include "../core_src/log.h"
 #include "../core_src/sys.h"
+#include "../core_src/io.h"
 #include "./assert.h"
 
 
