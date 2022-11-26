@@ -2,14 +2,89 @@
 #include "data.h"
 #include <pthread.h>
 #include <stdlib.h>
+#include <sys/_types/_pid_t.h>
 #include <sys/_types/_ssize_t.h>
 #include <sys/errno.h>
+#include <inttypes.h>
 #include <sys/wait.h>
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
+
+// Below lies a list type which doesn't use any of the core safe
+// mechanisms, it is specifically for holding pids and that's it!
+
+#define INITIAL_CHILD_LIST_CAP 1
+
+typedef struct child_list_struct {
+    uint64_t len;
+    uint64_t cap;
+    
+    pid_t *buf;
+} child_list;
+
+child_list *new_child_list() {
+    child_list *cl = malloc(sizeof(child_list)); 
+
+    if (!cl) {
+        return NULL;
+    }
+
+    cl->len = 0;
+    cl->cap = INITIAL_CHILD_LIST_CAP;
+
+    cl->buf = malloc(sizeof(pid_t) * cl->cap);
+
+    if (!cl->buf) {
+        free(cl);
+        return NULL;
+    }
+
+    return cl;
+}
+
+static inline void delete_child_list(child_list *cl) {
+    free(cl->buf);
+    free(cl);
+}
+
+static inline pid_t cl_get(child_list *cl, uint64_t i) {
+    return cl->buf[i];
+}
+
+// Returns -1 if there was some realloc error.
+int cl_add(child_list *cl, pid_t child) {
+    // Attempt to realloc if needed.
+    if (cl->len == cl->cap) {
+        uint64_t new_cap = cl->cap * 2;
+        cl->buf = realloc(cl->buf, new_cap);
+
+        // Realloc error.
+        if (!(cl->buf)) {
+            return -1;
+        }
+
+        cl->cap = new_cap;
+    }
+
+    cl->buf[cl->len++] = child;
+    return 0;
+}
+
+void cl_remove(child_list *cl, uint64_t i) {
+    if (i >= cl->len) {
+        return;
+    }
+
+    uint64_t j; // Shift to the left here.
+    for (j = i; j < cl->len - 1; j++) {
+        cl->buf[j] = cl->buf[j + 1];
+    }     
+
+    cl->len--;
+}
 
 core_state *_core_state = NULL;
 
@@ -43,10 +118,45 @@ int init_core_state(uint8_t nmcs) {
     return 0;
 }
 
-void safe_exit(int code, uint8_t check_mem) {
-    // These two lines confirm we have the write lock acquired
-    // before doing an editing of the _core_state.
+int safe_fork() {
+    // First, lets get the write lock.
+    pthread_rwlock_wrlock(&(_core_state->core_lock));
+
+    // For now, we can only fork from the root process.
+    if (!(_core_state->root)) {
+        pthread_rwlock_unlock(&(_core_state->core_lock));
+        return -1;
+    }
+
+    pid_t fres = fork();
+
+    // Vanilla fork error.
+    if (fres == -1) {
+        pthread_rwlock_unlock(&(_core_state->core_lock));
+        return -1;
+    }
+
+    // Child process.
+    if (fres == 0) {
+        _core_state->root = 0; 
+
+        // No children list is needed for the child
+        // process.
+        delete_slist_unsafe(_core_state->children);
+        _core_state->children = NULL;
+         
+        pthread_rwlock_unlock(&(_core_state->core_lock));
+        return 0;
+    }
+
+    // Parent process. Add the child pid to our children list.
+    sl_add(_core_state->children, &fres);
+
     pthread_rwlock_unlock(&(_core_state->core_lock));
+    return fres;
+}
+
+void safe_exit(int code) {
     pthread_rwlock_wrlock(&(_core_state->core_lock));
 
     if (_core_state->root) {
@@ -58,14 +168,41 @@ void safe_exit(int code, uint8_t check_mem) {
             pid_t child = *(pid_t *)sl_get(_core_state->children, i);
             
             // This should never error if core is used correctly...
-            int res = kill(child, SIGKILL);
-            res |= waitpid(child, NULL, 0);
+            int err = kill(child, SIGKILL);
 
-            if (res) {
-                // TODO, finish this up soon!
+            if (!err) {
+                err = (waitpid(child, NULL, 0) == -1);
+            }
+
+            // Check anyway.
+            if (err) {
+                core_logf("There was an error terminating process %d.", child);
+            } else {
+                core_logf("Process %d was successfully terminated.", child);
             }
         }
+
+        // Delete children.
+        delete_slist_unsafe(_core_state->children);
     }
+
+    uint8_t chnl;
+    for (chnl = 0; chnl < _core_state->num_mem_chnls; chnl++) {
+        if (_core_state->mem_chnls[chnl]) {
+            core_logf("Memory leak found in channel %u. (%" PRIu64 " leaks)", 
+                    chnl, _core_state->mem_chnls[chnl]);
+        }
+    }
+
+    // Delete the memory channels.
+    free(_core_state->mem_chnls);
+
+    // I would free the entire core state here, but unsure what
+    // that would do given the core state holds a lock which
+    // other threads may be testing at this point.
+    //
+    // Regardless, we are going to hold onto the core state lock
+    // through exit!
     
     // Always exit!
     exit(code);
@@ -80,6 +217,26 @@ pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
         if (errno != EINTR) {
             return -1;
         }
+    }
+
+    // Here we successfully reaped a child process.
+    // We must remove it from the core children list.
+    if (res > 0) {
+        pthread_rwlock_wrlock(&(_core_state->core_lock));
+        uint64_t i;
+        for (i = 0; i < _core_state->children->len; i++) {
+            if (*(pid_t *)sl_get(_core_state->children, i) == res) {
+                break;
+            } 
+        }
+
+        if (i == _core_state->children->len) {
+            core_logf("Unknown child process was reaped %d.", res);
+        } else {
+            sl_remove(_core_state->children, i);
+        }
+
+        pthread_rwlock_unlock(&(_core_state->core_lock));
     }
 
     return res;

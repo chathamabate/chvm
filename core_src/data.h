@@ -41,7 +41,11 @@ static inline void delete_slist(slist *sl) {
 }
 
 void sl_add(slist *sl, void *buf);
-void *sl_get(slist *sl, uint64_t i);
+
+static inline void *sl_get(slist *sl, uint64_t i) {
+    return (uint8_t *)(sl->buf) + (i * sl->cell_size);
+}
+
 void sl_remove(slist *sl, uint64_t i);
 
 #endif

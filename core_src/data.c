@@ -51,9 +51,6 @@ slist *new_slist(uint8_t chnl, size_t cs) {
     return sl;
 }
 
-static inline void *sl_get_unsafe(slist *sl, uint64_t i) {
-    return (uint8_t *)(sl->buf) + (i * sl->cell_size);
-}
 
 void sl_add(slist *sl, void *buf) {
     if (sl->len == sl->cap) {
@@ -66,14 +63,6 @@ void sl_add(slist *sl, void *buf) {
     void *dest = (uint8_t *)(sl->buf) + (sl->len * sl->cell_size);
     memcpy(dest, buf, sl->cell_size);
     sl->len++;
-}
-
-void *sl_get(slist *sl, uint64_t i) {
-    if (i >= sl->len) {
-        return NULL;
-    }
-
-    return sl_get_unsafe(sl, i);
 }
 
 void sl_remove(slist *sl, uint64_t i) {

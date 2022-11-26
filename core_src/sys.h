@@ -53,10 +53,12 @@
     CC_FAINT CC_ITALIC
 
 #define core_log(msg) \
-    printf(CORE_LOG_PREFIX msg CC_RESET)
+    printf(CORE_LOG_PREFIX msg CC_RESET "\n")
 
 #define core_logf(msg, ...) \
-    printf(CORE_LOG_PREFIX msg CC_RESET, __VA_ARGS__)
+    printf(CORE_LOG_PREFIX msg CC_RESET "\n", __VA_ARGS__)
+
+typedef struct child_list_struct child_list;
 
 typedef struct {
     // This is whether or not we are working with the
@@ -70,7 +72,7 @@ typedef struct {
 
     // This will be a list of children which are yet
     // to be killed and reaped on exit.
-    slist *children;   
+    child_list *cl;
 
     uint8_t num_mem_chnls;
     uint64_t *mem_chnls;
@@ -90,13 +92,14 @@ extern core_state *_core_state;
 // returns 0 on success, -1 on error.
 int init_core_state(uint8_t nmcs);
 
+int safe_fork();
+
 // Safe exit should always be called over normal exit
 // once the core has been set up.
 // It will kill all child processes before exiting.
 // 
-// If check_mem is non zero, memory leaks will be
-// checked before exiting.
-void safe_exit(int code, uint8_t check_mem);
+// Also memory leaks will be checked for.
+void safe_exit(int code);
 
 // Will return -1 on error, reaped pid on success.
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts);

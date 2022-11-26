@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/_types/_pid_t.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <signal.h>
@@ -23,12 +24,21 @@
 
 
 int main(void) {
-    core_log("HELLO \n");
-    core_logf("This number is important (%d)\n", -456);
+
+    init_core_state(8);
+
+    safe_fork();
+    safe_fork();
+    safe_fork();
+
+    
+
     // chunit_test_module_run *tmr = chunit_run_module_pb(&UTIL_TEST_MOD);
     // chunit_print_test_module_run(tmr);
     // chunit_delete_test_module_run(tmr);
+    safe_exit(0);
 
-    return 0;
+    // Should never make it here.
+    return 1;
 }
 
