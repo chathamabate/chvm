@@ -69,6 +69,9 @@
 
 #define EJ_ORANGE_CIRCLE    "\U0001F7E0"
 
+/*
+Logging code which never was really used.
+
 #define CORE_LOG_PID_PREFIX "(%d) "
 
 #define CORE_LOG_S_PREFIX "[" CC_BRIGHT_MAGENTA "S" CC_RESET "] " CC_MAGENTA 
@@ -115,6 +118,6 @@
     #undef Nf
     #define Nf(fs, ...)
 #endif
-
+*/
 
 #endif

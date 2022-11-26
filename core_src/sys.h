@@ -2,6 +2,7 @@
 #define CORE_SYS_H
 
 #include "data.h"
+#include "./log.h"
 #include <stdint.h>
 #include <sys/_pthread/_pthread_mutex_t.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
@@ -9,6 +10,7 @@
 #include <sys/_types/_ssize_t.h>
 #include <unistd.h>
 #include <pthread.h>
+
 // Here are some wrappers on popular system functions.
 // The intention is to help simplify error handling.
 
@@ -46,6 +48,15 @@
 // NOTE : 
 // All system call wrappers will be atomic on the core state
 // that they modify.
+
+#define CORE_LOG_PREFIX CC_BRIGHT_MAGENTA CC_BOLD "[*] " CC_RESET \
+    CC_FAINT CC_ITALIC
+
+#define core_log(msg) \
+    printf(CORE_LOG_PREFIX msg CC_RESET)
+
+#define core_logf(msg, ...) \
+    printf(CORE_LOG_PREFIX msg CC_RESET, __VA_ARGS__)
 
 typedef struct {
     // This is whether or not we are working with the
