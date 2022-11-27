@@ -27,7 +27,7 @@ void *safe_malloc(uint8_t chnl, size_t size) {
         return ptr;
     }
 
-    core_log("Process failed to malloc.");
+    core_logf("Process failed to malloc.");
     safe_exit(1);
 
     // Should never make it here.
@@ -52,7 +52,7 @@ void *safe_realloc(void *ptr, size_t size) {
         return new_ptr;
     }
 
-    core_log("Process failed to realloc.");
+    core_logf("Process failed to realloc.");
     safe_exit(1);
 
     // Should never make it here.
@@ -70,11 +70,11 @@ void safe_free(void *ptr) {
     free(raw_ptr);
 }
 
-uint8_t check_memory_leaks() {
+uint8_t check_memory_leaks(uint8_t lb) {
     _rdlock_core_state();
     uint8_t chnl;
-    for (chnl = 1; chnl < MEM_CHANNELS; chnl++) {
-        // Check if a memory leak exists.
+    for (chnl = lb; chnl < MEM_CHANNELS; chnl++) {
+        // Check if a memory leak exists in a valid channel.
         if (_core_state->mem_chnls[chnl]) {
             _unlock_core_state();
             return 1;

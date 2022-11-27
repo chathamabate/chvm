@@ -1,5 +1,5 @@
 #include "./sys.h"
-#include "data.h"
+#include "log.h"
 #include <pthread.h>
 #include <stdlib.h>
 #include <sys/_types/_pid_t.h>
@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 // Below lies a list type which doesn't use any of the core safe
 // mechanisms, it is specifically for holding pids and that's it!
@@ -26,7 +27,7 @@ typedef struct child_list_struct {
     pid_t *buf;
 } child_list;
 
-child_list *new_child_list() {
+static child_list *new_child_list() {
     child_list *cl = malloc(sizeof(child_list)); 
 
     if (!cl) {
@@ -56,17 +57,20 @@ static inline pid_t cl_get(child_list *cl, uint64_t i) {
 }
 
 // Returns -1 if there was some realloc error.
-int cl_add(child_list *cl, pid_t child) {
+static int cl_add(child_list *cl, pid_t child) {
     // Attempt to realloc if needed.
     if (cl->len == cl->cap) {
         uint64_t new_cap = cl->cap * 2;
-        cl->buf = realloc(cl->buf, new_cap);
+
+        pid_t *new_buf = realloc(cl->buf, sizeof(pid_t) * new_cap);
 
         // Realloc error.
-        if (!(cl->buf)) {
+        if (!(new_buf)) {
             return -1;
         }
 
+        // Only use the new buffer if it's non NULL!
+        cl->buf = new_buf;
         cl->cap = new_cap;
     }
 
@@ -74,7 +78,7 @@ int cl_add(child_list *cl, pid_t child) {
     return 0;
 }
 
-void cl_remove(child_list *cl, uint64_t i) {
+static void cl_remove(child_list *cl, uint64_t i) {
     if (i >= cl->len) {
         return;
     }
@@ -96,27 +100,30 @@ static void safe_sigint_handler(int signo) {
 
 core_state *_core_state = NULL;
 
+static inline void init_core_err(const char *msg) {
+    printf(CC_BRIGHT_RED "[Core Init Error] " CC_RESET 
+            CC_FAINT CC_ITALIC "%s" CC_RESET "\n", msg);
+    exit(1);
+}
+
 // Give us the number of mem chanels to use.
 void init_core_state(uint8_t nmcs) {
     // We will not be using safe malloc until we have the core setup.
     if (!(_core_state = malloc(sizeof(core_state)))) {
-        core_log("Unable to allocate core state.");
-        exit(1);
+        init_core_err("Unable to allocate core state.");
     }
 
     _core_state->root = 1;
     pthread_rwlock_init(&(_core_state->core_lock), NULL);
 
     if (!(_core_state->children = new_child_list())) {
-        core_log("Unable to allocate child list.");
-        exit(1);
+        init_core_err("Unable to allocate child list.");
     }
 
     // Create mem channels array.
     _core_state->num_mem_chnls = nmcs;
     if (!(_core_state->mem_chnls = malloc(nmcs * sizeof(uint64_t)))) {
-        core_log("Unable to allocate memory channels.");
-        exit(1);
+        init_core_err("Unable to allocate memory channels.");
     }
 
     // Finally, install the standard safe sig int handler.
@@ -145,6 +152,28 @@ void _unlock_core_state() {
     // NOTE : The order is essential HERE!
     pthread_rwlock_unlock(&(_core_state->core_lock));
     edit_sigint(SIG_UNBLOCK);
+}
+
+void core_logf(const char *fmt, ...) {
+    _rdlock_core_state();
+    uint8_t root = _core_state->root;
+    _unlock_core_state();
+
+    va_list args;
+    va_start(args, fmt);
+
+    if (root) {
+        printf(CC_BRIGHT_CYAN "[ROOT] " CC_RESET CC_ITALIC CC_FAINT);
+    } else {
+        printf(CC_BRIGHT_MAGENTA "[%d] " CC_RESET CC_ITALIC CC_FAINT, 
+                getpid());
+    }
+
+    vprintf(fmt, args);
+
+    printf(CC_RESET "\n");
+
+    va_end(args);
 }
 
 int safe_fork() {
@@ -189,7 +218,7 @@ int safe_fork() {
     return fres;
 }
 
-void safe_exit(int code) {
+void safe_exit_param(int code, uint8_t q) {
     _wrlock_core_state();
 
     if (_core_state->root) {
@@ -207,11 +236,14 @@ void safe_exit(int code) {
                 err = (waitpid(child, NULL, 0) == -1);
             }
 
-            // Check anyway.
-            if (err) {
-                core_logf("There was an error terminating process %d.", child);
-            } else {
-                core_logf("Process %d was successfully terminated.", child);
+            // Log if wanted.
+            if (!q) {
+                // Check anyway.
+                if (err) {
+                    core_logf("There was an error terminating process %d.", child);
+                } else {
+                    core_logf("Process %d was successfully terminated.", child);
+                }
             }
         }
 
@@ -219,11 +251,14 @@ void safe_exit(int code) {
         delete_child_list(_core_state->children);
     }
 
-    uint8_t chnl;
-    for (chnl = 0; chnl < _core_state->num_mem_chnls; chnl++) {
-        if (_core_state->mem_chnls[chnl]) {
-            core_logf("Memory leak found in channel %u. (%" PRIu64 " leaks)", 
-                    chnl, _core_state->mem_chnls[chnl]);
+    // Only log memory leaks if non quiet.
+    if (!q) {
+        uint8_t chnl;
+        for (chnl = 0; chnl < _core_state->num_mem_chnls; chnl++) {
+            if (_core_state->mem_chnls[chnl]) {
+                core_logf("Memory leak found in channel %u. (%" PRIu64 " leaks)", 
+                        chnl, _core_state->mem_chnls[chnl]);
+            }
         }
     }
 
@@ -242,6 +277,13 @@ void safe_exit(int code) {
 }
 
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
+    // We can only use wait if we are a root process!
+    _rdlock_core_state();
+    if (!(_core_state->root)) {
+        return -1;
+    }
+    _unlock_core_state();
+
     pid_t res;
 
     while ((res = waitpid(pid, stat_loc, opts)) == -1) {

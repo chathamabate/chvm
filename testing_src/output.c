@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "../core_src/log.h"
 #include <inttypes.h>
+#include <string.h>
 #include "../core_src/mem.h"
 
 const char *CHUNIT_TR_NAMES[CHUNIT_FATAL_ERROR + 1] = {
@@ -136,8 +137,7 @@ static void print_tr_framework_err(const char *prefix, chunit_test_run *tr) {
 
     uint64_t i;
     for (i = 0; i < tr->errors->len; i++) {
-        chunit_framework_error fr_err = 
-            *(chunit_framework_error *)sl_get(tr->errors, i);
+        chunit_framework_error fr_err = fl_get(tr->errors, i);
 
         const char *err_msg = CHUNIT_FE_NAMES[fr_err];
 
@@ -174,6 +174,22 @@ void chunit_print_test_run(chunit_test_run *tr) {
     print_test_run("", tr);
 }
 
+// NOTE again here is a pretty generic function which will probably be 
+// repeated somewhere else. I am just keeping the testing code
+// as self contained as possible.
+static char *concat_prefixes(const char *p1, const char *p2) {
+    unsigned long l1 = strlen(p1);
+    unsigned long l2 = strlen(p2);
+
+    char *new_p = safe_malloc(MEM_CHNL_TESTING, l1 + l2 + 1);
+
+    memcpy(new_p, p1, l1);
+    memcpy(new_p + l1, p2, l2);
+    new_p[l1 + l2] = '\0';
+
+    return new_p;
+}
+
 static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr) {
     if (tsr->successes == tsr->suite->tests_len) {
         printf("%s" HEADER_FMT(S_SUCC) 
@@ -185,12 +201,11 @@ static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr)
                 prefix, tsr->suite->name, tsr->suite->tests_len - tsr->successes, tsr->suite->tests_len);
 
         // Here we must make our new prefix!
-        char *new_prefix = 
-            concat_str(MEM_CHNL_TESTING, prefix, S_FAIL UC_VERTICAL_LINE " " CC_RESET);
+        char *new_prefix = concat_prefixes(prefix, S_FAIL UC_VERTICAL_LINE " " CC_RESET);
 
         uint64_t i;
-        for (i = 0; i < tsr->test_runs->len; i++) {
-            chunit_test_run *tr = *(chunit_test_run **)sl_get(tsr->test_runs, i);
+        for (i = 0; i < tsr->suite->tests_len; i++) {
+            chunit_test_run *tr = tsr->test_runs[i];
 
             // If we find an unsuccessful test, print it out.
             if (tr->result != CHUNIT_SUCCESS || tr->errors->len > 0) {
@@ -227,9 +242,8 @@ void chunit_print_test_module_run(chunit_test_module_run *tmr) {
         printf(TL_CORNER_FMT(S_MOD) "\n", tmr->mod->name);
         
         uint64_t i;
-        for (i = 0; i < tmr->test_suite_runs->len; i++) {
-            chunit_test_suite_run *tsr = 
-                *(chunit_test_suite_run **)sl_get(tmr->test_suite_runs, i);
+        for (i = 0; i < tmr->mod->suites_len; i++) {
+            chunit_test_suite_run *tsr = tmr->test_suite_runs[i];
 
             print_test_suite_run(S_MOD UC_VERTICAL_LINE " " CC_RESET, tsr);
         }

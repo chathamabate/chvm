@@ -3,7 +3,11 @@
 
 #include <stdint.h>
 #include <time.h>
-#include "../core_src/data.h"
+#include "../core_src/mem.h"
+
+// Memory channel 0 will be used for all dynamic testing 
+// objects.
+#define MEM_CHNL_TESTING 0
 
 // NOTE :
 // An assertion failure is not an error.
@@ -67,6 +71,29 @@ typedef enum {
     CHUNIT_TERMINATION_ERROR,
 } chunit_framework_error;
 
+// Here will be the final repeat array list implementation
+// Once we have this set up, we can begin testing
+// a more generic version.
+typedef struct {
+    uint64_t len;
+    uint64_t cap;
+    
+    chunit_framework_error *buf;
+} ferror_list;  // framework error list.
+
+ferror_list *new_ferror_list();
+void fl_add(ferror_list *fl, chunit_framework_error err);
+
+static inline chunit_framework_error fl_get(ferror_list *fl, 
+        uint64_t i) {
+    return fl->buf[i];
+}
+
+static inline void delete_ferror_list(ferror_list *fl) {
+    safe_free(fl->buf);
+    safe_free(fl);
+}
+
 // 5 second timeout for all tests.
 #define CHUNIT_TIMEOUT_S 5
 
@@ -92,7 +119,7 @@ typedef struct {
     pid_t child;
 
     // A list of framework errors.
-    slist *errors;
+    ferror_list *errors;
 
     // Only to be interpreted when there 
     // are no chunit errors.
@@ -130,8 +157,8 @@ typedef struct {
     // Whether or not all test runs succeeded.
     uint64_t successes;
 
-    // Slist of chunit_test_run *
-    slist *test_runs; 
+    // Dynamic array of test runs.
+    chunit_test_run **test_runs; 
 } chunit_test_suite_run;
 
 typedef struct {
@@ -168,8 +195,8 @@ typedef struct {
     // Whether or not all suites succeeded.
     uint8_t successful;
 
-    // Slist of chunit_test_suite_run *
-    slist *test_suite_runs; 
+    // Dynamic array of test suite runs.
+    chunit_test_suite_run **test_suite_runs;
 } chunit_test_module_run;
 
 typedef struct {

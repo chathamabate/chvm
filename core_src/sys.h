@@ -1,7 +1,6 @@
 #ifndef CORE_SYS_H
 #define CORE_SYS_H
 
-#include "data.h"
 #include "./log.h"
 #include <stdint.h>
 #include <sys/_pthread/_pthread_mutex_t.h>
@@ -50,15 +49,6 @@
 // All system call wrappers will be atomic on the core state
 // that they modify.
 
-#define CORE_LOG_PREFIX CC_BRIGHT_MAGENTA CC_BOLD "[%d] " CC_RESET \
-    CC_FAINT CC_ITALIC
-
-#define core_log(msg) \
-    printf(CORE_LOG_PREFIX msg CC_RESET "\n", getpid())
-
-#define core_logf(msg, ...) \
-    printf(CORE_LOG_PREFIX msg CC_RESET "\n", getpid(), __VA_ARGS__)
-
 typedef struct child_list_struct child_list;
 
 typedef struct {
@@ -85,7 +75,6 @@ typedef struct {
 // The user should NEVER access this directly.
 extern core_state *_core_state;
 
-
 // Give us the number of mem chanels to use.
 // NOTE, this must be called before using any other system
 // calls wrappers. Additionally, this should never be 
@@ -102,14 +91,28 @@ void _rdlock_core_state();
 void _wrlock_core_state();
 void _unlock_core_state();
 
+// Logging function used by core and accessable to
+// the user!
+void core_logf(const char *fmt, ...);
+
 int safe_fork();
 
 // Safe exit should always be called over normal exit
 // once the core has been set up.
 // It will kill all child processes before exiting.
 // 
-// Also memory leaks will be checked for.
-void safe_exit(int code);
+// q will be whether or not notes should be logged
+// during exit. (i.e which child processes were killed
+// and if there were memory leaks)
+void safe_exit_param(int code, uint8_t q);
+
+static inline void safe_exit(int code) {
+    safe_exit_param(code, 0);
+}
+
+static inline void safe_exit_quiet(int code) {
+    safe_exit_param(code, 1);
+}
 
 // Will return -1 on error, reaped pid on success.
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts);

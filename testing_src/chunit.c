@@ -14,12 +14,39 @@
 #include "../core_src/io.h"
 #include "./assert.h"
 
+#define INIT_FERROR_LIST_CAP 1
+
+ferror_list *new_ferror_list() {
+    ferror_list *fl = 
+        safe_malloc(MEM_CHNL_TESTING, sizeof(ferror_list));
+
+    fl->len = 0;
+    fl->cap = INIT_FERROR_LIST_CAP;
+
+    fl->buf = safe_malloc(MEM_CHNL_TESTING, 
+            sizeof(chunit_framework_error) * INIT_FERROR_LIST_CAP);
+
+    return fl;
+}
+
+void fl_add(ferror_list *fl, chunit_framework_error err) {
+    if (fl->len == fl->cap) {
+        uint64_t new_cap = fl->cap * 2;
+
+        fl->buf = safe_realloc(fl->buf, 
+                sizeof(chunit_framework_error) * new_cap);
+
+        fl->cap = new_cap;
+    }     
+
+    fl->buf[fl->len++] = err;
+}
 
 // Parent process and Child process code for CHUNIT.
 
 static chunit_test_run *new_test_run(const chunit_test *test, pid_t c) {
     chunit_test_run *tr = safe_malloc(MEM_CHNL_TESTING, sizeof(chunit_test_run));
-    tr->errors = new_slist(MEM_CHNL_TESTING, sizeof(chunit_framework_error));
+    tr->errors = new_ferror_list();
 
     tr->test = test;
     tr->child = c;
@@ -50,26 +77,22 @@ void chunit_delete_test_run(chunit_test_run *tr) {
             break;
     }
 
-    delete_slist(tr->errors);
+    delete_ferror_list(tr->errors);
     safe_free(tr);
 }
 
 // NOTE fds[1] = writing descriptor.
 // fds[0] = reading descriptor.
 
-static void add_framework_error(chunit_test_run *tr, chunit_framework_error err) {
-    sl_add(tr->errors, &err);
-}
-
 static void attempt_safe_kill_and_reap(chunit_test_run *tr) {
     if (safe_kill_and_reap(tr->child)) {
-        add_framework_error(tr, CHUNIT_TERMINATION_ERROR);
+        fl_add(tr->errors, CHUNIT_TERMINATION_ERROR);
     }
 }
 
 static void attempt_safe_close(chunit_test_run *tr, int pipe_fd) {
     if (safe_close(pipe_fd)) {
-        add_framework_error(tr, CHUNIT_PIPE_ERROR);
+        fl_add(tr->errors, CHUNIT_PIPE_ERROR);
     }
 }
 
@@ -78,7 +101,7 @@ static void attempt_read_cmpr_and_close(chunit_test_run *tr, int pipe_fd,
     void *buf = safe_malloc(MEM_CHNL_TESTING, c_size * 2);
 
     if (safe_read(pipe_fd, buf, c_size * 2)) {
-        add_framework_error(tr, CHUNIT_PIPE_ERROR);
+        fl_add(tr->errors, CHUNIT_PIPE_ERROR);
         safe_free(buf);
 
         // No closing here.
@@ -104,7 +127,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
 
     // Attempt to close write end of pipe.
     if (safe_close(fds[1])) {
-        add_framework_error(tr, CHUNIT_PIPE_ERROR);
+        fl_add(tr->errors, CHUNIT_PIPE_ERROR);
         attempt_safe_kill_and_reap(tr);
 
         // Since this is a pipe error, don't try to close
@@ -123,7 +146,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
     // When there's a hard waitpid error, just return...
     // don't worry about killing.
     if (res == -1) {
-        add_framework_error(tr, CHUNIT_TERMINATION_ERROR);
+        fl_add(tr->errors, CHUNIT_TERMINATION_ERROR);
         attempt_safe_close(tr, pipe_fd);
 
         return tr;
@@ -154,7 +177,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
 
     // Check if there was some pipe error. (OUR ERROR)
     if (WEXITSTATUS(stat) == CHUNIT_PIPE_ERROR_EXIT_CODE) {
-        add_framework_error(tr, CHUNIT_PIPE_ERROR);
+        fl_add(tr->errors, CHUNIT_PIPE_ERROR);
         // pipe doesn't need to be closed.
         
         return tr;
@@ -177,7 +200,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
     
     // Read comm tag.
     if (safe_read(pipe_fd, &t_res, sizeof(chunit_test_result))) {
-        add_framework_error(tr, CHUNIT_PIPE_ERROR);
+        fl_add(tr->errors, CHUNIT_PIPE_ERROR);
 
         return tr;
     }
@@ -225,7 +248,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
         case CHUNIT_ASSERT_EQ_STR_FAIL:
             // Read sizes first.
             if (safe_read(pipe_fd, str_sizes, sizeof(size_t) * 2)) {
-                add_framework_error(tr, CHUNIT_PIPE_ERROR);
+                fl_add(tr->errors, CHUNIT_PIPE_ERROR);
 
                 return tr;
             }
@@ -234,7 +257,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
 
             // Read expected.
             if (safe_read(pipe_fd, expected, str_sizes[0])) {
-                add_framework_error(tr, CHUNIT_PIPE_ERROR);
+                fl_add(tr->errors, CHUNIT_PIPE_ERROR);
 
                 safe_free(expected);
                 return tr;
@@ -244,7 +267,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
 
             // Read actual.
             if (safe_read(pipe_fd, actual, str_sizes[1])) {
-                add_framework_error(tr, CHUNIT_PIPE_ERROR);
+                fl_add(tr->errors, CHUNIT_PIPE_ERROR);
 
                 safe_free(expected);
                 safe_free(actual);
@@ -264,7 +287,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
             return tr; 
 
         default:
-            add_framework_error(tr, CHUNIT_BAD_TEST_RESULT);
+            fl_add(tr->errors, CHUNIT_BAD_TEST_RESULT);
             attempt_safe_close(tr, pipe_fd);
 
             return tr;
@@ -277,15 +300,15 @@ chunit_test_run *chunit_run_test(const chunit_test *test,
 
     if (pipe(fds)) {
         chunit_test_run *tr = new_test_run(test, -1);
-        add_framework_error(tr, CHUNIT_PIPE_ERROR);
+        fl_add(tr->errors, CHUNIT_PIPE_ERROR);
         return tr;
     }
 
-    pid_t pid = fork();
+    pid_t pid = safe_fork();
 
     if (pid == -1) {
         chunit_test_run *tr = new_test_run(test, -1);
-        add_framework_error(tr, CHUNIT_FORK_ERROR);
+        fl_add(tr->errors, CHUNIT_FORK_ERROR);
         return tr;
     }
 
@@ -314,7 +337,8 @@ static chunit_test_suite_run *new_test_suite_run(const chunit_test_suite *suite)
 
     tsr->suite = suite;
     tsr->successes = 0;
-    tsr->test_runs = new_slist(MEM_CHNL_TESTING, sizeof(chunit_test_run *));
+    tsr->test_runs = safe_malloc(MEM_CHNL_TESTING, 
+            sizeof(chunit_test_run *) * suite->tests_len);
 
     return tsr;
 }
@@ -335,7 +359,8 @@ chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite,
             tr = chunit_run_test(suite->tests[i], NULL, NULL);
         }
 
-        sl_add(tsr->test_runs, &tr); // add test run to result list.
+        tsr->test_runs[i] = tr;
+
 
         if (tr->result == CHUNIT_SUCCESS && tr->errors->len == 0) {
             tsr->successes++;
@@ -348,13 +373,12 @@ chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite,
 void chunit_delete_test_suite_run(chunit_test_suite_run *tsr) {
     // First we must delete all results. 
     uint64_t i;
-    for (i = 0; i < tsr->test_runs->len; i++) {
-        chunit_test_run *tr = *(chunit_test_run **)sl_get(tsr->test_runs, i);
-        chunit_delete_test_run(tr);
+    for (i = 0; i < tsr->suite->tests_len; i++) {
+        chunit_delete_test_run(tsr->test_runs[i]);
     }
 
-    // Then delete results list.
-    delete_slist(tsr->test_runs);
+    // Then delete results array.
+    safe_free(tsr->test_runs);
 
     // Finally, delete tsr.
     safe_free(tsr);
@@ -367,8 +391,8 @@ new_test_module_run(const chunit_test_module *mod) {
 
     tmr->mod = mod;
     tmr->successful = 1;
-    tmr->test_suite_runs = 
-        new_slist(MEM_CHNL_TESTING, sizeof(chunit_test_suite_run *));
+    tmr->test_suite_runs = safe_malloc(MEM_CHNL_TESTING, 
+            sizeof(chunit_test_suite_run *) * mod->suites_len);
 
     return tmr;
 }
@@ -390,7 +414,7 @@ chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
             tsr = chunit_run_suite(mod->suites[i], NULL, NULL);
         }
 
-        sl_add(tmr->test_suite_runs, &tsr);
+        tmr->test_suite_runs[i] = tsr;
 
         if (tmr->successful && !(tsr->successes == tsr->suite->tests_len)) {
             tmr->successful = 0;
@@ -402,13 +426,11 @@ chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
 
 void chunit_delete_test_module_run(chunit_test_module_run *tmr) {
     uint64_t i;
-    for (i = 0; i < tmr->test_suite_runs->len; i++) {
-        chunit_test_suite_run *tsr = 
-            *(chunit_test_suite_run **)sl_get(tmr->test_suite_runs, i);
-        chunit_delete_test_suite_run(tsr);
+    for (i = 0; i < tmr->mod->suites_len; i++) {
+        chunit_delete_test_suite_run(tmr->test_suite_runs[i]);
     }
 
-    delete_slist(tmr->test_suite_runs);
+    safe_free(tmr->test_suite_runs);
     safe_free(tmr);
 }
 

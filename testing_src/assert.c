@@ -4,8 +4,6 @@
 #include "../core_src/mem.h"
 #include "../core_src/io.h"
 #include <stdio.h>
-
-
 #include <string.h>
 
 static void write_result(int pipe_fd, const chunit_test_result res) {
@@ -16,28 +14,28 @@ static void write_result(int pipe_fd, const chunit_test_result res) {
         // we won't even bother to close the pipe... just
         // exit.
         
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
     }
 }
 
 static void write_data(int pipe_fd, void *buf, size_t size) {
     if (safe_write(pipe_fd, buf, size)) {
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
     } 
 }
 
 static void close_pipe_and_exit(int pipe_fd) {
     if (safe_close(pipe_fd)) {
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
     }
 
-    exit(0);
+    safe_exit_quiet(0);
 }
 
 void chunit_child_process(int fds[2], const chunit_test *test) {
     // First, close the read end of the pipe.
     if (safe_close(fds[0])) {
-        exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
     }
 
     // Get write side of pipe.
@@ -49,7 +47,7 @@ void chunit_child_process(int fds[2], const chunit_test *test) {
     // NOTE here we check for memory leaks.
     // If there was non testing memory used before forking,
     // it will always cause a memory leak here.
-    if (check_memory_leaks()) {
+    if (check_memory_leaks(MEM_CHNL_TESTING + 1)) {
         write_result(pipe_fd, CHUNIT_MEMORY_LEAK);
     } else {
         write_result(pipe_fd, CHUNIT_SUCCESS);

@@ -9,7 +9,6 @@
 #include "testing_src/chunit.h"
 #include "testing_src/assert.h"
 #include "core_src/mem.h"
-#include "core_src/data.h"
 #include "core_src/log.h"
 #include "testing_src/output.h"
 
@@ -22,22 +21,23 @@
 // This works!!!
 #include <pthread.h>
 
+int safe_main(void) {
+    chunit_test_module_run *tmr = chunit_run_module_pb(&UTIL_TEST_MOD);
+    chunit_print_test_module_run(tmr);
+    chunit_delete_test_module_run(tmr);
+
+    return 0;
+}
 
 int main(void) {
-
-    // What about a sigINT.. this is important!!!
     init_core_state(8);
-    
-    if (safe_fork() == 0) {
-        return 1;
-    }
+    int c = safe_main();
 
-    // chunit_test_module_run *tmr = chunit_run_module_pb(&UTIL_TEST_MOD);
-    // chunit_print_test_module_run(tmr);
-    // chunit_delete_test_module_run(tmr);
-    safe_exit(0);
+    // NOTE this is needed.
+    safe_exit(c);
 
     // Should never make it here.
     return 1;
 }
+
 
