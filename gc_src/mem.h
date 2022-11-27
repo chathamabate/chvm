@@ -3,6 +3,8 @@
 
 #include "../core_src/mem.h"
 
+// Time to think this through at some point!
+
 // Here we will use a reference counting approach
 // to garbage collection.
 //
