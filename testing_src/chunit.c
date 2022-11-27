@@ -477,7 +477,7 @@ static void chunit_pbar_start_test(const chunit_test *test,
     const chunit_test_suite *suite = mod->suites[pbar_c->suite_i];
 
     // Module Name ( progress bar ) suite_name test_name
-    printf(TESTING_CHUNIT_PBAR_FMT " %s" CC_BOLD CC_BRIGHT_MAGENTA " :: " CC_RESET
+    safe_printf(TESTING_CHUNIT_PBAR_FMT " %s" CC_BOLD CC_BRIGHT_MAGENTA " :: " CC_RESET
             CC_ITALIC CC_FAINT "%s [%d]" CC_RESET, pbar_c->mod->name, pbar, 
             pbar_c->mod->suites[pbar_c->suite_i]->name,
             test->name, pid);
@@ -501,7 +501,7 @@ static void chunit_pbar_end_test(chunit_test_run *run, void *test_context) {
 
         pbar[TESTING_CHUNIT_PBAR_WIDTH] = '\0';
 
-        printf(TESTING_CHUNIT_PBAR_FMT 
+        safe_printf(TESTING_CHUNIT_PBAR_FMT 
                 " Done" CC_RESET "\n", pbar_c->mod->name, pbar);
     }
 }

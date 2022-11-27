@@ -6,6 +6,7 @@
 #include <sys/_pthread/_pthread_mutex_t.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
 #include <sys/_types/_pid_t.h>
+#include <sys/_types/_sigset_t.h>
 #include <sys/_types/_ssize_t.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -83,6 +84,15 @@ extern core_state *_core_state;
 // This will exit if there is an error setting up
 // the core.
 void init_core_state(uint8_t nmcs);
+
+// NOTE the core state has an elaborate sigint handler
+// which prints output, these calls are used to block
+// SIGINT in times when reentrance must be avoided.
+void _block_sigint(sigset_t *old);
+
+static inline void _restore_sigmask(sigset_t *old) {
+    pthread_sigmask(SIG_SETMASK, old, NULL);
+}
 
 // The lock wrappers on core will also block SIGINT.
 // This way, this way SIGINT will never interrupt a thread

@@ -2,9 +2,6 @@
 #include "log.h"
 #include <pthread.h>
 #include <stdlib.h>
-#include <sys/_types/_pid_t.h>
-#include <sys/_types/_sigset_t.h>
-#include <sys/_types/_ssize_t.h>
 #include <sys/errno.h>
 #include <inttypes.h>
 #include <sys/wait.h>
@@ -14,6 +11,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include "./io.h"
 
 // Below lies a list type which doesn't use any of the core safe
 // mechanisms, it is specifically for holding pids and that's it!
@@ -91,19 +89,18 @@ static void cl_remove(child_list *cl, uint64_t i) {
     cl->len--;
 }
 
-// When we receive a SIGINT, just redirect to safe_exit.
+// NOTE this handler is the sole reason we must
+// use safe print everywhere in our program.
+//
+// Since we redirect to safe_exit, and safe_exit
+// prints output, we must make sure to block 
+// SIGINT whenever we print else where.
+// Otherwise, there would be potential for
+// a reentrance error!
 static void safe_sigint_handler(int signo) {
     (void)signo;
 
-    // Since our core state blocks SIGINT when
-    // locked, It is impossible this function is entered
-    // by a thread which already is locked on the core state.
-
-    // NOTE, this would be nice to have, but printf shouldn't
-    // be used in a signal handler?? Without some sort of safety
-    // checks???
-    //
-    //printf("\n" CC_ITALIC "Handling SIGINT..." CC_RESET "\n");
+    safe_printf("\n" CC_ITALIC "Handling SIGINT..." CC_RESET "\n");
 
     safe_exit(0);
 }
@@ -140,6 +137,22 @@ void init_core_state(uint8_t nmcs) {
     signal(SIGINT, safe_sigint_handler); 
 }
 
+void _block_sigint(sigset_t *old) {
+    sigset_t mask;
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    pthread_sigmask(SIG_BLOCK, &mask, old);
+}
+
+// NOTE in the below lock functions it is crucial to
+// remember that when we acquire any lock on the core,
+// SIGINT is also blocked.
+//
+// Sometimes, (like when using printf) we must block SIGINT
+// but do not need to lock on the core. In this case,
+// we should use the functions _block_sigint and _restore_sigmask.
+
 static void edit_sigint(int how) {
     sigset_t set;
     sigemptyset(&set);
@@ -165,6 +178,8 @@ void _unlock_core_state() {
 }
 
 void core_logf(uint8_t lck, const char *fmt, ...) {
+    // To read the root field, we need to lock and block
+    // on the core.
     if (lck) {
         _rdlock_core_state();
     }
@@ -178,6 +193,13 @@ void core_logf(uint8_t lck, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
 
+    sigset_t old;
+
+    // To just print output, we simply need to block SIGINT.
+    if (lck) {
+        _block_sigint(&old);
+    }
+
     if (root) {
         printf(CC_BRIGHT_CYAN "[ROOT] " CC_RESET CC_ITALIC CC_FAINT);
     } else {
@@ -188,6 +210,10 @@ void core_logf(uint8_t lck, const char *fmt, ...) {
     vprintf(fmt, args);
 
     printf(CC_RESET "\n");
+
+    if (lck) {
+        _restore_sigmask(&old);
+    }
 
     va_end(args);
 }

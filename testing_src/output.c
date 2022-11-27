@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include "../core_src/mem.h"
+#include "../core_src/io.h"
 
 const char *CHUNIT_TR_NAMES[CHUNIT_FATAL_ERROR + 1] = {
     "Void",
@@ -49,7 +50,7 @@ const char *CHUNIT_FE_NAMES[CHUNIT_TERMINATION_ERROR + 1] = {
 #define BULLET_PREFIX UC_VERTICAL_LINE " " UC_SHIP_WHEEL " "
 
 #define PRINT_RESULT(prefix, s_style, n_style, plh, name, res) \
-    printf("%s" s_style BULLET_PREFIX CC_RESET n_style name plh CC_RESET "\n", \
+    safe_printf("%s" s_style BULLET_PREFIX CC_RESET n_style name plh CC_RESET "\n", \
             prefix, res)
 
 #define PRINT_COMPARISON(prefix, s_style, n_style, plh, exp, act) \
@@ -63,17 +64,17 @@ const char *CHUNIT_FE_NAMES[CHUNIT_TERMINATION_ERROR + 1] = {
 
 
 static void print_tr_success(const char *prefix, chunit_test_run *tr) {
-    printf("%s" HEADER_FMT(S_SUCC) 
+    safe_printf("%s" HEADER_FMT(S_SUCC) 
             N_SUCC " (Success)" CC_RESET "\n", 
             prefix, tr->test->name);
 }
 
 static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
-    printf("%s" TL_CORNER_FMT(S_WARN) 
+    safe_printf("%s" TL_CORNER_FMT(S_WARN) 
             N_WARN " (Warning)" CC_RESET "\n", 
             prefix, tr->test->name);
 
-    printf("%s" S_WARN UC_VERTICAL_LINE " %s" CC_RESET "\n", 
+    safe_printf("%s" S_WARN UC_VERTICAL_LINE " %s" CC_RESET "\n", 
             prefix, CHUNIT_TR_NAMES[tr->result]);
 
     switch (tr->result) {
@@ -110,7 +111,7 @@ static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
             break;
 
         case CHUNIT_TIMEOUT:
-            printf("%s" S_WARN BULLET_PREFIX CC_RESET N_WARN
+            safe_printf("%s" S_WARN BULLET_PREFIX CC_RESET N_WARN
                     "Process exceeded specified time limit (%lu)" CC_RESET "\n", 
                     prefix, tr->test->timeout);
             break;
@@ -121,17 +122,17 @@ static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
             break;
     }
 
-    printf("%s" BL_CORNER_FMT(S_WARN) "\n", prefix);
+    safe_printf("%s" BL_CORNER_FMT(S_WARN) "\n", prefix);
 }
 
 static void print_tr_fail(const char *prefix, chunit_test_run *tr) {
-    printf("%s" HEADER_FMT(S_FAIL) 
+    safe_printf("%s" HEADER_FMT(S_FAIL) 
             N_FAIL " (Failure)" CC_RESET "\n", 
             prefix, tr->test->name);
 }
 
 static void print_tr_framework_err(const char *prefix, chunit_test_run *tr) {
-    printf("%s" TL_CORNER_FMT(S_FRER)
+    safe_printf("%s" TL_CORNER_FMT(S_FRER)
             N_FRER " (Framework Error)" CC_RESET "\n", 
             prefix, tr->test->name);
 
@@ -141,17 +142,17 @@ static void print_tr_framework_err(const char *prefix, chunit_test_run *tr) {
 
         const char *err_msg = CHUNIT_FE_NAMES[fr_err];
 
-        printf("%s" S_FRER UC_VERTICAL_LINE " %s" CC_RESET "\n", 
+        safe_printf("%s" S_FRER UC_VERTICAL_LINE " %s" CC_RESET "\n", 
                 prefix, err_msg);
 
         if (fr_err == CHUNIT_TERMINATION_ERROR) {
-            printf("%s" S_FRER BULLET_PREFIX CC_RESET 
+            safe_printf("%s" S_FRER BULLET_PREFIX CC_RESET 
                     N_FRER  "Consider confirming process %d has terminated." CC_RESET "\n", 
                     prefix, tr->child);
         }
     }
     
-    printf("%s" BL_CORNER_FMT(S_FRER) "\n", prefix);
+    safe_printf("%s" BL_CORNER_FMT(S_FRER) "\n", prefix);
 
 }
 
@@ -192,11 +193,11 @@ static char *concat_prefixes(const char *p1, const char *p2) {
 
 static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr) {
     if (tsr->successes == tsr->suite->tests_len) {
-        printf("%s" HEADER_FMT(S_SUCC) 
+        safe_printf("%s" HEADER_FMT(S_SUCC) 
                 N_SUCC " (%" PRIu64 " of %" PRIu64 " Tests Succeeded)" CC_RESET "\n", 
                 prefix, tsr->suite->name, tsr->successes, tsr->suite->tests_len);
     } else {
-        printf("%s" TL_CORNER_FMT(S_FAIL) 
+        safe_printf("%s" TL_CORNER_FMT(S_FAIL) 
                 N_FAIL " (%" PRIu64  " of %" PRIu64 " Tests Failed)" CC_RESET "\n",
                 prefix, tsr->suite->name, tsr->suite->tests_len - tsr->successes, tsr->suite->tests_len);
 
@@ -215,7 +216,7 @@ static void print_test_suite_run(const char *prefix, chunit_test_suite_run *tsr)
 
         safe_free(new_prefix);
 
-        printf("%s" BL_CORNER_FMT(S_FAIL) "\n", prefix);
+        safe_printf("%s" BL_CORNER_FMT(S_FAIL) "\n", prefix);
     }
 }
 
@@ -237,9 +238,9 @@ void chunit_print_test_suite_run(chunit_test_suite_run *tsr) {
 // Don't really need to give a prefix for this.
 void chunit_print_test_module_run(chunit_test_module_run *tmr) {
     if (tmr->mod->suites_len == 0) {
-        printf(HEADER_FMT(S_MOD) "\n", tmr->mod->name);
+        safe_printf(HEADER_FMT(S_MOD) "\n", tmr->mod->name);
     } else {
-        printf(TL_CORNER_FMT(S_MOD) "\n", tmr->mod->name);
+        safe_printf(TL_CORNER_FMT(S_MOD) "\n", tmr->mod->name);
         
         uint64_t i;
         for (i = 0; i < tmr->mod->suites_len; i++) {
@@ -248,7 +249,7 @@ void chunit_print_test_module_run(chunit_test_module_run *tmr) {
             print_test_suite_run(S_MOD UC_VERTICAL_LINE " " CC_RESET, tsr);
         }
 
-        printf(BL_CORNER_FMT(S_MOD) "\n");
+        safe_printf(BL_CORNER_FMT(S_MOD) "\n");
     }
 }
 
