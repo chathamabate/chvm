@@ -93,7 +93,11 @@ void _unlock_core_state();
 
 // Logging function used by core and accessable to
 // the user!
-void core_logf(const char *fmt, ...);
+//
+// lck is whether or not the lock must be aquired.
+// If we arlready have the lock (in read or write mode)
+// lck should be 0, 1 otherwise.
+void core_logf(uint8_t lck, const char *fmt, ...);
 
 int safe_fork();
 

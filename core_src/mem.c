@@ -27,7 +27,7 @@ void *safe_malloc(uint8_t chnl, size_t size) {
         return ptr;
     }
 
-    core_logf("Process failed to malloc.");
+    core_logf(1, "Process failed to malloc.");
     safe_exit(1);
 
     // Should never make it here.
@@ -52,7 +52,7 @@ void *safe_realloc(void *ptr, size_t size) {
         return new_ptr;
     }
 
-    core_logf("Process failed to realloc.");
+    core_logf(1, "Process failed to realloc.");
     safe_exit(1);
 
     // Should never make it here.

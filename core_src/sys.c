@@ -95,6 +95,16 @@ static void cl_remove(child_list *cl, uint64_t i) {
 static void safe_sigint_handler(int signo) {
     (void)signo;
 
+    // Since our core state blocks SIGINT when
+    // locked, It is impossible this function is entered
+    // by a thread which already is locked on the core state.
+
+    // NOTE, this would be nice to have, but printf shouldn't
+    // be used in a signal handler?? Without some sort of safety
+    // checks???
+    //
+    //printf("\n" CC_ITALIC "Handling SIGINT..." CC_RESET "\n");
+
     safe_exit(0);
 }
 
@@ -154,10 +164,16 @@ void _unlock_core_state() {
     edit_sigint(SIG_UNBLOCK);
 }
 
-void core_logf(const char *fmt, ...) {
-    _rdlock_core_state();
+void core_logf(uint8_t lck, const char *fmt, ...) {
+    if (lck) {
+        _rdlock_core_state();
+    }
+
     uint8_t root = _core_state->root;
-    _unlock_core_state();
+
+    if (lck) {
+        _unlock_core_state();
+    }
 
     va_list args;
     va_start(args, fmt);
@@ -210,7 +226,7 @@ int safe_fork() {
     if (cl_add(_core_state->children, fres) == -1) {
         // There's been an error adding the child to the list...
         // what should we do... Maybe just tell the user.
-        core_logf("Child process %d was unable to be recorded. Confirm its termination.", 
+        core_logf(0, "Child process %d was unable to be recorded. Confirm its termination.", 
                 fres); 
     }
 
@@ -240,9 +256,9 @@ void safe_exit_param(int code, uint8_t q) {
             if (!q) {
                 // Check anyway.
                 if (err) {
-                    core_logf("There was an error terminating process %d.", child);
+                    core_logf(0, "There was an error terminating process %d.", child);
                 } else {
-                    core_logf("Process %d was successfully terminated.", child);
+                    core_logf(0, "Process %d was successfully terminated.", child);
                 }
             }
         }
@@ -256,11 +272,15 @@ void safe_exit_param(int code, uint8_t q) {
         uint8_t chnl;
         for (chnl = 0; chnl < _core_state->num_mem_chnls; chnl++) {
             if (_core_state->mem_chnls[chnl]) {
-                core_logf("Memory leak found in channel %u. (%" PRIu64 " leaks)", 
+                core_logf(0, "Memory leak found in channel %u. (%" PRIu64 " leaks)", 
                         chnl, _core_state->mem_chnls[chnl]);
             }
         }
     }
+
+    // NOTE logging in here using printf could cause major problems!!!
+    // We must always make sure our SIGINT handler is blocked when 
+    // using printf!
 
     // Delete the memory channels.
     free(_core_state->mem_chnls);
@@ -306,7 +326,7 @@ pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts) {
         }
 
         if (i == _core_state->children->len) {
-            core_logf("Unknown child process was reaped %d.", res);
+            core_logf(0, "Unknown child process was reaped %d.", res);
         } else {
             cl_remove(_core_state->children, i);
         }
