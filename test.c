@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <string.h>
 
+#include "core_src/io.h"
 #include "testing_src/chunit.h"
 #include "testing_src/assert.h"
 #include "core_src/mem.h"
@@ -18,8 +19,8 @@
 #include "./util_src/test/mod.h"
 #include "./gc_src/mem.h"
 
-// This works!!!
 #include <pthread.h>
+
 
 int safe_main(void) {
     chunit_test_module_run *tmr = chunit_run_module_pb(&UTIL_TEST_MOD);

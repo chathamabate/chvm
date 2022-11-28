@@ -298,7 +298,7 @@ void safe_exit_param(int code, uint8_t q) {
         uint8_t chnl;
         for (chnl = 0; chnl < _core_state->num_mem_chnls; chnl++) {
             if (_core_state->mem_chnls[chnl]) {
-                core_logf(0, "Memory leak found in channel %u. (%" PRIu64 " leaks)", 
+                core_logf(0, "Memory leak found in channel %u. (%" PRIu64 ")", 
                         chnl, _core_state->mem_chnls[chnl]);
             }
         }

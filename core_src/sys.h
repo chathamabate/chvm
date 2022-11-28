@@ -49,6 +49,14 @@
 // NOTE : 
 // All system call wrappers will be atomic on the core state
 // that they modify.
+//
+// NOTE :
+// I did not anticpate the POSIX standard for how threads propegate
+// when a process is forked. So DO NOT use safe fork when using a
+// process which has already spawned multiple threads.
+// Always do threading after forking... 
+// If you do decide to fork a multi threaded program, the behavoir
+// is undefined and probably UNSAFE.
 
 typedef struct child_list_struct child_list;
 
@@ -109,6 +117,8 @@ void _unlock_core_state();
 // lck should be 0, 1 otherwise.
 void core_logf(uint8_t lck, const char *fmt, ...);
 
+// This will fork and record the child's pid in the
+// _core_state.
 int safe_fork();
 
 // Safe exit should always be called over normal exit
