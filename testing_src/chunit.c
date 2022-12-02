@@ -295,7 +295,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
 }
 
 chunit_test_run *chunit_run_test(const chunit_test *test,
-        const chunit_test_decorator *decorator, void *test_context) {
+        const chunit_test_decorator *decorator, void *context) {
     int fds[2];
 
     if (pipe(fds)) {
@@ -319,13 +319,13 @@ chunit_test_run *chunit_run_test(const chunit_test *test,
     }
 
     if (decorator) {
-        decorator->start_test(test, pid, test_context);
+        decorator->start_test(test, pid, context);
     }
 
     chunit_test_run *tr = chunit_parent_process(fds, test, pid);
     
     if (decorator) {
-        decorator->end_test(tr, test_context);
+        decorator->end_test(tr, context);
     }
 
     return tr;
@@ -344,17 +344,17 @@ static chunit_test_suite_run *new_test_suite_run(const chunit_test_suite *suite)
 }
 
 chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite, 
-        const chunit_test_suite_decorator *decorator, void *suite_context) {
+        const chunit_test_suite_decorator *decorator, void *context) {
     chunit_test_suite_run *tsr = new_test_suite_run(suite);
 
     uint64_t i;
     for (i = 0; i < tsr->suite->tests_len; i++) {
         chunit_test_run *tr;
         if (decorator) {
-            void *test_context = decorator->get_test_context(suite, i, suite_context);
+            decorator->prep_context(suite, i, context);
             tr = chunit_run_test(suite->tests[i], 
-                    decorator->test_decorator, test_context);
-            decorator->cleanup_test_context(test_context);
+                    decorator->test_decorator, context);
+            decorator->cleanup_context(context);
         } else {
             tr = chunit_run_test(suite->tests[i], NULL, NULL);
         }
@@ -398,7 +398,7 @@ new_test_module_run(const chunit_test_module *mod) {
 }
 
 chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
-        const chunit_test_module_decorator *decorator, void *mod_context) {
+        const chunit_test_module_decorator *decorator, void *context) {
     chunit_test_module_run *tmr = new_test_module_run(mod);
 
     uint64_t i;
@@ -406,10 +406,10 @@ chunit_test_module_run *chunit_run_module(const chunit_test_module *mod,
 
         chunit_test_suite_run *tsr;
         if (decorator) {
-            void *suite_context = decorator->get_suite_context(mod, i, mod_context);
+            decorator->prep_context(mod, i, context);
             tsr = chunit_run_suite(mod->suites[i], 
-                    decorator->suite_decorator, suite_context);
-            decorator->cleanup_suite_context(suite_context);
+                    decorator->suite_decorator, context);
+            decorator->cleanup_context(context);
         } else {
             tsr = chunit_run_suite(mod->suites[i], NULL, NULL);
         }
@@ -511,40 +511,38 @@ static const chunit_test_decorator CHUNIT_PBAR_TEST_DEC = {
     .end_test = chunit_pbar_end_test
 };
 
-static void *chunit_pbar_get_test_context(const chunit_test_suite *suite, 
-        uint64_t i, void *suite_context) {
-    // Here we are just passing along the context from the module.
-    return suite_context;
+static void chunit_pbar_suite_prep_context(const chunit_test_suite *suite, 
+        uint64_t i, void *context) {
+
 }
  
-static void chunit_pbar_cleanup_test_context(void *test_context) {
+static void chunit_pbar_suite_cleanup_context(void *context) {
     // Same thing here, nothing to be done.
 }
 
 static const chunit_test_suite_decorator CHUNIT_PBAR_TEST_SUITE_DEC = {
     .test_decorator = &CHUNIT_PBAR_TEST_DEC,
 
-    .get_test_context = chunit_pbar_get_test_context,
-    .cleanup_test_context = chunit_pbar_cleanup_test_context,
+    .prep_context = chunit_pbar_suite_prep_context,
+    .cleanup_context = chunit_pbar_suite_cleanup_context,
 };
 
 
-static void *chunit_pbar_get_suite_context(const chunit_test_module *mod,
-        uint64_t i, void *mod_context) {
-    chunit_pbar_context *pbar_c = (chunit_pbar_context *)mod_context; 
+static void chunit_pbar_module_prep_context(const chunit_test_module *mod,
+        uint64_t i, void *context) {
+    chunit_pbar_context *pbar_c = (chunit_pbar_context *)context; 
     pbar_c->suite_i = i;    // Here just update the suite index.
-    return pbar_c; 
 }
 
-static void chunit_pbar_cleanup_suite_context(void *suite_context) {
+static void chunit_pbar_module_cleanup_context(void *suite_context) {
     // Don't need to do anything here!
 }
 
 static const chunit_test_module_decorator CHUNIT_PBAR_MOD_DEC = {
     .suite_decorator = &CHUNIT_PBAR_TEST_SUITE_DEC,
 
-    .get_suite_context = chunit_pbar_get_suite_context,
-    .cleanup_suite_context = chunit_pbar_cleanup_test_context,
+    .prep_context = chunit_pbar_module_prep_context,
+    .cleanup_context = chunit_pbar_module_cleanup_context,
 };
 
 chunit_test_module_run *chunit_run_module_pb(const chunit_test_module *mod) {

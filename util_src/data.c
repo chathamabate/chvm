@@ -3,30 +3,21 @@
 #include <string.h>
 #include <stdio.h>
 
-typedef struct util_linked_list_node util_ll_node;
+typedef struct util_linked_list_node_header util_ll_node_header;
 
-typedef struct util_linked_list_node {
-    util_ll_node *nxt;
-    util_ll_node *prv;
-
-    void *data;
-} util_ll_node;
+typedef struct util_linked_list_node_header {
+    util_ll_node_header *nxt;
+    util_ll_node_header *prv;
+} util_ll_node_header;
 
 typedef struct util_linked_list {
     size_t cell_size;
 
     uint64_t len;
 
-    util_ll_node *start;
-    util_ll_node *end;
+    util_ll_node_header *start;
+    util_ll_node_header *end;
 } util_ll;
-
-// Should containers store pointers???
-// Should the store pointers to data cells???
-// With data cells, we can have variable sized items
-// that can be deleted entirely by the list itself!
-// I personally like this more!
-// Fuck this init stuff, simply add a pointer if thats easier!
 
 util_ll *new_linked_list(uint8_t chnl, size_t cs) {
     if (cs == 0) {
@@ -44,14 +35,11 @@ util_ll *new_linked_list(uint8_t chnl, size_t cs) {
 }
 
 void delete_linked_list(util_ll *ll) {
-    util_ll_node *iter = ll->start;
-    util_ll_node *temp_iter;
+    util_ll_node_header *iter = ll->start;
+    util_ll_node_header *temp_iter;
 
     while (iter) {
         temp_iter = iter->nxt;
-        
-        // Free data cell.
-        safe_free(iter->data);
 
         // Free node itself.
         safe_free(iter);
@@ -65,8 +53,11 @@ void delete_linked_list(util_ll *ll) {
 void *ll_next(util_ll *ll) {
     uint8_t chnl = get_chnl(ll);
 
-    util_ll_node *next = safe_malloc(chnl, sizeof(util_ll_node));
-    next->data = safe_malloc(chnl, ll->cell_size);
+    util_ll_node_header *next = 
+        safe_malloc(chnl, sizeof(util_ll_node_header) + ll->cell_size);
+    
+    // Start of the data section of the node.
+    void *data = &(next[1]);
     
     next->prv = ll->end;
     next->nxt = NULL;
@@ -80,7 +71,7 @@ void *ll_next(util_ll *ll) {
     
     ll->len++;
 
-    return next->data;
+    return data;
 }
 
 void ll_add(util_ll *ll, void *src) {
@@ -92,10 +83,10 @@ uint64_t ll_len(util_ll *ll) {
 }
 
 uint8_t ll_contains(util_ll *ll, void *val_ptr, equator eq) {
-    util_ll_node *iter = ll->start;
+    util_ll_node_header *iter = ll->start;
 
     while (iter) {
-        if (eq(iter->data, val_ptr)) {
+        if (eq(&(iter[1]), val_ptr)) {
             return 1;
         }
 
