@@ -67,6 +67,6 @@ void *adb_get(addr_book *adb, addr_book_lookup vaddr);
 
 // Mark a specific virtual address as unused.
 // Again, does no checking that vaddr is valid and in use.
-void abd_free(addr_book *adb, addr_book_lookup vaddr);
+void adb_free(addr_book *adb, addr_book_lookup vaddr);
 
 #endif

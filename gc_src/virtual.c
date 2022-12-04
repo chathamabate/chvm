@@ -192,7 +192,7 @@ void *adb_get(addr_book *adb, addr_book_lookup vaddr) {
     return adt_get(adb->arr[vaddr.table].adt, vaddr.index);
 }
 
-void abd_free(addr_book *adb, addr_book_lookup vaddr) {
+void adb_free(addr_book *adb, addr_book_lookup vaddr) {
     addr_book_entry *entry = adb->arr + vaddr.table;    
     
     uint8_t newly_incomplete = adt_is_full(entry->adt); 

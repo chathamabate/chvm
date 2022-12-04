@@ -186,13 +186,60 @@ static const chunit_test ADB_SET = {
     .timeout = 5,
 };
 
+static void test_adb_free(int pipe_fd) {
+    const uint64_t init_cap = 2;
+    const uint64_t table_cap = 2;
+
+    addr_book *adb = new_addr_book(1, init_cap, table_cap);
+
+    uint64_t i;
+    for (i = 0; i < 4; i++) {
+        adb_put(adb, NULL);
+    }
+
+    const uint64_t vaddrs_len = 3;
+    addr_book_lookup vaddrs[vaddrs_len] = {
+        {.table = 1, .index = 0}, 
+        {.table = 0, .index = 1}, 
+        {.table = 1, .index = 1}, 
+    };
+
+    for (i = 0; i < vaddrs_len; i++) {
+        adb_free(adb, vaddrs[i]);
+    }
+
+    // Again, these tests take advantage of the fact
+    // that I know exactly how slots are freed.
+    
+    addr_book_lookup new_vaddr0 = adb_put(adb, NULL);
+    assert_eq_uint(pipe_fd, 0, new_vaddr0.table);
+    assert_eq_uint(pipe_fd, 1, new_vaddr0.index);
+
+    addr_book_lookup new_vaddr1 = adb_put(adb, NULL);
+    assert_eq_uint(pipe_fd, 1, new_vaddr1.table);
+    assert_eq_uint(pipe_fd, 1, new_vaddr1.index);
+
+    addr_book_lookup new_vaddr2 = adb_put(adb, NULL);
+    assert_eq_uint(pipe_fd, 1, new_vaddr2.table);
+    assert_eq_uint(pipe_fd, 0, new_vaddr2.index);
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_FREE = {
+    .name = "Address Book Free",
+    .t = test_adb_free,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
     .tests = {
         &ADB_NEW_ADDR_BOOK,
         &ADB_PUT_AND_GET,
         &ADB_SET,
+        &ADB_FREE,
     },
-    .tests_len = 3
+    .tests_len = 4
 };
 
