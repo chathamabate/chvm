@@ -31,9 +31,35 @@ static void test_adt_put_and_get(int pipe_fd) {
     delete_addr_table(adt);
 }
 
-static const chunit_test ADT_ADD_AND_GET = {
+static const chunit_test ADT_PUT_AND_GET = {
     .name = "Address Table Put and Get",
     .t = test_adt_put_and_get,
+    .timeout = 5,
+};
+
+static void test_adt_set(int pipe_fd) {
+    const uint64_t table_len = 4;
+    addr_table *adt = new_addr_table(1, table_len);
+
+    uint64_t ptable[table_len];
+
+    uint64_t i;
+    for (i = 0; i < table_len; i++) {
+        adt_put(adt, ptable + i);
+    }
+
+    adt_set(adt, 0, ptable + 1);
+    assert_eq_ptr(pipe_fd, ptable + 1, adt_get(adt, 0));
+
+    adt_set(adt, 3, ptable);
+    assert_eq_ptr(pipe_fd, ptable, adt_get(adt, 3));
+    
+    delete_addr_table(adt);
+}
+
+static const chunit_test ADT_SET = {
+    .name = "Address Table Set",
+    .t = test_adt_set,
     .timeout = 5,
 };
 
@@ -69,19 +95,104 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
     .name = "Address Table Test Suite",
     .tests = {
         &ADT_NEW_ADDR_TABLE,
-        &ADT_ADD_AND_GET,
+        &ADT_PUT_AND_GET,
+        &ADT_SET,
         &ADT_FREE,
     },
-    .tests_len = 3
+    .tests_len = 4
 };
 
+// Address Book Suite Below.
 
+static void test_new_addr_book(int pipe_fd) {
+    addr_book *adb = new_addr_book(1, 10, 10);
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_NEW_ADDR_BOOK = {
+    .name = "New Address Book",
+    .t = test_new_addr_book,
+    .timeout = 5
+};
+
+static void test_adb_put_and_get(int pipe_fd) {
+    const uint64_t init_cap = 2;
+    const uint64_t table_cap = 2;
+
+    addr_book *adb = new_addr_book(1, init_cap, table_cap);
+
+    // Here we are pseudo testing auto expansion of the 
+    // address book.
+    
+    uint64_t table, ind;
+    void *paddr;
+
+    for (table = 0; table < 3; table++) {
+        for (ind = 0; ind < table_cap; ind++) {
+            void *paddr = (void *)((table * table_cap) + ind);
+
+            addr_book_lookup vaddr = adb_put(adb, paddr);
+            
+            // NOTE: 
+            // This is somewhat questionable testing.
+            // We are assuming we know the exact inner workings
+            // of the adb (that slots will be given out consecutively)
+            // This is not a requirement of the data structure.
+            //
+            // However, to ensure the specifics of the code I wrote 
+            // work, I am OK with this.
+            
+            assert_eq_uint(pipe_fd, table, vaddr.table);
+            assert_eq_uint(pipe_fd, ind, vaddr.index);
+
+            assert_eq_ptr(pipe_fd, paddr, adb_get(adb, vaddr));
+        }        
+    }
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_PUT_AND_GET = {
+    .name = "Address Book Put and Get",
+    .t = test_adb_put_and_get,
+    .timeout = 5
+};
+
+static void test_adb_set(int pipe_fd) {
+    const uint64_t init_cap = 2;
+    const uint64_t table_cap = 2;
+
+    addr_book *adb = new_addr_book(1, init_cap, table_cap);
+
+    void *paddrs[] = {
+        (void *)54, (void *)23, (void *)10 // Dummy addresses.
+    };
+
+    adb_put(adb, paddrs[0]);
+    addr_book_lookup vaddr = adb_put(adb, paddrs[1]);
+    adb_put(adb, paddrs[2]);
+
+    assert_eq_ptr(pipe_fd, paddrs[1], adb_get(adb, vaddr));
+
+    adb_set(adb, vaddr, paddrs[0]);
+    assert_eq_ptr(pipe_fd, paddrs[0], adb_get(adb, vaddr));
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_SET = {
+    .name = "Address Book Set",
+    .t = test_adb_set,
+    .timeout = 5,
+};
 
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
     .tests = {
-
+        &ADB_NEW_ADDR_BOOK,
+        &ADB_PUT_AND_GET,
+        &ADB_SET,
     },
-    .tests_len = 0
+    .tests_len = 3
 };
 

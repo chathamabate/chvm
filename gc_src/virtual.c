@@ -62,8 +62,14 @@ uint64_t adt_put(addr_table *adt, void *paddr) {
 
     void *table_start = (void *)(adt_h + 1);
 
-    // Same as dividing by 8 here. (Converting from address to index.)
-    return (uint64_t)((void *)free_cell - table_start) >> 3;
+    return (uint64_t)((void *)free_cell - table_start) / sizeof(void *);
+}
+
+void adt_set(addr_table *adt, uint64_t ind, void *paddr) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    void **table_start = (void *)(adt_h + 1);
+
+    table_start[ind] = paddr;
 }
 
 void *adt_get(addr_table *adt, uint64_t ind) {
@@ -158,7 +164,7 @@ addr_book_lookup adb_put(addr_book *adb, void *paddr) {
     
     // Get the table to add to.
     addr_book_entry *entry = adb->incomplete_tables;
-    uint64_t table = (uint64_t)((void *)entry - (void *)(adb->arr)) >> 3;
+    uint64_t table = (uint64_t)((void *)entry - (void *)(adb->arr)) / sizeof(addr_book_entry);
     uint64_t index = adt_put(entry->adt, paddr);
 
     addr_book_lookup lookup = {
@@ -176,6 +182,11 @@ addr_book_lookup adb_put(addr_book *adb, void *paddr) {
 
     return lookup;
 }
+
+void adb_set(addr_book *adb, addr_book_lookup vaddr, 
+        void *paddr) {
+    adt_set(adb->arr[vaddr.table].adt, vaddr.index, paddr);
+} 
 
 void *adb_get(addr_book *adb, addr_book_lookup vaddr) {
     return adt_get(adb->arr[vaddr.table].adt, vaddr.index);
