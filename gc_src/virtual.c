@@ -1,6 +1,5 @@
 #include "./virtual.h"
 
-
 typedef struct {
     void **free_list;
 
@@ -49,16 +48,29 @@ uint8_t adt_has_next(addr_table *adt) {
     return ((addr_table_header *)adt)->free_list != NULL;
 }
 
-uint64_t adt_next(addr_table *adt) {
+uint64_t adt_put(addr_table *adt, void *paddr) {
     addr_table_header *adt_h = (addr_table_header *)adt;
 
+    // Get the next free cell.
     void **free_cell = adt_h->free_list;
+
+    // Remove it from the free list.
     adt_h->free_list = *free_cell;
+
+    // Place the physical address into the free cell.
+    *free_cell = paddr;
 
     void *table_start = (void *)(adt_h + 1);
 
     // Same as dividing by 8 here. (Converting from address to index.)
     return (uint64_t)((void *)free_cell - table_start) >> 3;
+}
+
+void *adt_get(addr_table *adt, uint64_t ind) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    void **table_start = (void *)(adt_h + 1);
+
+    return table_start[ind];
 }
 
 void adt_free(addr_table *adt, uint64_t ind) {
@@ -78,11 +90,13 @@ typedef struct addr_book_entry_struct {
     addr_table *adt;
 } addr_book_entry;
 
-// Basically an array list of addr_tables *s with
+// Basically an array list of addr_entries *s with
 // special functionality.
-typedef struct {
+typedef struct addr_book_struct {
     uint64_t len;
     uint64_t cap;
+
+    // Capcity of each table in the book.
     uint64_t table_cap;
 
     // NOTE:
@@ -91,36 +105,94 @@ typedef struct {
     // This list will link every table which has room
     // for at least one more physicall address.
     addr_book_entry *incomplete_tables;
-} addr_book_header;
+
+    // Since arr will grow, we cannot have it be built
+    // into this struct.
+    addr_book_entry *arr;
+} addr_book;
 
 addr_book *new_addr_book(uint8_t chnl, 
         uint64_t init_cap, uint64_t table_cap) {
-    addr_book *adb = safe_malloc(chnl, 
-            sizeof(addr_book_header) + (init_cap * sizeof(addr_book_entry)));
-
-    addr_book_header *adb_h = (addr_book_header *)adb;
+    addr_book *adb = safe_malloc(chnl, sizeof(addr_book));
     
-    // Create header.
-    adb_h->cap = init_cap;
-    adb_h->table_cap = table_cap;
-    adb_h->incomplete_tables = NULL; // No tables allocated yet.
-    adb_h->len = 0;
+    adb->cap = init_cap;
+    adb->table_cap = table_cap;
+    adb->incomplete_tables = NULL; // No tables allocated yet.
+    adb->len = 0;
 
-    // Leave body of address book uninitializied.
+    adb->arr = safe_malloc(chnl, sizeof(addr_book_entry) * init_cap);
 
     return adb;
 }
 
 void delete_addr_book(addr_book *adb) {
-    addr_book_header *adb_h = (addr_book_header *)adb;
-    addr_book_entry *adb_entries = (addr_book_entry *)(adb_h + 1);
-
     uint64_t i;
-    for (i = 0; i < adb_h->len; i++) {
-        delete_addr_table(adb_entries[i].adt);
+    for (i = 0; i < adb->len; i++) {
+        delete_addr_table(adb->arr[i].adt);
     }
 
+    safe_free(adb->arr);
     safe_free(adb);
 }
 
+addr_book_lookup adb_put(addr_book *adb, void *paddr) {
+    if (adb->incomplete_tables == NULL) {
+        // Here the are no available entries in any current
+        // tables. We must add a new table.
+
+        // Check to see if we must expand.
+        if (adb->len == adb->cap) {
+            adb->cap *= 2;
+            adb->arr = safe_realloc(adb->arr, sizeof(addr_book_entry) *adb->cap);
+        }
+        
+        addr_book_entry *new_entry = adb->arr + adb->len++;
+
+        // Create new entry.
+        new_entry->next = NULL;
+        new_entry->adt = new_addr_table(get_chnl(adb), adb->table_cap);
+
+        // Add entry to the incomplete list.
+        adb->incomplete_tables = new_entry;
+    }
+    
+    // Get the table to add to.
+    addr_book_entry *entry = adb->incomplete_tables;
+    uint64_t table = (uint64_t)((void *)entry - (void *)(adb->arr)) >> 3;
+    uint64_t index = adt_put(entry->adt, paddr);
+
+    addr_book_lookup lookup = {
+        .table = table,
+        .index = index,
+    };
+
+    // Finally, see if the table we just added to is no longer
+    // incomplete.
+
+    if (adt_is_full(entry->adt)) {
+        adb->incomplete_tables = entry->next;
+        entry->next = NULL; // Not totally needed but whatevs.
+    }
+
+    return lookup;
+}
+
+void *adb_get(addr_book *adb, addr_book_lookup vaddr) {
+    return adt_get(adb->arr[vaddr.table].adt, vaddr.index);
+}
+
+void abd_free(addr_book *adb, addr_book_lookup vaddr) {
+    addr_book_entry *entry = adb->arr + vaddr.table;    
+    
+    uint8_t newly_incomplete = adt_is_full(entry->adt); 
+
+    adt_free(entry->adt, vaddr.index);
+
+    // If we have freed a slot in a previously full
+    // table, add the table to the incomplete list!
+    if (newly_incomplete) {
+        entry->next = adb->incomplete_tables;
+        adb->incomplete_tables = entry;
+    }
+}
 
