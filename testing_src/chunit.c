@@ -463,7 +463,7 @@ static void chunit_fill_pbar(char pbar[], uint64_t amt, uint64_t tot) {
     pbar[TESTING_CHUNIT_PBAR_WIDTH] = '\0';
 }
 
-#define TESTING_CHUNIT_PBAR_FMT "\33[2K\r" CC_BRIGHT_BLUE "%-20.20s"  \
+#define TESTING_CHUNIT_PBAR_FMT "\33[2K\r" CC_BRIGHT_BLUE "%-35.35s"  \
     CC_BRIGHT_MAGENTA "%s" CC_RESET
 
 static void chunit_pbar_start_test(const chunit_test *test, 

@@ -3,6 +3,44 @@
 
 #include "../core_src/mem.h"
 
+// NOTE :
+// Here are some design notes on GC.
+//
+// V1 design:
+// My first idea was to have a single root object 
+// and a set of all object refernces.
+// The GC would then work in a genreational manner.
+// When triggered it would create a new set and mark
+// objects by traversing from the root.
+// Marked objects would be added to the set.
+// After the marking, all left over objects in
+// the original set would be freed.
+//
+// This way would be very easy to implement, however I assume
+// it would also have poor performance. No objects could ever 
+// be moved, resulting in lots of fragementation. 
+//
+// V2 Design:
+// Here what I want is the potential for virtual addresses.
+// This way objects can be moved by a conccurent GC thread
+// without needing to "stop the world".
+// So, there will have be some sort of virtual to physical address table?
+// Virtual addresses must be constant!
+
+typedef struct {
+    void *free_list;
+} address_table_header;
+
+typedef struct {
+    // e isn't really needed here.
+    void *addr;
+} address_entry;
+
+typedef struct {
+    void    *addr_t;
+    uint64_t ind;
+} virtual_address;
+
 // Time to think this through at some point!
 
 // Here we will use a reference counting approach

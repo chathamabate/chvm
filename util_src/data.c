@@ -78,22 +78,23 @@ void ll_add(util_ll *ll, void *src) {
     memcpy(ll_next(ll), src, ll->cell_size);
 }
 
+void *ll_get(util_ll *ll, uint64_t i) {
+    if (i >= ll->len) {
+        return NULL;
+    }
+
+    uint64_t c;
+    util_ll_node_header *iter = ll->start;
+    for (c = 0; c < i; c++) {
+        iter = iter->nxt;
+    } 
+
+    return &(iter[1]);
+}
+
 uint64_t ll_len(util_ll *ll) {
     return ll->len;
 }
 
-uint8_t ll_contains(util_ll *ll, void *val_ptr, equator eq) {
-    util_ll_node_header *iter = ll->start;
-
-    while (iter) {
-        if (eq(&(iter[1]), val_ptr)) {
-            return 1;
-        }
-
-        iter = iter->nxt;
-    }
-
-    return 0;
-}
 
 
