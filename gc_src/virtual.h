@@ -16,13 +16,6 @@ static inline void delete_addr_table(addr_table *adt) {
 // Get the capcity of the table (This is fixed)
 uint64_t adt_cap(addr_table *adt);
 
-// Whether or not this table has any more free entries.
-uint8_t adt_has_next(addr_table *adt);
-
-static inline uint8_t adt_is_full(addr_table *adt) {
-    return !adt_has_next(adt);
-}
-
 // This puts a physical address into the address table.
 // It returns the index of the new entry.
 // Assumes there is room for this address,

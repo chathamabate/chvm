@@ -27,8 +27,6 @@ static void test_adt_put_and_get(int pipe_fd) {
         adt_unlock(adt, i);
     }
 
-    assert_true(pipe_fd, adt_is_full(adt));
-
     delete_addr_table(adt);
 }
 
@@ -82,8 +80,6 @@ static void test_adt_free(int pipe_fd) {
     assert_eq_int(pipe_fd, 1, adt_put(adt, NULL));
     assert_eq_int(pipe_fd, 0, adt_put(adt, NULL));
     assert_eq_int(pipe_fd, 3, adt_put(adt, NULL));
-
-    assert_false(pipe_fd, adt_has_next(adt));
 
     delete_addr_table(adt);
 }

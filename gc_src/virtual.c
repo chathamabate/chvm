@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
 #include "../core_src/thread.h"
+#include "mem.h"
 
 typedef struct addr_table_entry_struct {
     // Lock for the table entry.
@@ -78,17 +79,6 @@ uint64_t adt_cap(addr_table *adt) {
     // No need for locking as cap should never
     // be changed.
     return ((addr_table_header *)adt)->cap;
-}
-
-uint8_t adt_has_next(addr_table *adt) {
-    uint8_t has_next;
-    addr_table_header *adt_h = (addr_table_header *)adt;
-
-    safe_rdlock(&(adt_h->free_list_lock));
-    has_next = adt_h->free_list != NULL;
-    safe_rwlock_unlock(&(adt_h->free_list_lock));
-
-    return has_next;
 }
 
 uint64_t adt_put(addr_table *adt, void *paddr) {
@@ -183,9 +173,7 @@ void adt_free(addr_table *adt, uint64_t ind) {
     safe_rwlock_unlock(&(entry->lock));
 }
 
-// NOTE: the incomplete list will use 1 indexed indeces.
-// This saves 0 for describing a NULL index.
-// This property IS NOT exposed to the user.
+#define NULL_INDEX UINT64_MAX
 
 typedef struct addr_book_entry_struct {
     // This field will only be used when a table is in
@@ -211,19 +199,15 @@ typedef struct addr_book_struct {
     // arr is often realloced and moved around.
     uint64_t incomplete_tables;
 
-    // This lock will make sure we are editing the incomplete
-    // table list atomically.
-    pthread_rwlock_t incomplete_tables_lock;
-
     // Since arr will grow, we cannot have it be built
     // into this struct.
     uint64_t len;
     uint64_t cap;
     addr_book_entry *arr;
 
-    // This lock will only come into play during a
-    // resize. Otherwise, it won't do much.
-    pthread_rwlock_t arr_lock;
+    // The lock will enforce sequential puts and frees to
+    // the book.
+    pthread_rwlock_t put_lock;
 } addr_book;
 
 addr_book *new_addr_book(uint8_t chnl, 
@@ -232,15 +216,12 @@ addr_book *new_addr_book(uint8_t chnl,
     
     *(uint64_t *)&(adb->table_cap) = table_cap;
 
-    adb->incomplete_tables = 0; // No tables allocated yet. 
-                                // Remember (1 indexed)
-                                
-    safe_rwlock_init(&(adb->incomplete_tables_lock), NULL);
-    
+    // No incomplete tables yet.
+    adb->incomplete_tables = NULL_INDEX;
     adb->len = 0;
     adb->cap = init_cap;
     adb->arr = safe_malloc(chnl, sizeof(addr_book_entry) * init_cap);
-    safe_rwlock_init(&(adb->arr_lock), NULL);
+    safe_rwlock_init(&(adb->put_lock), NULL);
 
     return adb;
 }
@@ -260,13 +241,11 @@ void delete_addr_book(addr_book *adb) {
 }
 
 addr_book_lookup adb_put(addr_book *adb, void *paddr) {
-    safe_wrlock(&(adb->incomplete_tables_lock));
-    safe_wrlock(&(adb->arr_lock));
+    safe_wrlock(&(adb->put_lock));
 
-    if (adb->incomplete_tables == 0) { // i.e. there are no incomplete tables.
+    if (adb->incomplete_tables == NULL_INDEX) { // i.e. there are no incomplete tables.
         // Here the are no available entries in any current
         // tables. We must add a new table (and maybe even resize)
-        
         
         // Check to see if we must expand.
         if (adb->len == adb->cap) {
@@ -280,11 +259,11 @@ addr_book_lookup adb_put(addr_book *adb, void *paddr) {
         addr_book_entry *new_entry = adb->arr + adb->len++;
 
         // Create new entry.
-        new_entry->next = 0; // (pseudo NULL pointer)
+        new_entry->next = NULL_INDEX;
         new_entry->adt = new_addr_table(get_chnl(adb), adb->table_cap);
 
         // Add entry to the incomplete list.
-        adb->incomplete_tables = adb->len; // (1 index)
+        adb->incomplete_tables = adb->len - 1;
     }
 
     // Here we know with certainty there is at least 1 incomplete table
@@ -292,9 +271,9 @@ addr_book_lookup adb_put(addr_book *adb, void *paddr) {
     // Now we will need to read from and write to arr to prep our book entry.
     
     // Get the table to add to.
-    addr_book_entry *entry = adb->arr + (adb->incomplete_tables - 1);
+    addr_book_entry *entry = adb->arr + adb->incomplete_tables;
 
-    uint64_t table = adb->incomplete_tables - 1; // Convert back to zero index.
+    uint64_t table = adb->incomplete_tables; // Convert back to zero index.
     uint64_t index = adt_put(entry->adt, paddr);
 
     addr_book_lookup lookup = {
@@ -304,16 +283,20 @@ addr_book_lookup adb_put(addr_book *adb, void *paddr) {
 
     // Finally, see if the table we just added to is no longer
     // incomplete.
+    
+    addr_table_header *adt_h = (addr_table_header *)(entry->adt);
 
-    if (adt_is_full(entry->adt)) {
+    // NOTE: this is noted below too...
+    // We are assuming the user only has access to the address book,
+    // not the underlying adts. Thus, since this call is atomic on adb,
+    // we don't need to worry about locking for the adt.
+    if (((addr_table_header *)entry->adt)->free_list == NULL) {
         // Remove it from the incomplete tables list.
         adb->incomplete_tables = entry->next;
         entry->next = 0; // Not totally needed but whatevs.
     }
 
-    safe_rwlock_unlock(&(adb->arr_lock));
-    safe_rwlock_unlock(&(adb->incomplete_tables_lock));
-
+    safe_rwlock_unlock(&(adb->put_lock));
     return lookup;
 }
 
@@ -325,9 +308,9 @@ static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table) {
     // realloced or moved around, adt below will always be
     // correct.
     
-    safe_rdlock(&(adb->arr_lock));
+    safe_rdlock(&(adb->put_lock));
     adt = adb->arr[table].adt;
-    safe_rwlock_unlock(&(adb->arr_lock));
+    safe_rwlock_unlock(&(adb->put_lock));
 
     return adt;
 }
@@ -350,12 +333,19 @@ void adb_unlock(addr_book *adb, addr_book_lookup vaddr) {
 }
 
 void adb_free(addr_book *adb, addr_book_lookup vaddr) {
-    safe_wrlock(&(adb->incomplete_tables_lock));
-    safe_wrlock(&(adb->arr_lock));
-
-    addr_book_entry *entry = adb->arr + vaddr.table;    
+    // NOTE: For this implementation we are assumeing that
+    // the user does not have access ot the individual adts held
+    // in this address book.
+    //
+    // Thus, because this call is atomic on the address book,
+    // we do not need to worry about thread safety for the adts.
     
-    uint8_t newly_incomplete = adt_is_full(entry->adt); 
+    safe_wrlock(&(adb->put_lock));
+    
+    addr_book_entry *entry = adb->arr + vaddr.table;    
+    addr_table_header *adt_h = (addr_table_header *)(entry->adt);
+    
+    uint8_t newly_incomplete = adt_h->free_list == NULL;
 
     adt_free(entry->adt, vaddr.index);
 
@@ -363,10 +353,9 @@ void adb_free(addr_book *adb, addr_book_lookup vaddr) {
     // table, add the table to the incomplete list!
     if (newly_incomplete) {
         entry->next = adb->incomplete_tables;
-        adb->incomplete_tables = vaddr.table + 1; // convert to 1 index.
+        adb->incomplete_tables = vaddr.table;
     }
 
-    safe_rwlock_unlock(&(adb->arr_lock));
-    safe_rwlock_unlock(&(adb->incomplete_tables_lock));
+    safe_rwlock_unlock(&(adb->put_lock));
 }
 
