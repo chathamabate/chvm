@@ -25,28 +25,33 @@ static inline uint8_t adt_is_full(addr_table *adt) {
 
 // This puts a physical address into the address table.
 // It returns the index of the new entry.
+// Assumes there is room for this address,
+// behavoir is undefined if there is not.
 uint64_t adt_put(addr_table *adt, void *paddr);
+
+// NOTE: in the below functions, there is no index checking.
+// Be Careful, make sure your index is in bounds and
+// points to a valid cell.
 
 // Edit an already in use cell in the table.
 void adt_set(addr_table *adt, uint64_t ind, void *paddr);
 
 // Get the physical address at ind.
-// If the index points an empty cell, NULL will be
-// returned.
-// If the index points to an active cell, a read lock
-// for the cell will be requested.
+// The read lock will be requested on the address.
 void *adt_get_read(addr_table *adt, uint64_t ind);
 
-// Same as adt_get_read, except with a read lock.
+// Same as adt_get_read, except with a write lock.
 void *adt_get_write(addr_table *adt, uint64_t ind);
 
 // Unlock the entry at index.  
-// Do nothing if index points to an empty cell.
 void adt_unlock(addr_table *adt, uint64_t ind);
 
 // This takes an occupied cell and adds it to the
 // free list. 
 // If index is out of bounds, behavoir is undefined.
+// NOTE: ind should not be used to access this cell
+// after return. It is imperative that we only free a
+// cell when all threads are done working with it.
 void adt_free(addr_table *adt, uint64_t ind);
 
 typedef struct addr_book_struct addr_book;
@@ -73,7 +78,11 @@ void adb_set(addr_book *adb, addr_book_lookup vaddr,
 // physical address back.
 // Behavoir undefined if virtual address
 // has not been initialized yet.
-void *adb_get(addr_book *adb, addr_book_lookup vaddr);
+void *adb_get_read(addr_book *adb, addr_book_lookup vaddr);
+
+void *adb_get_write(addr_book *adb, addr_book_lookup vaddr);
+
+void adb_unlock(addr_book *adb, addr_book_lookup vaddr);
 
 // Mark a specific virtual address as unused.
 // Again, does no checking that vaddr is valid and in use.

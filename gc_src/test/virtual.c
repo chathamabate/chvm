@@ -23,7 +23,8 @@ static void test_adt_put_and_get(int pipe_fd) {
     uint64_t i;
     for (i = 0; i < table_len; i++) {
         assert_eq_uint(pipe_fd, i, adt_put(adt, ptable + i));
-        assert_eq_ptr(pipe_fd, ptable + i, adt_get(adt, i));
+        assert_eq_ptr(pipe_fd, ptable + i, adt_get_read(adt, i));
+        adt_unlock(adt, i);
     }
 
     assert_true(pipe_fd, adt_is_full(adt));
@@ -49,10 +50,12 @@ static void test_adt_set(int pipe_fd) {
     }
 
     adt_set(adt, 0, ptable + 1);
-    assert_eq_ptr(pipe_fd, ptable + 1, adt_get(adt, 0));
+    assert_eq_ptr(pipe_fd, ptable + 1, adt_get_read(adt, 0));
+    adt_unlock(adt, 0);
 
     adt_set(adt, 3, ptable);
-    assert_eq_ptr(pipe_fd, ptable, adt_get(adt, 3));
+    assert_eq_ptr(pipe_fd, ptable, adt_get_read(adt, 3));
+    adt_unlock(adt, 3);
     
     delete_addr_table(adt);
 }
@@ -145,7 +148,8 @@ static void test_adb_put_and_get(int pipe_fd) {
             assert_eq_uint(pipe_fd, table, vaddr.table);
             assert_eq_uint(pipe_fd, ind, vaddr.index);
 
-            assert_eq_ptr(pipe_fd, paddr, adb_get(adb, vaddr));
+            assert_eq_ptr(pipe_fd, paddr, adb_get_read(adb, vaddr));
+            adb_unlock(adb, vaddr);
         }        
     }
 
@@ -172,10 +176,12 @@ static void test_adb_set(int pipe_fd) {
     addr_book_lookup vaddr = adb_put(adb, paddrs[1]);
     adb_put(adb, paddrs[2]);
 
-    assert_eq_ptr(pipe_fd, paddrs[1], adb_get(adb, vaddr));
+    assert_eq_ptr(pipe_fd, paddrs[1], adb_get_read(adb, vaddr));
+    adb_unlock(adb, vaddr);
 
     adb_set(adb, vaddr, paddrs[0]);
-    assert_eq_ptr(pipe_fd, paddrs[0], adb_get(adb, vaddr));
+    assert_eq_ptr(pipe_fd, paddrs[0], adb_get_read(adb, vaddr));
+    adb_unlock(adb, vaddr);
 
     delete_addr_book(adb);
 }
