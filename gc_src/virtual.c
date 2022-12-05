@@ -1,41 +1,58 @@
 #include "./virtual.h"
+#include <pthread.h>
+
+typedef struct addr_table_entry_struct {
+    // Lock for the table entry.
+    pthread_rwlock_t lock;
+
+    // Whether or not this cell is active.
+    uint8_t empty;
+
+    // If this is an empty cell, we will store a pointer
+    // to the next empty cell in the table.
+    // Otherwise, we will store the physical address
+    // stored in the cell.
+    union {
+        void *paddr;
+        struct addr_table_entry_struct *next_free;
+    };
+} addr_table_entry;
 
 typedef struct {
-    void **free_list;
+    // The free list will link together cells which
+    // are not in use.
+    addr_table_entry *free_list;
 
-    // Add thread safety at some point.
-
-    // How many addresses will be contained in the 
-    // table. 
-    uint64_t cap; 
+    // This lock will be used for reading from and writing
+    // to specifically the free list pointer above.
+    // All other thread safety will be entry specific.
+    pthread_rwlock_t free_list_lock;
+    
+    // How many entry will be contained in the 
+    // table. THIS NEVER CHANGES.
+    // Thus, no locks should be needed on it.
+    const uint64_t cap; 
 } addr_table_header;
 
 addr_table *new_addr_table(uint8_t chnl, uint64_t cap) {
     addr_table *adt = safe_malloc(chnl, 
-            sizeof(addr_table_header) + (cap * sizeof(void *)));
+            sizeof(addr_table_header) + (cap * sizeof(addr_table_entry)));
 
     addr_table_header *adt_h = (addr_table_header *)adt;
-
-    void **iter = (void **)(adt_h + 1);
+    
+    addr_table_entry *iter = (addr_table_entry *)(adt_h + 1);
+    addr_table_entry *end = iter + cap;
     
     adt_h->free_list = iter;
-    adt_h->cap = cap;
+    *(uint64_t *)&(adt_h->cap) = cap; // Hacky way of setting our constant.
+    
+    // TODO finish up table creation.
 
-    // This is the table section.
-    // Each entry in the table will either contain a pointer
-    // to some place in memory, or a pointer to the next free
-    // cell in the table.
-    // 
-    // Upon creation, the table will contain only free cells.
-
-    uint64_t c;
-    for (c = 0; c < cap - 1; c++, iter++) {
-        *iter = iter + 1;
+    for (; iter < end; iter++) {
     }
 
     // The last cell will mark the end of the initial
     // free list.
-    *iter = NULL;
 
     return adt;
 }

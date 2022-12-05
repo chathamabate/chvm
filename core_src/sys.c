@@ -121,7 +121,9 @@ void init_core_state(uint8_t nmcs) {
     }
 
     _core_state->root = 1;
-    pthread_rwlock_init(&(_core_state->core_lock), NULL);
+    if (pthread_rwlock_init(&(_core_state->core_lock), NULL)) {
+        init_core_err("Unable to create core lock.");
+    }
 
     if (!(_core_state->children = new_child_list())) {
         init_core_err("Unable to allocate child list.");
@@ -161,19 +163,33 @@ static void edit_sigint(int how) {
     pthread_sigmask(how, &set, NULL);
 }
 
+// NOTE: the below three functions are only be used within
+// the core module. Hence the underscore.
+// Additionally, they are never to be used in safe exit.
+// When we call safe exit, we must alway exit.
+
 void _rdlock_core_state() {
     edit_sigint(SIG_BLOCK);
-    pthread_rwlock_rdlock(&(_core_state->core_lock));
+    if (pthread_rwlock_rdlock(&(_core_state->core_lock))) {
+        core_logf(0, "Error while acquiring read lock on core.");
+        safe_exit(1);
+    }
 }
 
 void _wrlock_core_state() {
     edit_sigint(SIG_BLOCK);
-    pthread_rwlock_wrlock(&(_core_state->core_lock));
+    if (pthread_rwlock_wrlock(&(_core_state->core_lock))) {
+        core_logf(0, "Error while acquiring write lock on core.");
+        safe_exit(1);
+    }
 }
 
 void _unlock_core_state() {
     // NOTE : The order is essential HERE!
-    pthread_rwlock_unlock(&(_core_state->core_lock));
+    if (pthread_rwlock_unlock(&(_core_state->core_lock))) {
+        core_logf(0, "Error while releasing lock on core.");
+        safe_exit(1);
+    }
     edit_sigint(SIG_UNBLOCK);
 }
 
@@ -261,7 +277,20 @@ int safe_fork() {
 }
 
 void safe_exit_param(int code, uint8_t q) {
-    _wrlock_core_state();
+    edit_sigint(SIG_BLOCK);
+
+    // If there is an error acquiring the read lock on the core
+    // who knows what the core will hold when we read/write to
+    // it in the below code.
+    // Thus, we will just exit and warn the user about what 
+    // happened.
+    if (pthread_rwlock_wrlock(&(_core_state->core_lock))) {
+        // We have SIGINT blocked, so no need to call safe_printf.
+        printf(CC_RED "[%d] " CC_RESET CC_FAINT CC_ITALIC  
+                "Error acquiring core lock on exit." CC_RESET, getpid());
+
+        exit(1); 
+    }
 
     if (_core_state->root) {
         // Now, we are going to iterate over the child processes

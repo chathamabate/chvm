@@ -30,9 +30,19 @@ uint64_t adt_put(addr_table *adt, void *paddr);
 // Edit an already in use cell in the table.
 void adt_set(addr_table *adt, uint64_t ind, void *paddr);
 
-// Get the address stored at the specific index.
-// This does no checking whether or not ind is valid.
-void *adt_get(addr_table *adt, uint64_t ind);
+// Get the physical address at ind.
+// If the index points an empty cell, NULL will be
+// returned.
+// If the index points to an active cell, a read lock
+// for the cell will be requested.
+void *adt_get_read(addr_table *adt, uint64_t ind);
+
+// Same as adt_get_read, except with a read lock.
+void *adt_get_write(addr_table *adt, uint64_t ind);
+
+// Unlock the entry at index.  
+// Do nothing if index points to an empty cell.
+void adt_unlock(addr_table *adt, uint64_t ind);
 
 // This takes an occupied cell and adds it to the
 // free list. 
