@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <time.h>
 #include "../core_src/mem.h"
+#include <pthread.h>
 
 // Memory channel 0 will be used for all dynamic testing 
 // objects.
@@ -62,10 +63,15 @@ typedef enum {
 // write error from the test to the parent.
 #define CHUNIT_PIPE_ERROR_EXIT_CODE 3
 
+// This exit code should be used when we have
+// trouble acquiring the assertion lock.
+#define CHUNIT_MUTEX_ERROR_EXIT_CODE 4
+
 // This enum is seeing whether or not an error
 // occured in the framework.
 typedef enum {
     CHUNIT_PIPE_ERROR = 0,
+    CHUNIT_MUTEX_ERROR,
     CHUNIT_FORK_ERROR,
     CHUNIT_BAD_TEST_RESULT,
     CHUNIT_TERMINATION_ERROR,
@@ -94,19 +100,22 @@ static inline void delete_ferror_list(ferror_list *fl) {
     safe_free(fl);
 }
 
-// 5 second timeout for all tests.
-#define CHUNIT_TIMEOUT_S 5
-
 // Parent process organization...
+
+// This is a newer addition to the framework.
+// A test may spawn threads, thus assertion calls must
+// be thread safe. In order for this to be the case,
+// we must introduce a mutex.
+typedef struct {
+    int pipe_fd; // pipe for communicating with parent.
+    pthread_mutex_t mut; 
+} chunit_test_context;
 
 typedef struct {
     const char *name;
     const time_t timeout; // Length of test run (in seconds)
 
-    // NOTE, this will be the runnable test itself.
-    // It must be given a pipe file descriptor
-    // to be able to communicate with the parent.
-    void (*t)(int pipe_fd);
+    void (*t)(chunit_test_context *tc);
 } chunit_test;
 
 typedef struct {

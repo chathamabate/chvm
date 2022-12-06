@@ -8,7 +8,7 @@
 
 #include "../../core_src/mem.h"
 
-static void test_new_linked_list(int pipe_fd) {
+static void test_new_linked_list(chunit_test_context *tc) {
     util_ll *ll = new_linked_list(1, 1);
     delete_linked_list(ll);
 }
@@ -19,13 +19,13 @@ static const chunit_test LL_NEW_LINKED_LIST = {
     .timeout = 5,
 };
 
-static void test_ll_next(int pipe_fd) {
+static void test_ll_next(chunit_test_context *tc) {
     util_ll *ll = new_linked_list(1, sizeof(int64_t));
 
     *(int64_t *)ll_next(ll) = 10;
     *(int64_t *)ll_next(ll) = -5;
 
-    assert_eq_uint(pipe_fd, 2, ll_len(ll));
+    assert_eq_uint(tc, 2, ll_len(ll));
 
     delete_linked_list(ll);
 }
@@ -36,16 +36,16 @@ static const chunit_test LL_NEXT = {
     .timeout = 5,
 };
 
-static void test_ll_add_and_get(int pipe_fd) {
+static void test_ll_add_and_get(chunit_test_context *tc) {
     util_ll *ll = new_linked_list(1, sizeof(int64_t));
 
     int64_t v1 = 10, v2 = 5;
     ll_add(ll, &v1);
     ll_add(ll, &v2);
 
-    assert_true(pipe_fd, *(int64_t *)ll_get(ll, 0) == 10);
-    assert_true(pipe_fd, *(int64_t *)ll_get(ll, 1) == 5);
-    assert_eq_ptr(pipe_fd, NULL, ll_get(ll, 2));
+    assert_true(tc, *(int64_t *)ll_get(ll, 0) == 10);
+    assert_true(tc, *(int64_t *)ll_get(ll, 1) == 5);
+    assert_eq_ptr(tc, NULL, ll_get(ll, 2));
 
     delete_linked_list(ll);
 }

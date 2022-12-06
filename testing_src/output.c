@@ -26,6 +26,7 @@ const char *CHUNIT_TR_NAMES[CHUNIT_FATAL_ERROR + 1] = {
 
 const char *CHUNIT_FE_NAMES[CHUNIT_TERMINATION_ERROR + 1] = {
     "Pipe Error",
+    "Mutex Error",
     "Fork Error",
     "Bad Test Result",
     "Termination Error",

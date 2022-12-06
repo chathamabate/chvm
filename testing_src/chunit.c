@@ -183,6 +183,14 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
         return tr;
     }
 
+    // Check if there was an error with the mutex. (OUR ERROR)
+    if (WEXITSTATUS(stat) == CHUNIT_MUTEX_ERROR_EXIT_CODE) {
+        fl_add(tr->errors, CHUNIT_MUTEX_ERROR);
+        attempt_safe_close(tr, pipe_fd);
+        
+        return tr;
+    }
+
     // This is a positive exit status outside of the pipe error exit code.
     if (WEXITSTATUS(stat) > 0) {
         // Ashamed of the copy and paste which occured here.

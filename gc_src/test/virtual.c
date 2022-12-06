@@ -4,7 +4,7 @@
 #include "../../testing_src/assert.h"
 #include "../../core_src/sys.h"
 
-static void test_new_addr_table(int pipe_fd) {
+static void test_new_addr_table(chunit_test_context *tc) {
     addr_table *adt = new_addr_table(1, 5);
     delete_addr_table(adt);
 }
@@ -15,7 +15,7 @@ static const chunit_test ADT_NEW_ADDR_TABLE = {
     .timeout = 5,
 };
 
-static void test_adt_put_and_get(int pipe_fd) {
+static void test_adt_put_and_get(chunit_test_context *tc) {
     const uint64_t table_len = 4;
     addr_table *adt = new_addr_table(1, table_len);
 
@@ -23,8 +23,8 @@ static void test_adt_put_and_get(int pipe_fd) {
 
     uint64_t i;
     for (i = 0; i < table_len; i++) {
-        assert_eq_uint(pipe_fd, i, adt_put(adt, ptable + i));
-        assert_eq_ptr(pipe_fd, ptable + i, adt_get_read(adt, i));
+        assert_eq_uint(tc, i, adt_put(adt, ptable + i));
+        assert_eq_ptr(tc, ptable + i, adt_get_read(adt, i));
         adt_unlock(adt, i);
     }
 
@@ -37,7 +37,7 @@ static const chunit_test ADT_PUT_AND_GET = {
     .timeout = 5,
 };
 
-static void test_adt_set(int pipe_fd) {
+static void test_adt_set(chunit_test_context *tc) {
     const uint64_t table_len = 4;
     addr_table *adt = new_addr_table(1, table_len);
 
@@ -49,11 +49,11 @@ static void test_adt_set(int pipe_fd) {
     }
 
     adt_set(adt, 0, ptable + 1);
-    assert_eq_ptr(pipe_fd, ptable + 1, adt_get_read(adt, 0));
+    assert_eq_ptr(tc, ptable + 1, adt_get_read(adt, 0));
     adt_unlock(adt, 0);
 
     adt_set(adt, 3, ptable);
-    assert_eq_ptr(pipe_fd, ptable, adt_get_read(adt, 3));
+    assert_eq_ptr(tc, ptable, adt_get_read(adt, 3));
     adt_unlock(adt, 3);
     
     delete_addr_table(adt);
@@ -65,7 +65,7 @@ static const chunit_test ADT_SET = {
     .timeout = 5,
 };
 
-static void test_adt_free(int pipe_fd) {
+static void test_adt_free(chunit_test_context *tc) {
     const uint64_t table_len = 4;
     addr_table *adt = new_addr_table(1, table_len);
 
@@ -78,9 +78,9 @@ static void test_adt_free(int pipe_fd) {
     adt_free(adt, 0);
     adt_free(adt, 1);
 
-    assert_eq_int(pipe_fd, 1, adt_put(adt, NULL));
-    assert_eq_int(pipe_fd, 0, adt_put(adt, NULL));
-    assert_eq_int(pipe_fd, 3, adt_put(adt, NULL));
+    assert_eq_int(tc, 1, adt_put(adt, NULL));
+    assert_eq_int(tc, 0, adt_put(adt, NULL));
+    assert_eq_int(tc, 3, adt_put(adt, NULL));
 
     delete_addr_table(adt);
 }
@@ -104,7 +104,7 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
 
 // Address Book Suite Below.
 
-static void test_new_addr_book(int pipe_fd) {
+static void test_new_addr_book(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 10, 10);
     delete_addr_book(adb);
 }
@@ -115,7 +115,7 @@ static const chunit_test ADB_NEW_ADDR_BOOK = {
     .timeout = 5
 };
 
-static void test_adb_put_and_get(int pipe_fd) {
+static void test_adb_put_and_get(chunit_test_context *tc) {
     const uint64_t init_cap = 2;
     const uint64_t table_cap = 2;
 
@@ -142,10 +142,10 @@ static void test_adb_put_and_get(int pipe_fd) {
             // However, to ensure the specifics of the code I wrote 
             // work, I am OK with this.
             
-            assert_eq_uint(pipe_fd, table, vaddr.table);
-            assert_eq_uint(pipe_fd, ind, vaddr.index);
+            assert_eq_uint(tc, table, vaddr.table);
+            assert_eq_uint(tc, ind, vaddr.index);
 
-            assert_eq_ptr(pipe_fd, paddr, adb_get_read(adb, vaddr));
+            assert_eq_ptr(tc, paddr, adb_get_read(adb, vaddr));
             adb_unlock(adb, vaddr);
         }        
     }
@@ -159,7 +159,7 @@ static const chunit_test ADB_PUT_AND_GET = {
     .timeout = 5
 };
 
-static void test_adb_set(int pipe_fd) {
+static void test_adb_set(chunit_test_context *tc) {
     const uint64_t init_cap = 2;
     const uint64_t table_cap = 2;
 
@@ -173,11 +173,11 @@ static void test_adb_set(int pipe_fd) {
     addr_book_lookup vaddr = adb_put(adb, paddrs[1]);
     adb_put(adb, paddrs[2]);
 
-    assert_eq_ptr(pipe_fd, paddrs[1], adb_get_read(adb, vaddr));
+    assert_eq_ptr(tc, paddrs[1], adb_get_read(adb, vaddr));
     adb_unlock(adb, vaddr);
 
     adb_set(adb, vaddr, paddrs[0]);
-    assert_eq_ptr(pipe_fd, paddrs[0], adb_get_read(adb, vaddr));
+    assert_eq_ptr(tc, paddrs[0], adb_get_read(adb, vaddr));
     adb_unlock(adb, vaddr);
 
     delete_addr_book(adb);
@@ -189,7 +189,7 @@ static const chunit_test ADB_SET = {
     .timeout = 5,
 };
 
-static void test_adb_free(int pipe_fd) {
+static void test_adb_free(chunit_test_context *tc) {
     const uint64_t init_cap = 2;
     const uint64_t table_cap = 2;
 
@@ -215,16 +215,16 @@ static void test_adb_free(int pipe_fd) {
     // that I know exactly how slots are freed.
     
     addr_book_lookup new_vaddr0 = adb_put(adb, NULL);
-    assert_eq_uint(pipe_fd, 0, new_vaddr0.table);
-    assert_eq_uint(pipe_fd, 1, new_vaddr0.index);
+    assert_eq_uint(tc, 0, new_vaddr0.table);
+    assert_eq_uint(tc, 1, new_vaddr0.index);
 
     addr_book_lookup new_vaddr1 = adb_put(adb, NULL);
-    assert_eq_uint(pipe_fd, 1, new_vaddr1.table);
-    assert_eq_uint(pipe_fd, 1, new_vaddr1.index);
+    assert_eq_uint(tc, 1, new_vaddr1.table);
+    assert_eq_uint(tc, 1, new_vaddr1.index);
 
     addr_book_lookup new_vaddr2 = adb_put(adb, NULL);
-    assert_eq_uint(pipe_fd, 1, new_vaddr2.table);
-    assert_eq_uint(pipe_fd, 0, new_vaddr2.index);
+    assert_eq_uint(tc, 1, new_vaddr2.table);
+    assert_eq_uint(tc, 0, new_vaddr2.index);
 
     delete_addr_book(adb);
 }
