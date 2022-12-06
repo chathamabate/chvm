@@ -14,28 +14,33 @@ static void write_result(int pipe_fd, const chunit_test_result res) {
         // we won't even bother to close the pipe... just
         // exit.
         
-        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
     }
 }
 
 static void write_data(int pipe_fd, void *buf, size_t size) {
     if (safe_write(pipe_fd, buf, size)) {
-        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
     } 
 }
 
 static void close_pipe_and_exit(int pipe_fd) {
     if (safe_close(pipe_fd)) {
-        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
     }
 
-    safe_exit_quiet(0);
+    safe_exit(0);
 }
 
 void chunit_child_process(int fds[2], const chunit_test *test) {
+    // NOTE: tests will never print to STDOUT unless specifically
+    // asked to do so. I'd recommend never calling fork within
+    // a test.
+    set_core_quiet(1);
+
     // First, close the read end of the pipe.
     if (safe_close(fds[0])) {
-        safe_exit_quiet(CHUNIT_PIPE_ERROR_EXIT_CODE);
+        safe_exit(CHUNIT_PIPE_ERROR_EXIT_CODE);
     }
 
     // Get write side of pipe.

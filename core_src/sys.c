@@ -193,6 +193,12 @@ void _unlock_core_state() {
     edit_sigint(SIG_UNBLOCK);
 }
 
+void set_core_quiet(uint8_t q) {
+    _wrlock_core_state();
+    _core_state->quiet = q;
+    _unlock_core_state();
+}
+
 void core_logf(uint8_t lck, const char *fmt, ...) {
     // To read the root field, we need to lock and block
     // on the core.
@@ -276,7 +282,7 @@ int safe_fork() {
     return fres;
 }
 
-void safe_exit_param(int code, uint8_t q) {
+void safe_exit(int code) {
     edit_sigint(SIG_BLOCK);
 
     // If there is an error acquiring the read lock on the core
@@ -308,7 +314,7 @@ void safe_exit_param(int code, uint8_t q) {
             }
 
             // Log if wanted.
-            if (!q) {
+            if (!(_core_state->quiet)) {
                 // Check anyway.
                 if (err) {
                     core_logf(0, "There was an error terminating process %d.", child);
@@ -323,7 +329,7 @@ void safe_exit_param(int code, uint8_t q) {
     }
 
     // Only log memory leaks if non quiet.
-    if (!q) {
+    if (!(_core_state->quiet)) {
         uint8_t chnl;
         for (chnl = 0; chnl < _core_state->num_mem_chnls; chnl++) {
             if (_core_state->mem_chnls[chnl]) {

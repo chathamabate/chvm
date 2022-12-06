@@ -4,6 +4,11 @@
 #include "../core_src/thread.h"
 #include "mem.h"
 
+// NOTE:
+//
+// This whole file contains a lot of "thread safe" code...
+// Don't just assume this all works.
+
 typedef struct addr_table_entry_struct {
     // Lock for the table entry.
     pthread_rwlock_t lock;
@@ -240,6 +245,14 @@ void delete_addr_book(addr_book *adb) {
     safe_free(adb);
 }
 
+// NOTE :
+// Only puts and frees change the free list of the underlying 
+// adts in an address book.
+// Since puts and frees are synchronized and the user never
+// gets access to an adt on its own through the address book...
+// We should need to lock on an adt's free list while in adb_put
+// or adb_free?
+
 addr_book_lookup adb_put(addr_book *adb, void *paddr) {
     safe_wrlock(&(adb->put_lock));
 
@@ -307,6 +320,10 @@ static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table) {
     // are always constant. Even if the address book gets
     // realloced or moved around, adt below will always be
     // correct.
+    //
+    // It is essential that the user doesn't have access 
+    // to this function. The user can never have access to
+    // an adt pointer which belongs to an adb.
     
     safe_rdlock(&(adb->put_lock));
     adt = adb->arr[table].adt;

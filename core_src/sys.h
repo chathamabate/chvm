@@ -66,6 +66,9 @@ typedef struct {
     // to fork.
     uint8_t root;
 
+    // Whether or not this process should output.
+    uint8_t quiet;
+
     // Lock to make all operations on core_state
     // atomic.
     pthread_rwlock_t core_lock;
@@ -109,6 +112,9 @@ void _rdlock_core_state();
 void _wrlock_core_state();
 void _unlock_core_state();
 
+// 1 for quiet, 0 for loud.
+void set_core_quiet(uint8_t q);
+
 // Logging function used by core and accessable to
 // the user!
 //
@@ -128,15 +134,7 @@ int safe_fork();
 // q will be whether or not notes should be logged
 // during exit. (i.e which child processes were killed
 // and if there were memory leaks)
-void safe_exit_param(int code, uint8_t q);
-
-static inline void safe_exit(int code) {
-    safe_exit_param(code, 0);
-}
-
-static inline void safe_exit_quiet(int code) {
-    safe_exit_param(code, 1);
-}
+void safe_exit(int code);
 
 // Will return -1 on error, reaped pid on success.
 pid_t safe_waitpid(pid_t pid, int *stat_loc, int opts);

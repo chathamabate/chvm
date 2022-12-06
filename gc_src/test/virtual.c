@@ -2,6 +2,7 @@
 #include "./virtual.h"
 #include "../virtual.h"
 #include "../../testing_src/assert.h"
+#include "../../core_src/sys.h"
 
 static void test_new_addr_table(int pipe_fd) {
     addr_table *adt = new_addr_table(1, 5);
