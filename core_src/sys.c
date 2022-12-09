@@ -199,7 +199,7 @@ void set_core_quiet(uint8_t q) {
     _unlock_core_state();
 }
 
-void core_logf(uint8_t lck, const char *fmt, ...) {
+void vforce_core_logf(uint8_t lck, const char *fmt, va_list args) {
     // To read the root field, we need to lock and block
     // on the core.
     if (lck) {
@@ -211,9 +211,6 @@ void core_logf(uint8_t lck, const char *fmt, ...) {
     if (lck) {
         _unlock_core_state();
     }
-
-    va_list args;
-    va_start(args, fmt);
 
     sigset_t old;
 
@@ -236,6 +233,36 @@ void core_logf(uint8_t lck, const char *fmt, ...) {
     if (lck) {
         _restore_sigmask(&old);
     }
+}
+
+void force_core_logf(uint8_t lck, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+
+    vforce_core_logf(lck, fmt, args);
+
+    va_end(args);
+}
+
+void core_logf(uint8_t lck, const char *fmt, ...) {
+    if (lck) {
+        _rdlock_core_state();
+    }    
+
+    uint8_t q = _core_state->quiet;
+
+    if (lck) {
+        _unlock_core_state();
+    }
+
+    if (q) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+
+    vforce_core_logf(lck, fmt, args);
 
     va_end(args);
 }
@@ -317,7 +344,9 @@ void safe_exit(int code) {
             if (!(_core_state->quiet)) {
                 // Check anyway.
                 if (err) {
-                    core_logf(0, "There was an error terminating process %d.", child);
+                    // NOTE: Always message if there is some sort of child termination
+                    // error.
+                    force_core_logf(0, "There was an error terminating process %d.", child);
                 } else {
                     core_logf(0, "Process %d was successfully terminated.", child);
                 }
@@ -328,12 +357,11 @@ void safe_exit(int code) {
         delete_child_list(_core_state->children);
     }
 
-    // Only log memory leaks if non quiet.
     if (!(_core_state->quiet)) {
         uint8_t chnl;
         for (chnl = 0; chnl < _core_state->num_mem_chnls; chnl++) {
             if (_core_state->mem_chnls[chnl]) {
-                core_logf(0, "Memory leak found in channel %u. (%" PRIu64 ")", 
+                force_core_logf(0, "Memory leak found in channel %u. (%" PRIu64 ")", 
                         chnl, _core_state->mem_chnls[chnl]);
             }
         }

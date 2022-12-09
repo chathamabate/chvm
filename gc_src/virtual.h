@@ -13,6 +13,8 @@ static inline void delete_addr_table(addr_table *adt) {
     safe_free(adt);
 }
 
+// NOTE redesign is needed here!!!!!!!!
+
 // Get the capcity of the table (This is fixed)
 uint64_t adt_cap(addr_table *adt);
 

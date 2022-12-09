@@ -2,7 +2,6 @@
 #include <pthread.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
 #include "../core_src/thread.h"
-#include "mem.h"
 
 // NOTE:
 //
@@ -59,7 +58,6 @@ addr_table *new_addr_table(uint8_t chnl, uint64_t cap) {
     *(uint64_t *)&(adt_h->cap) = cap; // Hacky way of setting our constant.
     safe_rwlock_init(&(adt_h->free_list_lock), NULL);
     
-
     while (iter < end - 1) {
         iter->empty = 1;
         safe_rwlock_init(&(iter->lock), NULL);

@@ -115,6 +115,12 @@ void _unlock_core_state();
 // 1 for quiet, 0 for loud.
 void set_core_quiet(uint8_t q);
 
+void vforce_core_logf(uint8_t lck, const char *fmt, va_list args);
+
+// Same as core_logf, but this will always print.
+// (Regardless of whether the core is privvate.
+void force_core_logf(uint8_t lck, const char *fmt, ...);
+
 // Logging function used by core and accessable to
 // the user!
 //
