@@ -39,9 +39,6 @@ typedef struct {
 // Attempt to put a physical address into the adt.
 addr_table_put_res adt_put(addr_table *adt, void *paddr);
 
-// Edit the paddr of a cell in the table.
-void adt_set(addr_table *adt, uint64_t ind, void *paddr);
-
 // Get the physical address at ind.
 // The read lock will be requested on the address.
 void *adt_get_read(addr_table *adt, uint64_t ind);
@@ -59,6 +56,20 @@ void adt_unlock(addr_table *adt, uint64_t ind);
 // can corrupt the ADT forever.
 //
 addr_table_code adt_free(addr_table *adt, uint64_t index);
+
+typedef struct addr_book_struct addr_book;
+
+typedef struct {
+    const uint64_t table_index;
+    const uint64_t cell_index;
+} addr_book_vaddr;
+
+addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap);
+void delete_addr_book(addr_book *adb);
+
+addr_book_vaddr adb_put(addr_book *adb, void *paddr);
+
+void adb_free(addr_book *adb, addr_book_vaddr vaddr);
 
 
 #endif

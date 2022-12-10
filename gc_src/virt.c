@@ -1,5 +1,6 @@
 #include "./virt.h"
 #include <pthread.h>
+#include <sys/_pthread/_pthread_rwlock_t.h>
 #include "../core_src/sys.h"
 #include "../core_src/thread.h"
 #include "../core_src/mem.h"
@@ -12,22 +13,13 @@ typedef struct {
     // constant.
     const uint64_t cap;
 
-    // Mutex for cyclic free queue.
-    // This must be locked to modify any
-    // of the below variables.
-    pthread_mutex_t free_q_mut;
-
-    // How many items are in the queue.
-    // If this is 0, the table is full.
-    uint64_t q_fill;
-
-    // Inclusive range.
-    uint64_t q_s, q_e;
+    // Mutex for working with the free stack.
+    pthread_rwlock_t free_stack_lck;
+    uint64_t stack_fill;
 } addr_table_header;
 
 // After the header there will be cap * uint64_t indeces.
-// These will form a cyclic queue representing every free
-// entry in the adt so far.
+// This will form a stack of free indeces in the table.
 
 // after this will be the cells themselves.
 
@@ -44,24 +36,22 @@ addr_table *new_addr_table(uint8_t chnl, uint64_t cap) {
     );
 
     addr_table_header *adt_h = (addr_table_header *)adt;
-    uint64_t *free_q = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_q + cap);
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + cap);
 
     // Init the header.
     //
     // Hacky way of setting a constant.
     *(uint64_t *)&(adt_h->cap) = cap;
-    safe_mutex_init(&(adt_h->free_q_mut), NULL);
-    adt_h->q_fill = 0;
-    adt_h->q_s = 0;
-    adt_h->q_e  = 0;
+    safe_rwlock_init(&(adt_h->free_stack_lck), NULL);
+    adt_h->stack_fill = cap; // Free stack starts full.
 
     // Init the free queue.
     // This will hold all cells at first.
     
     uint64_t i;
     for (i = 0; i < cap; i++) {
-        free_q[i] = i;
+        free_stack[i] = i;
     }
 
     // Init each cell now.
@@ -78,7 +68,7 @@ void delete_addr_table(addr_table *adt) {
     uint64_t *free_q = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
 
-    safe_mutex_destroy(&(adt_h->free_q_mut));
+    safe_rwlock_destroy(&(adt_h->free_stack_lck));
 
     uint64_t i;
     for (i = 0; i < adt_h->cap; i++) {
@@ -90,42 +80,30 @@ void delete_addr_table(addr_table *adt) {
 
 addr_table_put_res adt_put(addr_table *adt, void *paddr) {
     addr_table_header *adt_h = (addr_table_header *)adt;
-    uint64_t *free_q = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
 
     addr_table_put_res res;
 
     uint64_t free_ind;
-    safe_mutex_lock(&(adt_h->free_q_mut));
+    safe_wrlock(&(adt_h->free_stack_lck));
 
-    if (adt_h->q_fill == 0) {
+    // No free cells left.
+    if (adt_h->stack_fill == 0) {
         res.code = ADT_NO_SPACE;
-        safe_mutex_unlock(&(adt_h->free_q_mut));
+        safe_rwlock_unlock(&(adt_h->free_stack_lck));
 
         return res;
     }
 
-    // If we make it here threre will always be a free cell
-    // in the table. (Just need to pop it off the queuee)
+    // Here there is a free index in the stack...
+    // Pop it off my friend...
+    free_ind = free_stack[--(adt_h->stack_fill)];
 
-    // NOTE: are queue most pop off from the front...
-    // push to the back.
-    free_ind = free_q[adt_h->q_s];
-    adt_h->q_fill--;
+    res.code = adt_h->stack_fill == 0 
+        ? ADT_NEWLY_FULL : ADT_SUCCESS;
 
-    // Only push queue start forward if there are more
-    // elements in the queue.
-    if (adt_h->q_fill > 0) {
-        adt_h->q_s = (adt_h->q_s + 1) % adt_h->cap;
-        res.code = ADT_SUCCESS;
-    } else {
-        // Here is the case where we have popped the
-        // last cell index off the queue.
-        // Our table is now full.
-        res.code = ADT_NEWLY_FULL;
-    }
-
-    safe_mutex_unlock(&(adt_h->free_q_mut));
+    safe_rwlock_unlock(&(adt_h->free_stack_lck));
 
     // We have aquired our free index...
     // Now to write to it.
@@ -138,25 +116,12 @@ addr_table_put_res adt_put(addr_table *adt, void *paddr) {
     return res;
 }
 
-// Edit the paddr of a cell in the table.
-void adt_set(addr_table *adt, uint64_t ind, void *paddr) {
-    addr_table_header *adt_h = (addr_table_header *)adt;
-    uint64_t *free_q = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
-
-    addr_table_cell *cell = table + ind;
-
-    safe_wrlock(&(cell->lck));
-    cell->paddr = paddr;
-    safe_rwlock_unlock(&(cell->lck));
-}
-
 // Get the physical address at ind.
 // The read lock will be requested on the address.
 void *adt_get_read(addr_table *adt, uint64_t ind) {
     addr_table_header *adt_h = (addr_table_header *)adt;
-    uint64_t *free_q = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
 
     addr_table_cell *cell = table + ind;
 
@@ -168,8 +133,8 @@ void *adt_get_read(addr_table *adt, uint64_t ind) {
 // Same as adt_get_read, except with a write lock.
 void *adt_get_write(addr_table *adt, uint64_t ind) {
     addr_table_header *adt_h = (addr_table_header *)adt;
-    uint64_t *free_q = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
     
     addr_table_cell *cell = table + ind;
 
@@ -181,8 +146,8 @@ void *adt_get_write(addr_table *adt, uint64_t ind) {
 // Unlock the entry at index.  
 void adt_unlock(addr_table *adt, uint64_t ind) {
     addr_table_header *adt_h = (addr_table_header *)adt;
-    uint64_t *free_q = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
 
     addr_table_cell *cell = table + ind;
 
@@ -191,26 +156,242 @@ void adt_unlock(addr_table *adt, uint64_t ind) {
 
 addr_table_code adt_free(addr_table *adt, uint64_t index) {
     addr_table_header *adt_h = (addr_table_header *)adt;
-    uint64_t *free_q = (uint64_t *)(adt_h + 1);
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
 
     addr_table_code res_code;
 
-    safe_mutex_lock(&(adt_h->free_q_mut));
+    safe_wrlock(&(adt_h->free_stack_lck));
 
-    // Case where there are no elements in the queue at
-    // the start of the free.
-    if (adt_h->q_fill == 0) {
-        res_code = ADT_NEWLY_FREE;
-    } else {
-        res_code = ADT_SUCCESS;
-    }
+    // Check to see if the table was previously full.
+    res_code = adt_h->stack_fill == 0 
+        ? ADT_NEWLY_FREE : ADT_SUCCESS;
 
-    uint64_t new_tail = (adt_h->q_e + 1) % adt_h->cap;
-    free_q[new_tail] = index;
+    free_stack[(adt_h->stack_fill)++] = index;
 
-    adt_h->q_fill++;
-
-    safe_mutex_unlock(&(adt_h->free_q_mut));
+    safe_rwlock_unlock(&(adt_h->free_stack_lck));
 
     return res_code;
+}
+
+#define ADB_NULL_INDEX UINT64_MAX
+
+// Our address book will use a doubly linked free list design
+// to allow for easy removal of adts which are not at the head or
+// tail of the list.
+typedef struct addr_book_entry_struct {
+    // This field is not necessarily needed.
+    // However, for clarity, it shall be kept.
+    uint8_t in_free_list;
+
+    // Pointers always with indeces! 
+    uint64_t next; 
+    uint64_t prev;
+
+    addr_table *adt;
+} addr_book_entry;
+
+typedef struct addr_book_struct {
+    const uint64_t table_cap;
+
+    // NOTE: Unlike in adts, address books automatically 
+    // resize themselves. 
+    pthread_rwlock_t lck;
+
+    uint64_t free_list;
+
+    uint64_t book_len;
+    uint64_t book_cap;
+    addr_book_entry *book;
+} addr_book;
+
+addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap) {
+    addr_book *adb = safe_malloc(chnl, sizeof(addr_book));
+
+    *(uint64_t *)&(adb->table_cap) = table_cap;
+
+    safe_rwlock_init(&(adb->lck), NULL);
+
+    adb->free_list = ADB_NULL_INDEX;
+
+    adb->book_len = 0;
+    adb->book_cap = 0;
+    adb->book = NULL;
+
+    return adb;
+}
+
+void delete_addr_book(addr_book *adb) {
+    // This call should never be in parallel with some
+    // other call to the adb... but lock just to be
+    // safe.
+    safe_wrlock(&(adb->lck));
+
+    // Delete all tables in the book.
+    uint64_t i;
+    for (i = 0; i < adb->book_len; i++) {
+        delete_addr_table(adb->book[i].adt);
+    }
+
+    if (adb->book) {
+        safe_free(adb->book);
+    }
+
+    safe_rwlock_unlock(&(adb->lck));
+
+    safe_free(adb);
+}
+
+static inline void adb_try_expand(addr_book *adb) {
+    safe_wrlock(&(adb->lck));
+
+    // Only expand if we need to. (at the time of request)
+    if (adb->free_list != ADB_NULL_INDEX) {
+        safe_rwlock_unlock(&(adb->lck));
+        return;
+    } 
+
+    // Expansion time!
+    // Expand by adding a single new ADT to our book and 
+    // free list!
+
+    // Create our new adt.
+    addr_table *table = new_addr_table(get_chnl(adb), adb->table_cap);
+    uint64_t table_index;
+
+    // Expand book if we need to.
+    if (adb->book_len == adb->book_cap) {
+        adb->book_cap = (adb->book_cap + 1) * 2;
+        adb->book = safe_realloc(adb->book, 
+                sizeof(addr_book_entry) * adb->book_cap);
+    }
+
+    // Store our table in the book and get its index.
+    table_index = adb->book_len; 
+    addr_book_entry *entry = &(adb->book[(adb->book_len)++]);
+
+    // Place our table in the free list.
+    if (adb->free_list != ADB_NULL_INDEX) {
+        adb->book[adb->free_list].prev = table_index;
+    }
+    
+    entry->prev = ADB_NULL_INDEX;
+    entry->next = adb->free_list;
+    adb->free_list = table_index;
+
+    entry->in_free_list = 1;
+
+    safe_rwlock_unlock(&(adb->lck));
+}
+
+static inline void adb_try_removal(addr_book *adb, uint64_t entry_index) {
+    safe_wrlock(&(adb->lck));
+    addr_book_entry *entry = &(adb->book[entry_index]);
+
+    // NOTE: When we expanded, we checked to see if an expansion
+    // was needed, if it wasn't we exited without doing anything.
+    //
+    // Here we will do the same procedure, as another thread could've
+    // already removed this table from the free list.
+    //
+    // Additionally, our table may no longer be full, thus not needing
+    // a removal... To check this, we will need to lock on the ADT
+    // itself, this is ok to do once in a while.
+    
+    if (!(entry->in_free_list)) {
+        safe_rwlock_unlock(&(adb->lck));
+        return;
+    }
+
+    // Ok, this is giving me a headache to think about, so I have
+    // decided to take the safe route. We will read lock on the ADT
+    // for the entire addition to the free list.
+    // This way we know while it is being added, it does in fact have
+    // space.
+    
+    addr_table_header *adt_h = (addr_table_header *)entry->adt; 
+    safe_rdlock(&(adt_h->free_stack_lck));
+
+    // Check if there is space. (If so, don't remove)
+    if (adt_h->stack_fill > 0) {
+        safe_rwlock_unlock(&(adt_h->free_stack_lck));
+        safe_rwlock_unlock(&(adb->lck));
+        return;
+    }
+
+    if (entry->prev != ADB_NULL_INDEX) {
+        adb->book[entry->prev].next = entry->next;
+    }
+
+    if (entry->next != ADB_NULL_INDEX) {
+        adb->book[entry->next].prev = entry->prev;
+    }
+
+    entry->prev = ADB_NULL_INDEX;
+    entry->next = ADB_NULL_INDEX;
+
+    entry->in_free_list = 0;
+
+    safe_rwlock_unlock(&(adt_h->free_stack_lck));
+    safe_rwlock_unlock(&(adb->lck));
+}
+
+
+addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
+    addr_book_vaddr vaddr;
+
+    while (1) {
+        // First we need a table to try to put to.
+        uint64_t entry_index;
+        
+        safe_rdlock(&(adb->lck)); 
+        entry_index = adb->free_list;
+        safe_rwlock_unlock(&(adb->lck));
+
+        // Here there was no table found at the time of search.
+        // So, lets add a new one and try again.
+        if (entry_index == ADB_NULL_INDEX) {
+            adb_try_expand(adb);
+            continue;
+        }
+
+        addr_table *adt;
+
+        // Since adb's never shrink (as of now) we know our
+        // entry index will always point to a valid ADT.
+        safe_rdlock(&(adb->lck));
+        adt = adb->book[entry_index].adt;
+        safe_rwlock_unlock(&(adb->lck));
+
+        // Don't need a lock or index for this one as ADT
+        // addresses remain constant!
+        addr_table_put_res put_res = adt_put(adt, paddr);
+
+        // The entry we pulled ended up being full.
+        // Let's just try again.
+        if (put_res.code == ADT_NO_SPACE) {
+            continue;
+        }
+        
+        // This request filled our table, at this point in time,
+        // it is possible are table is full and in the free list.
+        // Let's try and do a removal.
+        //
+        // NOTE: it is also possible our table is no longer full, or
+        // not even in the free list, try removal will account for
+        // this!
+        if (put_res.code == ADT_NEWLY_FULL) {
+            adb_try_removal(adb, entry_index); 
+        }
+
+        // Regardless of whether a removal occurs,
+        // we have enough to return!
+        *(uint64_t *)&(vaddr.table_index) = entry_index;
+        *(uint64_t *)&(vaddr.cell_index) = put_res.index;
+
+        return vaddr;
+    }
+}
+
+void adb_free(addr_book *adb, addr_book_vaddr vaddr) {
+    
 }
