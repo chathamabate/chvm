@@ -138,10 +138,60 @@ addr_table_put_res adt_put(addr_table *adt, void *paddr) {
     return res;
 }
 
+// Edit the paddr of a cell in the table.
+void adt_set(addr_table *adt, uint64_t ind, void *paddr) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t *free_q = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+
+    addr_table_cell *cell = table + ind;
+
+    safe_wrlock(&(cell->lck));
+    cell->paddr = paddr;
+    safe_rwlock_unlock(&(cell->lck));
+}
+
+// Get the physical address at ind.
+// The read lock will be requested on the address.
+void *adt_get_read(addr_table *adt, uint64_t ind) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t *free_q = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+
+    addr_table_cell *cell = table + ind;
+
+    safe_rdlock(&(cell->lck));
+
+    return cell->paddr;
+}
+
+// Same as adt_get_read, except with a write lock.
+void *adt_get_write(addr_table *adt, uint64_t ind) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t *free_q = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+    
+    addr_table_cell *cell = table + ind;
+
+    safe_wrlock(&(cell->lck));
+
+    return cell->paddr;
+}
+
+// Unlock the entry at index.  
+void adt_unlock(addr_table *adt, uint64_t ind) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t *free_q = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
+
+    addr_table_cell *cell = table + ind;
+
+    safe_rwlock_unlock(&(cell->lck));
+}
+
 addr_table_code adt_free(addr_table *adt, uint64_t index) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_q = (uint64_t *)(adt_h + 1);
-    // addr_table_cell *table = (addr_table_cell *)(free_q + adt_h->cap);
 
     addr_table_code res_code;
 
@@ -160,8 +210,7 @@ addr_table_code adt_free(addr_table *adt, uint64_t index) {
 
     adt_h->q_fill++;
 
-
     safe_mutex_unlock(&(adt_h->free_q_mut));
 
-    return 0;
+    return res_code;
 }
