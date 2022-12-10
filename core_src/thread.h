@@ -3,11 +3,15 @@
 
 #include <pthread.h>
 
-// Safe wrappers for commonly used pthread functions.
+void safe_mutex_init(pthread_mutex_t *mut, pthread_mutexattr_t *attr);
+void safe_mutex_lock(pthread_mutex_t *mut);
+void safe_mutex_unlock(pthread_mutex_t *mut);
+void safe_mutex_destroy(pthread_mutex_t *mut);
 
 void safe_rwlock_init(pthread_rwlock_t *rwlock, pthread_rwlockattr_t *attr);
 void safe_rdlock(pthread_rwlock_t *rwlock);
 void safe_wrlock(pthread_rwlock_t *rwlock);
 void safe_rwlock_unlock(pthread_rwlock_t *rwlock);
+void safe_rwlock_destroy(pthread_rwlock_t *rwlock);
 
 #endif
