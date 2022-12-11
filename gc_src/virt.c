@@ -342,7 +342,6 @@ static inline void adb_try_removal(addr_book *adb, uint64_t entry_index) {
     safe_rwlock_unlock(&(adb->lck));
 }
 
-
 addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
     addr_book_vaddr vaddr;
 
@@ -397,6 +396,34 @@ addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
 
         return vaddr;
     }
+}
+
+static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table_index) {
+    addr_table *adt;
+
+    safe_rdlock(&(adb->lck));
+    adt = adb->book[table_index].adt;
+    safe_rwlock_unlock(&(adb->lck));
+
+    return adt;
+}
+
+void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr) {
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
+
+    return adt_get_read(adt, vaddr.cell_index);
+}
+
+void *adb_get_write(addr_book *adb, addr_book_vaddr vaddr) {
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
+
+    return adt_get_write(adt, vaddr.cell_index);
+}
+
+void adb_unlock(addr_book *adb, addr_book_vaddr vaddr) {
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
+
+    adt_unlock(adt, vaddr.cell_index);
 }
 
 static inline void adb_try_addition(addr_book *adb, uint64_t entry_index) {

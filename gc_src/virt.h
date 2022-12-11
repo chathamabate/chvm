@@ -69,6 +69,12 @@ void delete_addr_book(addr_book *adb);
 
 addr_book_vaddr adb_put(addr_book *adb, void *paddr);
 
+void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr);
+
+void *adb_get_write(addr_book *adb, addr_book_vaddr vaddr);
+
+void adb_unlock(addr_book *adb, addr_book_vaddr vaddr);
+
 void adb_free(addr_book *adb, addr_book_vaddr vaddr);
 
 
