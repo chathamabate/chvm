@@ -1,5 +1,5 @@
-#ifndef GC_TEST_VIRTUAL_H
-#define GC_TEST_VIRTUAL_H
+#ifndef GC_TEST_VIRT_H
+#define GC_TEST_VIRT_H
 
 #include "../../testing_src/chunit.h"
 

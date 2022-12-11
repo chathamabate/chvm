@@ -458,11 +458,7 @@ static inline void adb_try_addition(addr_book *adb, uint64_t entry_index) {
 }
 
 void adb_free(addr_book *adb, addr_book_vaddr vaddr) {
-    addr_table *adt;
-
-    safe_rdlock(&(adb->lck));
-    adt = adb->book[vaddr.table_index].adt;
-    safe_rwlock_unlock(&(adb->lck));
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
 
     addr_table_code free_res = adt_free(adt, vaddr.cell_index);
 
