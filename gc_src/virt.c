@@ -241,6 +241,24 @@ void delete_addr_book(addr_book *adb) {
     safe_free(adb);
 }
 
+// Push an entry onto the free list.
+// NOTE: we must have the write lock before calling this function!
+static inline void unsafe_adb_push_free_list(addr_book *adb, 
+        uint64_t entry_index) {
+    addr_book_entry *entry = &(adb->book[entry_index]);
+
+    if (adb->free_list != ADB_NULL_INDEX) {
+        adb->book[adb->free_list].prev = entry_index;
+    }
+
+    entry->prev = ADB_NULL_INDEX;
+    entry->next = adb->free_list;
+
+    adb->free_list = entry_index;
+
+    entry->in_free_list = 1;
+}
+
 static inline void adb_try_expand(addr_book *adb) {
     safe_wrlock(&(adb->lck));
 
@@ -251,12 +269,6 @@ static inline void adb_try_expand(addr_book *adb) {
     } 
 
     // Expansion time!
-    // Expand by adding a single new ADT to our book and 
-    // free list!
-
-    // Create our new adt.
-    addr_table *table = new_addr_table(get_chnl(adb), adb->table_cap);
-    uint64_t table_index;
 
     // Expand book if we need to.
     if (adb->book_len == adb->book_cap) {
@@ -265,20 +277,15 @@ static inline void adb_try_expand(addr_book *adb) {
                 sizeof(addr_book_entry) * adb->book_cap);
     }
 
-    // Store our table in the book and get its index.
-    table_index = adb->book_len; 
-    addr_book_entry *entry = &(adb->book[(adb->book_len)++]);
+    uint64_t table_index = adb->book_len;
+    addr_table *table = new_addr_table(get_chnl(adb), adb->table_cap);
 
-    // Place our table in the free list.
-    if (adb->free_list != ADB_NULL_INDEX) {
-        adb->book[adb->free_list].prev = table_index;
-    }
-    
-    entry->prev = ADB_NULL_INDEX;
-    entry->next = adb->free_list;
-    adb->free_list = table_index;
+    // Store our new table in the book!
+    adb->book[table_index].adt = table;
+    (adb->book_len)++;
 
-    entry->in_free_list = 1;
+    // Push our new table onto the free list!
+    unsafe_adb_push_free_list(adb, table_index);
 
     safe_rwlock_unlock(&(adb->lck));
 }
@@ -392,6 +399,47 @@ addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
     }
 }
 
-void adb_free(addr_book *adb, addr_book_vaddr vaddr) {
+static inline void adb_try_addition(addr_book *adb, uint64_t entry_index) {
+    safe_wrlock(&(adb->lck));
+    addr_book_entry *entry = &(adb->book[entry_index]);
+
+    if (entry->in_free_list) {
+        safe_rwlock_unlock(&(adb->lck));
+        return;
+    }
+
+    addr_table_header *adt_h = (addr_table_header *)entry->adt; 
+
+    // Here our entry is not in the free list yet.
+    // Make sure it is not full.
+    safe_rdlock(&(adt_h->free_stack_lck));
+
+    if (adt_h->stack_fill == 0) {
+        safe_rwlock_unlock(&(adt_h->free_stack_lck));
+        safe_rwlock_unlock(&(adb->lck));
+
+        return;
+    }
     
+    // We have made it here.
+    // Our table has space, but is not in the free list yet.
+    // Time to add!
+    unsafe_adb_push_free_list(adb, entry_index);
+
+    safe_rwlock_unlock(&(adt_h->free_stack_lck));
+    safe_rwlock_unlock(&(adb->lck));
+}
+
+void adb_free(addr_book *adb, addr_book_vaddr vaddr) {
+    addr_table *adt;
+
+    safe_rdlock(&(adb->lck));
+    adt = adb->book[vaddr.table_index].adt;
+    safe_rwlock_unlock(&(adb->lck));
+
+    addr_table_code free_res = adt_free(adt, vaddr.cell_index);
+
+    if (free_res == ADT_NEWLY_FREE) {
+        adb_try_addition(adb, vaddr.table_index);
+    }
 }
