@@ -4,6 +4,7 @@
 #include "../../core_src/sys.h"
 #include "../../core_src/io.h"
 #include "../../core_src/thread.h"
+#include "../../util_src/thread.h"
 
 static void test_new_addr_table(chunit_test_context *tc) {
     addr_table *adt = new_addr_table(1, 5);
@@ -93,38 +94,82 @@ static const chunit_test ADT_FREE = {
     .timeout = 5,
 };
 
-static void *test1(void *arg) {
-    uint64_t id = (uint64_t)arg;
+typedef struct {
+    chunit_test_context *tc;
 
-    uint64_t i;
-    for (i = 0; i < 100000; i++) {
+    uint64_t num_puts;
+    addr_table *adt;
 
+    pthread_mutex_t mut;
+    uint8_t *index_vector;
+} test_adt_context;
+
+static void *test_adt_T0(void *arg) {
+    util_thread_spray_context *s_context = arg;
+    test_adt_context *context = s_context->context;
+    
+    uint8_t repeat;
+    uint64_t i; 
+    for (i = 0; i < context->num_puts; i++) {
+        addr_table_put_res p_res = adt_put(context->adt, NULL);
+
+        // This confirms that there is space for every ptr 
+        // put into the adt.
+        assert_false(context->tc, p_res.code == ADT_NO_SPACE);
+
+        // This confirms the returned index is valid.
+        assert_true(context->tc, p_res.index < adt_get_cap(context->adt));
+
+        // This confirms the returned index is not already in use.
+        safe_mutex_lock(&(context->mut));
+        repeat = context->index_vector[p_res.index];
+        context->index_vector[p_res.index] = 1;
+        safe_mutex_unlock(&(context->mut));
+
+        assert_false(context->tc, repeat);
+
+        // safe_printf("Thread %lu Given Index %lu\n", s_context->index, p_res.index);
     }
-
-    safe_printf("Thread %lu is done!\n", id);
 
     return NULL;
 }
 
-static void test_adt_multi(chunit_test_context *tc) {
+static void test_adt_multi0(chunit_test_context *tc) {
+    const uint64_t num_puts = 20;
     const uint64_t num_threads = 10;
-    pthread_t ids[num_threads];
 
-    safe_printf("\nStarting Threading Test\n");
+    const uint64_t adt_cap = num_puts * num_threads;
+
+    test_adt_context tac;
+
+    tac.tc = tc;
+
+    tac.num_puts = num_puts;
+    tac.adt = new_addr_table(1, adt_cap);
+    
+    safe_mutex_init(&(tac.mut), NULL);
+    tac.index_vector = safe_malloc(1, sizeof(uint8_t) * adt_cap);
 
     uint64_t i;
-    for (i = 0; i < num_threads; i++) {
-        safe_pthread_create(ids + i, NULL, test1, (void *)i);
+    for (i = 0; i < adt_cap; i++) {
+        tac.index_vector[i] = 0; // Clear repeat vector.
     }
 
-    for (i = 0; i < num_threads; i++) {
-        safe_pthread_join(ids[i], NULL);
-    }
+    util_thread_spray_info *spray = 
+        util_thread_spray(1, num_threads, test_adt_T0, &tac);
+
+    util_thread_collect(spray);
+
+    assert_eq_uint(tc, ADT_NO_SPACE, adt_put(tac.adt, NULL).code);
+
+    delete_addr_table(tac.adt);
+    safe_mutex_destroy(&(tac.mut));
+    safe_free(tac.index_vector);
 }
 
 static const chunit_test ADT_MULTI = {
-    .name = "Address Table Multi-Threaded",
-    .t = test_adt_multi,
+    .name = "Address Table Multi-Threaded 0",
+    .t = test_adt_multi0,
     .timeout = 5,
 };
 

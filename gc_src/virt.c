@@ -78,6 +78,11 @@ void delete_addr_table(addr_table *adt) {
     safe_free(adt);
 }
 
+uint64_t adt_get_cap(addr_table *adt) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    return adt_h->cap;
+}
+
 addr_table_put_res adt_put(addr_table *adt, void *paddr) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);

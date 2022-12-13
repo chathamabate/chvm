@@ -88,10 +88,6 @@ static const chunit_test UTIL_TEST_THREAD_SPRAY_MUTEX = {
     .timeout = 5,
 };
 
-
-
-
-
 const chunit_test_suite UTIL_TEST_SUITE_THREAD = {
     .name = "Threading Suite",
     .tests = {
