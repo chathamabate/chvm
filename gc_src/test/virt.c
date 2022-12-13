@@ -104,6 +104,36 @@ typedef struct {
     uint8_t *index_vector;
 } test_adt_context;
 
+static test_adt_context *new_test_adt_context(uint8_t chnl, chunit_test_context *tc, 
+        uint64_t num_puts, uint64_t cap) {
+    
+    test_adt_context *tac = safe_malloc(chnl, sizeof(test_adt_context));
+
+    tac->tc = tc;
+
+    tac->num_puts = num_puts;
+    tac->adt = new_addr_table(chnl, cap);
+    
+    safe_mutex_init(&(tac->mut), NULL);
+    tac->index_vector = safe_malloc(chnl, sizeof(uint8_t) * cap);
+
+    uint64_t i;
+    for (i = 0; i < cap; i++) {
+        tac->index_vector[i] = 0;
+    }
+
+    return tac;
+}
+
+static void delete_test_adt_context(test_adt_context *tac) {
+    delete_addr_table(tac->adt);
+
+    safe_mutex_destroy(&(tac->mut));
+    safe_free(tac->index_vector);
+
+    safe_free(tac);
+}
+
 static void *test_adt_T0(void *arg) {
     util_thread_spray_context *s_context = arg;
     test_adt_context *context = s_context->context;
@@ -140,40 +170,88 @@ static void test_adt_multi0(chunit_test_context *tc) {
 
     const uint64_t adt_cap = num_puts * num_threads;
 
-    test_adt_context tac;
-
-    tac.tc = tc;
-
-    tac.num_puts = num_puts;
-    tac.adt = new_addr_table(1, adt_cap);
-    
-    safe_mutex_init(&(tac.mut), NULL);
-    tac.index_vector = safe_malloc(1, sizeof(uint8_t) * adt_cap);
-
-    uint64_t i;
-    for (i = 0; i < adt_cap; i++) {
-        tac.index_vector[i] = 0; // Clear repeat vector.
-    }
+    test_adt_context *tac = new_test_adt_context(1, tc, num_puts, num_puts * num_threads);
 
     util_thread_spray_info *spray = 
-        util_thread_spray(1, num_threads, test_adt_T0, &tac);
+        util_thread_spray(1, num_threads, test_adt_T0, tac);
 
     util_thread_collect(spray);
 
-    assert_eq_uint(tc, ADT_NO_SPACE, adt_put(tac.adt, NULL).code);
+    assert_eq_uint(tc, ADT_NO_SPACE, adt_put(tac->adt, NULL).code);
 
-    delete_addr_table(tac.adt);
-    safe_mutex_destroy(&(tac.mut));
-    safe_free(tac.index_vector);
+    delete_test_adt_context(tac);
 }
 
-static const chunit_test ADT_MULTI = {
+static const chunit_test ADT_MULTI0 = {
     .name = "Address Table Multi-Threaded 0",
     .t = test_adt_multi0,
     .timeout = 5,
 };
 
-// Time for multi threaded ADT tests.....
+static void *test_adt_T1(void *arg) {
+    util_thread_spray_context *s_context = arg;
+    test_adt_context *context = s_context->context; 
+
+    // Dummy physical addresses.
+    uint64_t *data = safe_malloc(1, sizeof(uint64_t) * context->num_puts);
+
+    uint64_t i;
+    for (i = 0; i < context->num_puts; i++) {
+        addr_table_put_res p_res = adt_put(context->adt, data + i); 
+
+        if (p_res.code == ADT_NO_SPACE) {
+            continue;
+        }
+
+        uint8_t repeat;
+        safe_mutex_lock(&(context->mut));
+        repeat = context->index_vector[p_res.index];
+        context->index_vector[p_res.index] = 1; // Mark as used.
+        safe_mutex_unlock(&(context->mut));
+
+        // Confirm there wasn't a repeat.
+        assert_false(context->tc, repeat);
+
+        // Get physical pointer stored in the ADT.
+        uint64_t *paddr = adt_get_write(context->adt, p_res.index);
+        adt_unlock(context->adt, p_res.index);
+        
+        // Confirm the correct pointer was stored.
+        assert_eq_ptr(context->tc, data + i, paddr);
+
+        safe_mutex_lock(&(context->mut));
+        context->index_vector[p_res.index] = 0; // Mark as unused.
+        safe_mutex_unlock(&(context->mut));
+
+        adt_free(context->adt, p_res.index);
+    }
+
+    safe_free(data);
+
+    return NULL;
+}
+
+static void test_adt_multi1(chunit_test_context *tc) {
+    const uint64_t num_puts = 40;
+    const uint64_t num_threads = 10;
+
+    const uint64_t adt_cap = num_puts * num_threads;
+
+    test_adt_context *tac = new_test_adt_context(1, tc, num_puts, num_puts * num_threads);
+
+    util_thread_spray_info *spray = 
+        util_thread_spray(1, num_threads, test_adt_T1, tac);
+
+    util_thread_collect(spray);
+
+    delete_test_adt_context(tac);
+}
+
+static const chunit_test ADT_MULTI1 = {
+    .name = "Address Table Multi-Threaded 1",
+    .t = test_adt_multi1,
+    .timeout = 5,
+};
 
 const chunit_test_suite GC_TEST_SUITE_ADT = {
     .name = "Address Table Test Suite",
@@ -181,9 +259,10 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
         &ADT_NEW_ADDR_TABLE,
         &ADT_PUT_AND_GET,
         &ADT_FREE,
-        &ADT_MULTI,
+        &ADT_MULTI0,
+        &ADT_MULTI1,
     },
-    .tests_len = 4
+    .tests_len = 5
 };
 
 // Address Book Suite Below.
