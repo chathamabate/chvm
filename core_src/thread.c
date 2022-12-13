@@ -1,6 +1,24 @@
 #include "./thread.h"
-#include <pthread.h>
 #include "./sys.h"
+#include "./mem.h"
+#include <pthread.h>
+
+void safe_pthread_create(pthread_t *restrict thrd, 
+        const pthread_attr_t *restrict attr, 
+        void *(*start_routine)(void *), 
+        void *restrict ag) {
+    if (pthread_create(thrd, attr, start_routine, ag)) {
+        core_logf(1, "Process failed to create thread.");
+        safe_exit(1);
+    }
+}
+
+void safe_pthread_join(pthread_t thrd, void **retval) {
+    if (pthread_join(thrd, retval)) {
+        core_logf(1, "Process failed to join thread.");
+        safe_exit(1);
+    }
+}
 
 void safe_mutex_init(pthread_mutex_t *mut, pthread_mutexattr_t *attr) {
     if (pthread_mutex_init(mut, attr)) {

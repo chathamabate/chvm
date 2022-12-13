@@ -3,6 +3,7 @@
 #include "../../testing_src/assert.h"
 #include "../../core_src/sys.h"
 #include "../../core_src/io.h"
+#include "../../core_src/thread.h"
 
 static void test_new_addr_table(chunit_test_context *tc) {
     addr_table *adt = new_addr_table(1, 5);
@@ -92,6 +93,41 @@ static const chunit_test ADT_FREE = {
     .timeout = 5,
 };
 
+static void *test1(void *arg) {
+    uint64_t id = (uint64_t)arg;
+
+    uint64_t i;
+    for (i = 0; i < 100000; i++) {
+
+    }
+
+    safe_printf("Thread %lu is done!\n", id);
+
+    return NULL;
+}
+
+static void test_adt_multi(chunit_test_context *tc) {
+    const uint64_t num_threads = 10;
+    pthread_t ids[num_threads];
+
+    safe_printf("\nStarting Threading Test\n");
+
+    uint64_t i;
+    for (i = 0; i < num_threads; i++) {
+        safe_pthread_create(ids + i, NULL, test1, (void *)i);
+    }
+
+    for (i = 0; i < num_threads; i++) {
+        safe_pthread_join(ids[i], NULL);
+    }
+}
+
+static const chunit_test ADT_MULTI = {
+    .name = "Address Table Multi-Threaded",
+    .t = test_adt_multi,
+    .timeout = 5,
+};
+
 // Time for multi threaded ADT tests.....
 
 const chunit_test_suite GC_TEST_SUITE_ADT = {
@@ -100,8 +136,9 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
         &ADT_NEW_ADDR_TABLE,
         &ADT_PUT_AND_GET,
         &ADT_FREE,
+        &ADT_MULTI,
     },
-    .tests_len = 3
+    .tests_len = 4
 };
 
 // Address Book Suite Below.

@@ -2,6 +2,14 @@
 #define CORE_THREAD_H
 
 #include <pthread.h>
+#include <stdint.h>
+
+void safe_pthread_create(pthread_t *thrd, 
+        const pthread_attr_t *attr, 
+        void *(*start_routine)(void *), 
+        void *ag);
+
+void safe_pthread_join(pthread_t thrd, void **retval);
 
 void safe_mutex_init(pthread_mutex_t *mut, pthread_mutexattr_t *attr);
 void safe_mutex_lock(pthread_mutex_t *mut);
