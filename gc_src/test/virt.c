@@ -294,7 +294,6 @@ static void test_adb_put_and_get(chunit_test_context *tc) {
             void *paddr = (void *)((table * table_cap) + ind);
 
             addr_book_vaddr vaddr = adb_put(adb, paddr);
-            
         }        
     }
 
@@ -330,6 +329,7 @@ static void test_adb_free(chunit_test_context *tc) {
 
     // Again, these tests take advantage of the fact
     // that I know exactly how slots are freed.
+    // TODO, do better testing here...
     
     addr_book_vaddr new_vaddr0 = adb_put(adb, NULL);
     assert_eq_uint(tc, 0, new_vaddr0.table_index);
@@ -351,6 +351,8 @@ static const chunit_test ADB_FREE = {
     .t = test_adb_free,
     .timeout = 5,
 };
+
+// TODO: multithreaded testing of the address book!
 
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",

@@ -33,6 +33,8 @@ void delete_addr_table(addr_table *adt);
 
 uint64_t adt_get_cap(addr_table *adt);
 
+uint64_t adt_get_fill(addr_table *adt);
+
 typedef struct {
     addr_table_code code;
     uint64_t index;

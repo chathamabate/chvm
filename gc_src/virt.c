@@ -4,6 +4,7 @@
 #include "../core_src/sys.h"
 #include "../core_src/thread.h"
 #include "../core_src/mem.h"
+#include "../core_src/io.h"
 
 // The structure of the address table in memory is going
 // to be a bit funky.
@@ -81,6 +82,17 @@ void delete_addr_table(addr_table *adt) {
 uint64_t adt_get_cap(addr_table *adt) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     return adt_h->cap;
+}
+
+uint64_t adt_get_fill(addr_table *adt) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t fill;
+
+    safe_rdlock(&(adt_h->free_stack_lck));
+    fill = adt_h->cap - adt_h->stack_fill;
+    safe_rwlock_unlock(&(adt_h->free_stack_lck));
+
+    return fill;
 }
 
 addr_table_put_res adt_put(addr_table *adt, void *paddr) {
@@ -219,8 +231,12 @@ addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap) {
     adb->free_list = ADB_NULL_INDEX;
 
     adb->book_len = 0;
-    adb->book_cap = 0;
-    adb->book = NULL;
+
+    // Allocate a single entry in the book.
+    // Don't even initialize it yet though.
+    // This will all be done during our first put.
+    adb->book_cap = 1;
+    adb->book = safe_malloc(chnl, sizeof(addr_book_entry) * adb->book_cap);
 
     return adb;
 }
@@ -277,7 +293,7 @@ static inline void adb_try_expand(addr_book *adb) {
 
     // Expand book if we need to.
     if (adb->book_len == adb->book_cap) {
-        adb->book_cap = (adb->book_cap + 1) * 2;
+        adb->book_cap *= 2;
         adb->book = safe_realloc(adb->book, 
                 sizeof(addr_book_entry) * adb->book_cap);
     }
@@ -314,6 +330,7 @@ static inline void adb_try_removal(addr_book *adb, uint64_t entry_index) {
         return;
     }
 
+
     // Ok, this is giving me a headache to think about, so I have
     // decided to take the safe route. We will read lock on the ADT
     // for the entire addition to the free list.
@@ -332,6 +349,10 @@ static inline void adb_try_removal(addr_book *adb, uint64_t entry_index) {
 
     if (entry->prev != ADB_NULL_INDEX) {
         adb->book[entry->prev].next = entry->next;
+    } else {
+        // If our entryy is in the free list and doesn't 
+        // have a prev pointer, it must be the head of the list.
+        adb->free_list = entry->next;
     }
 
     if (entry->next != ADB_NULL_INDEX) {
@@ -382,7 +403,7 @@ addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
         if (put_res.code == ADT_NO_SPACE) {
             continue;
         }
-        
+
         // This request filled our table, at this point in time,
         // it is possible are table is full and in the free list.
         // Let's try and do a removal.
