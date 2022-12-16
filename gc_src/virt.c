@@ -417,8 +417,8 @@ addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
 
         // Regardless of whether a removal occurs,
         // we have enough to return!
-        *(uint64_t *)&(vaddr.table_index) = entry_index;
-        *(uint64_t *)&(vaddr.cell_index) = put_res.index;
+        vaddr.table_index = entry_index;
+        vaddr.cell_index = put_res.index;
 
         return vaddr;
     }

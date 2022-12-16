@@ -64,8 +64,8 @@ addr_table_code adt_free(addr_table *adt, uint64_t index);
 typedef struct addr_book_struct addr_book;
 
 typedef struct {
-    const uint64_t table_index;
-    const uint64_t cell_index;
+    uint64_t table_index;
+    uint64_t cell_index;
 } addr_book_vaddr;
 
 addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap);

@@ -279,21 +279,37 @@ static const chunit_test ADB_NEW_ADDR_BOOK = {
 };
 
 static void test_adb_put_and_get(chunit_test_context *tc) {
+    const uint64_t tables = 16; // Should test a good amount of
+                                // expansions.
+                                
     const uint64_t table_cap = 2;
 
-    addr_book *adb = new_addr_book(1, table_cap);
+    uint64_t repeat_vector[tables][table_cap];
 
-    // Here we are pseudo testing auto expansion of the 
-    // address book.
-    
     uint64_t table, ind;
-    void *paddr;
-
-    for (table = 0; table < 3; table++) {
+    for (table = 0; table < tables; table++) {
         for (ind = 0; ind < table_cap; ind++) {
-            void *paddr = (void *)((table * table_cap) + ind);
+            repeat_vector[table][ind] = 0;
+        }
+    }
 
-            addr_book_vaddr vaddr = adb_put(adb, paddr);
+    addr_book *adb = new_addr_book(1, table_cap);
+    
+    void *paddrs[tables][table_cap];
+    addr_book_vaddr vaddrs[tables][table_cap];
+
+    for (table = 0; table < tables; table++) {
+        for (ind = 0; ind < table_cap; ind++) {
+            paddrs[table][ind] = (void *)((table * table_cap) + ind);
+            vaddrs[table][ind] = adb_put(adb, paddrs[table][ind]);
+        }        
+    }
+
+    for (table = 0; table < tables; table++) {
+        for (ind = 0; ind < table_cap; ind++) {
+            assert_eq_ptr(tc, paddrs[table][ind], 
+                    adb_get_read(adb, vaddrs[table][ind]));
+            adb_unlock(adb, vaddrs[table][ind]);
         }        
     }
 
@@ -308,11 +324,16 @@ static const chunit_test ADB_PUT_AND_GET = {
 
 static void test_adb_free(chunit_test_context *tc) {
     const uint64_t table_cap = 2;
+    const uint64_t tables = 2;
+
+    uint8_t repeat_vector[tables][table_cap] = {
+        {0, 0}, {0, 0}
+    };
 
     addr_book *adb = new_addr_book(1, table_cap);
 
     uint64_t i;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < table_cap * tables; i++) {
         adb_put(adb, NULL);
     }
 
@@ -327,21 +348,16 @@ static void test_adb_free(chunit_test_context *tc) {
         adb_free(adb, vaddrs[i]);
     }
 
-    // Again, these tests take advantage of the fact
-    // that I know exactly how slots are freed.
-    // TODO, do better testing here...
-    
-    addr_book_vaddr new_vaddr0 = adb_put(adb, NULL);
-    assert_eq_uint(tc, 0, new_vaddr0.table_index);
-    assert_eq_uint(tc, 1, new_vaddr0.cell_index);
+    // The new given addresses must all be valid
+    // and unique. Beautiful.
+    for (i = 0; i < vaddrs_len; i++) {
+        addr_book_vaddr vaddr = adb_put(adb, NULL);
+        assert_true(tc, vaddr.table_index < tables);
+        assert_true(tc, vaddr.cell_index < table_cap);
 
-    addr_book_vaddr new_vaddr1 = adb_put(adb, NULL);
-    assert_eq_uint(tc, 1, new_vaddr1.table_index);
-    assert_eq_uint(tc, 1, new_vaddr1.cell_index);
-
-    addr_book_vaddr new_vaddr2 = adb_put(adb, NULL);
-    assert_eq_uint(tc, 1, new_vaddr2.table_index);
-    assert_eq_uint(tc, 0, new_vaddr2.cell_index);
+        assert_false(tc, repeat_vector[vaddr.table_index][vaddr.cell_index]);
+        repeat_vector[vaddr.table_index][vaddr.cell_index] = 1;
+    }
 
     delete_addr_book(adb);
 }
