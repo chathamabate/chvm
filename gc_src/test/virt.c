@@ -281,17 +281,9 @@ static const chunit_test ADB_NEW_ADDR_BOOK = {
 static void test_adb_put_and_get(chunit_test_context *tc) {
     const uint64_t tables = 16; // Should test a good amount of
                                 // expansions.
-                                
     const uint64_t table_cap = 2;
 
-    uint64_t repeat_vector[tables][table_cap];
-
     uint64_t table, ind;
-    for (table = 0; table < tables; table++) {
-        for (ind = 0; ind < table_cap; ind++) {
-            repeat_vector[table][ind] = 0;
-        }
-    }
 
     addr_book *adb = new_addr_book(1, table_cap);
     
@@ -337,6 +329,7 @@ static void test_adb_free(chunit_test_context *tc) {
         adb_put(adb, NULL);
     }
 
+    // This is poor testing right here!
     const uint64_t vaddrs_len = 3;
     addr_book_vaddr vaddrs[vaddrs_len] = {
         {.table_index = 1, .cell_index = 0}, 
