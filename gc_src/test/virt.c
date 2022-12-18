@@ -188,6 +188,7 @@ static const chunit_test ADT_MULTI0 = {
     .timeout = 5,
 };
 
+// This does a bunch of put the free pairs. 
 static void *test_adt_T1(void *arg) {
     util_thread_spray_context *s_context = arg;
     test_adt_context *context = s_context->context; 
@@ -243,6 +244,8 @@ static void test_adt_multi1(chunit_test_context *tc) {
         util_thread_spray(1, num_threads, test_adt_T1, tac);
 
     util_thread_collect(spray);
+
+    assert_eq_uint(tc, 0, adt_get_fill(tac->adt));
 
     delete_test_adt_context(tac);
 }
@@ -368,7 +371,118 @@ static const chunit_test ADB_FREE = {
     .timeout = 5,
 };
 
-// TODO: multithreaded testing of the address book!
+// NOTE: multithreaded testing of the address book!
+// We will do two multi threaded tests, one with just puts,
+// and one with frees.
+//
+// This will not use a repeat vector like the ADT tests since
+// I've begun to think this is a bit redundant.
+// Maybe I can change the ADT test code at somepoint.
+
+typedef struct {
+    chunit_test_context *tc;
+
+    addr_book *adb;
+    uint64_t num_puts;
+
+    // Whether or not the test should execute
+    // frees as well as puts.
+    uint8_t with_free;
+} test_adb_context;
+
+// This will be the just puts try.
+static void *test_adb_T(void *arg) {
+    util_thread_spray_context *s_context = arg;
+    test_adb_context *context = s_context->context;
+
+    chunit_test_context *tc = context->tc;
+    addr_book *adb = context->adb;
+    const uint64_t num_puts = context->num_puts;
+
+    // Dummy data array.
+    uint8_t *data = safe_malloc(1, sizeof(uint8_t) * num_puts);
+
+    uint64_t i;
+    for (i = 0; i < num_puts; i++) {
+        addr_book_vaddr vaddr = adb_put(adb, data + i); 
+
+        void *paddr = adb_get_read(adb, vaddr);
+        adb_unlock(adb, vaddr);
+
+        assert_eq_ptr(tc, data + i, paddr);
+
+        if (context->with_free) {
+            adb_free(adb, vaddr);
+        }
+    }
+
+    safe_free(data);
+
+    return NULL;
+}
+
+static void test_adb_multi0(chunit_test_context *tc) {
+    const uint64_t num_threads = 10;
+    const uint64_t table_cap = 6;
+    const uint64_t num_puts = 100;
+
+    addr_book *adb = new_addr_book(1, table_cap);
+
+    test_adb_context ctx = {
+        .tc = tc,
+
+        .adb = adb,
+        .num_puts = num_puts,
+
+        .with_free = 0,
+    };
+
+    util_thread_spray_info *spray = 
+        util_thread_spray(1, num_threads, test_adb_T, &ctx);
+    util_thread_collect(spray);
+
+    assert_eq_uint(tc, num_puts * num_threads, adb_get_fill(adb));
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_MULTI0 = {
+    .name = "Address Book Multi-Threaded 0",
+    .t = test_adb_multi0,
+    .timeout = 5,
+};
+
+static void test_adb_multi1(chunit_test_context *tc) {
+    const uint64_t num_threads = 10;
+    const uint64_t table_cap = 6;
+    const uint64_t num_puts = 120;
+
+    addr_book *adb = new_addr_book(1, table_cap);
+
+    test_adb_context ctx = {
+        .tc = tc,
+
+        .adb = adb,
+        .num_puts = num_puts,
+
+        .with_free = 1,
+    };
+
+    util_thread_spray_info *spray = 
+        util_thread_spray(1, num_threads, test_adb_T, &ctx);
+    util_thread_collect(spray);
+
+    assert_eq_uint(tc, 0, adb_get_fill(adb));
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_MULTI1 = {
+    .name = "Address Book Multi-Threaded 1",
+    .t = test_adb_multi1,
+    .timeout = 5,
+};
+
 
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
@@ -376,7 +490,9 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
         &ADB_NEW_ADDR_BOOK,
         &ADB_PUT_AND_GET,
         &ADB_FREE,
+        &ADB_MULTI0,
+        &ADB_MULTI1,
     },
-    .tests_len = 3
+    .tests_len = 5
 };
 
