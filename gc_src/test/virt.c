@@ -423,7 +423,7 @@ static void *test_adb_T(void *arg) {
 
 static void test_adb_multi0(chunit_test_context *tc) {
     const uint64_t num_threads = 10;
-    const uint64_t table_cap = 6;
+    const uint64_t table_cap = 5;
     const uint64_t num_puts = 100;
 
     addr_book *adb = new_addr_book(1, table_cap);
