@@ -492,3 +492,21 @@ void adb_free(addr_book *adb, addr_book_vaddr vaddr) {
         adb_try_addition(adb, vaddr.table_index);
     }
 }
+
+uint64_t adb_get_fill(addr_book *adb) {
+    uint64_t fill = 0;
+
+    // This kinda does need to lock on everything.
+    // Not really meant to be used in performance
+    // critical areas.
+
+    safe_rdlock(&(adb->lck));
+    uint64_t i;
+    for (i = 0; i < adb->book_len; i++) {
+        addr_table *adt = adb->book[i].adt;
+        fill += adt_get_fill(adt);
+    }
+    safe_rwlock_unlock(&(adb->lck));
+
+    return fill;
+}

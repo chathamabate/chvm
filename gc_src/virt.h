@@ -81,5 +81,7 @@ void adb_unlock(addr_book *adb, addr_book_vaddr vaddr);
 
 void adb_free(addr_book *adb, addr_book_vaddr vaddr);
 
+uint64_t adb_get_fill(addr_book *adb);
+
 
 #endif

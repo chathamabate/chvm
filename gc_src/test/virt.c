@@ -281,7 +281,7 @@ static const chunit_test ADB_NEW_ADDR_BOOK = {
 static void test_adb_put_and_get(chunit_test_context *tc) {
     const uint64_t tables = 16; // Should test a good amount of
                                 // expansions.
-    const uint64_t table_cap = 2;
+    const uint64_t table_cap = 4;
 
     uint64_t table, ind;
 
@@ -292,6 +292,8 @@ static void test_adb_put_and_get(chunit_test_context *tc) {
 
     for (table = 0; table < tables; table++) {
         for (ind = 0; ind < table_cap; ind++) {
+            // By having a unique physical address for each put
+            // we are confirming all puts return a unique address.
             paddrs[table][ind] = (void *)((table * table_cap) + ind);
             vaddrs[table][ind] = adb_put(adb, paddrs[table][ind]);
         }        
@@ -315,41 +317,46 @@ static const chunit_test ADB_PUT_AND_GET = {
 };
 
 static void test_adb_free(chunit_test_context *tc) {
-    const uint64_t table_cap = 2;
-    const uint64_t tables = 2;
-
-    uint8_t repeat_vector[tables][table_cap] = {
-        {0, 0}, {0, 0}
-    };
+    const uint64_t table_cap = 5;
+    const uint64_t tables = 5;
+    const uint64_t num_puts = table_cap * tables;
+    const uint64_t frees = 10; 
 
     addr_book *adb = new_addr_book(1, table_cap);
 
+    addr_book_vaddr vaddrs[num_puts];
+
     uint64_t i;
-    for (i = 0; i < table_cap * tables; i++) {
-        adb_put(adb, NULL);
+    for (i = 0; i < num_puts; i++) {
+        vaddrs[i] = adb_put(adb, NULL);
     }
 
-    // This is poor testing right here!
-    const uint64_t vaddrs_len = 3;
-    addr_book_vaddr vaddrs[vaddrs_len] = {
-        {.table_index = 1, .cell_index = 0}, 
-        {.table_index = 0, .cell_index = 1}, 
-        {.table_index = 1, .cell_index = 1}, 
-    };
+    // Confirm all puts executed correctly.
+    assert_eq_uint(tc, num_puts, adb_get_fill(adb));
 
-    for (i = 0; i < vaddrs_len; i++) {
+    for (i = 0; i < frees; i++) {
         adb_free(adb, vaddrs[i]);
     }
 
-    // The new given addresses must all be valid
-    // and unique. Beautiful.
-    for (i = 0; i < vaddrs_len; i++) {
-        addr_book_vaddr vaddr = adb_put(adb, NULL);
-        assert_true(tc, vaddr.table_index < tables);
-        assert_true(tc, vaddr.cell_index < table_cap);
+    // Assert frees happened successfully.
+    assert_eq_uint(tc, num_puts - frees, adb_get_fill(adb));
 
-        assert_false(tc, repeat_vector[vaddr.table_index][vaddr.cell_index]);
-        repeat_vector[vaddr.table_index][vaddr.cell_index] = 1;
+    // Now put for each free.
+    for (i = 0; i < frees; i++) {
+        addr_book_vaddr vaddr = adb_put(adb, (void *)i);
+
+        // Reuse vaddrs here.
+        vaddrs[i] = vaddr;
+    }
+
+    assert_eq_uint(tc, num_puts, adb_get_fill(adb));
+
+    // Confirm puts occured successfully after frees.
+    for (i = 0; i < frees; i++) {
+        void *paddr = adb_get_write(adb, vaddrs[i]); 
+        adb_unlock(adb, vaddrs[i]);
+
+        assert_eq_uint(tc, i, (uint64_t)paddr);
     }
 
     delete_addr_book(adb);
