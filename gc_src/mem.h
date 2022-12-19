@@ -15,14 +15,14 @@ mem_page *new_mem_page(uint8_t chnl, uint64_t min_bytes);
 void delete_mem_page(mem_page *mp);
 
 // The size of the largest number of consecutive bytes which can
-// be allocated in this block.
+// be allocated in this block. 
 uint64_t mp_get_space(mem_page *mp);
 
 // Will return NULL if there isn't enough space at the time
 // of request.
-void *mp_malloc(uint64_t min_bytes);
+void *mp_malloc(mem_page *mp, uint64_t min_bytes);
 
-void mp_free(void *ptr);
+void mp_free(mem_page *mp, void *ptr);
 
 
 

@@ -2,18 +2,21 @@
 #include "virt.h"
 #include <stdlib.h>
 #include "../core_src/mem.h"
+#include "../core_src/thread.h"
 
 typedef struct  {
     // Number of bytes in the data section.
-    uint64_t cap;
-
-    // Reading and writing to the free list should be thread 
-    // safe???
+    const uint64_t cap;
 
     // Pointer to the first block in the free list.
     //
     // NOTE: Free list will always be sorted in order
     // of descending size. (In a singly linked list)
+    //
+    // NOTE: Whenever writing or reading to any item
+    // in the free list. (Including the free_list ptr)
+    // The free_lck should be acquired.
+    pthread_rwlock_t free_lck;
     void *free_list; 
 } mem_page_header;
 
@@ -50,12 +53,21 @@ static inline uint64_t blk_size(void *blk) {
     return *(uint64_t *)blk & BLK_SIZE_MASK;
 }
 
+static inline uint64_t blk_alloc_size(void *blk) {
+    // Neglect the header here.
+    return blk_size(blk) - sizeof(uint64_t);
+}
+
 static inline void *blk_body(void *blk) {
     return (uint64_t *)blk + 1;
 }
 
 static inline void *blk_next_free(void *blk) {
     return *(void **)blk_body(blk);
+}
+
+static inline void *blk_next(void *blk) {
+    return (uint8_t *)blk + blk_size(blk);
 }
 
 static inline uint64_t blk_pad_size(uint64_t min_bytes) {
@@ -71,23 +83,89 @@ static inline uint64_t blk_pad_size(uint64_t min_bytes) {
 }
 
 mem_page *new_mem_page(uint8_t chnl, uint64_t min_bytes) {
-    return NULL;
+    uint64_t padded_size = blk_pad_size(min_bytes);
+    mem_page *mp = safe_malloc(chnl, sizeof(mem_page_header) + padded_size);
+    mem_page_header *mp_h = (mem_page_header *)mp;
+
+    *(uint64_t *)&(mp_h->cap) = padded_size;
+    
+    // Make the entire body a single free block.
+    void *body = (void *)mp_h + 1;
+    *(uint64_t *)body = padded_size;
+    *(void **)((uint64_t *)body + 1) = NULL;
+
+    mp_h->free_list = body;
+    safe_rwlock_init(&(mp_h->free_lck), NULL);
+
+    return mp;
 }
 
 void delete_mem_page(mem_page *mp) {
-
+    mem_page_header *mp_h = (mem_page_header *)mp;
+    safe_rwlock_destroy(&(mp_h->free_lck));
+    safe_free(mp);
 }
 
 uint64_t mp_get_space(mem_page *mp) {
-    return 0;
+    mem_page_header *mp_h = (mem_page_header *)mp;
+
+    uint64_t num_bytes;
+
+    safe_rdlock(&(mp_h->free_lck));
+
+    // Check if the free list is empty.
+    if (!(mp_h->free_list)) {
+        safe_rwlock_unlock(&(mp_h->free_lck));
+        return 0;
+    }
+
+    num_bytes = blk_size(mp_h->free_list);
+
+    safe_rwlock_unlock(&(mp_h->free_lck));
+
+    // Remember not to count the header.
+    return num_bytes - sizeof(uint64_t);
 }
 
-void *mp_malloc(uint64_t min_bytes) {
+void *mp_malloc(mem_page *mp, uint64_t min_bytes) {
+    mem_page_header *mp_h = (mem_page_header *)mp;
+
+    safe_rdlock(&(mp_h->free_lck));
+
+    void *prev = NULL;
+    void *iter = mp_h->free_list;
+
+    // go until we find a block with size less than or equal to
+    // min_bytes.
+    while (iter && blk_alloc_size(iter) > min_bytes) {
+        prev = iter;
+        iter = blk_next_free(iter);
+    }
+
+    // If we have found a block of size equal to min bytes,
+    // iterate once.
+    if (iter && blk_alloc_size(iter) == min_bytes) {
+        prev = iter;
+        iter = blk_next_free(iter);
+    }
+
+    // prev will be the malloced block.
+    // If no blocks of size greater than or equal to min_bytes
+    // were iterated over, prev will be NULL at this point.
+    if (!prev) {
+        safe_rwlock_unlock(&(mp_h->free_lck));
+        return NULL;
+    }
+
+    // OOP we got a mistake :,(
+    
+    safe_rwlock_unlock(&(mp_h->free_lck));
+
     return NULL;
 }
 
-void mp_free(void *ptr) {
-
+void mp_free(mem_page *mp, void *ptr) {
+    
 }
 
 
