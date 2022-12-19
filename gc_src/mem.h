@@ -4,6 +4,35 @@
 #include <stdint.h>
 #include "./virt.h"
 
+typedef struct {} mem_page;
+
+// NOTE: the operations on the memory page itself will
+// all be thread safe (i.e. the functions below)
+// However, they are still open to user error if used
+// incorrectly.
+
+mem_page *new_mem_page(uint8_t chnl, uint64_t cap);
+void delete_mem_page(mem_page *mp);
+
+uint64_t mp_get_cap(mem_page *mp);
+
+// The size of the largest free block in the memory
+// page.
+uint64_t mp_get_space(mem_page *mp);
+
+// Will return NULL if there isn't enough space at the time
+// of request.
+void *mp_malloc(uint64_t bytes);
+
+void mp_free(void *ptr);
+
+
+
+
+
+
+// NOTE: EVERYTHING BELOW IS FOR LATER!!!!!
+
 // Here we will create the API for a garbage collected
 // memory space.....
 

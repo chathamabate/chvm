@@ -1,5 +1,54 @@
 #include "./mem.h"
 #include "virt.h"
+#include <stdlib.h>
+#include "../core_src/mem.h"
+
+typedef struct  {
+    // Number of bytes in the data section.
+    uint64_t cap;
+
+} mem_page_header;
+
+mem_page *new_mem_page(uint8_t chnl, uint64_t cap) {
+    return NULL;
+}
+
+void delete_mem_page(mem_page *mp) {
+
+}
+
+uint64_t mp_get_cap(mem_page *mp) {
+    return 0;
+}
+
+// The size of the largest free block in the memory
+// page.
+uint64_t mp_get_space(mem_page *mp) {
+    return 0;
+}
+
+// Will return NULL if there isn't enough space at the time
+// of request.
+void *mp_malloc(uint64_t bytes) {
+    return NULL;
+}
+
+void mp_free(void *ptr) {
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// NOTE: EVERYTHING BELOW IS FOR LATER!!!!!
 
 typedef struct {
     // Might at a total size field as well..

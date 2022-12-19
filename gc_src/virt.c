@@ -1,5 +1,6 @@
 #include "./virt.h"
 #include <pthread.h>
+#include <stdint.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
 #include "../core_src/sys.h"
 #include "../core_src/thread.h"
@@ -190,7 +191,12 @@ addr_table_code adt_free(addr_table *adt, uint64_t index) {
     return res_code;
 }
 
-#define ADB_NULL_INDEX UINT64_MAX
+const addr_book_vaddr NULL_VADDR = {
+    .cell_index = UINT64_MAX,
+    .table_index = UINT64_MAX,
+};
+
+static const uint64_t ADB_NULL_INDEX = UINT64_MAX;
 
 // Our address book will use a doubly linked free list design
 // to allow for easy removal of adts which are not at the head or

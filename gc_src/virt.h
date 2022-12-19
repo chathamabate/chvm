@@ -68,6 +68,14 @@ typedef struct {
     uint64_t cell_index;
 } addr_book_vaddr;
 
+extern const addr_book_vaddr NULL_VADDR;
+
+static inline uint8_t eq_adb_addr(addr_book_vaddr v1, 
+        addr_book_vaddr v2) {
+    return (v1.table_index == v2.table_index) && 
+        (v1.cell_index == v2.cell_index);
+}
+
 addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap);
 void delete_addr_book(addr_book *adb);
 
