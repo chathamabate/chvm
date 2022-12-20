@@ -4,6 +4,29 @@
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
 
+// Might need to rewrite all my code below...
+// As it no longer really works...
+//
+// What is the best way to shift around memory?
+// How should our memory structures be organized 
+// to optimize memory shifting.
+// 
+// I will use close to constant size memory pages.
+// Each memory page will have a free list of its own.
+// Preferably, there will be some free list organization
+// strategy. For example, sorted by free block size.
+//
+// There will be a memory space structure for working with
+// memory pages. The memory space will have the ability 
+// to manage memory shifting. 
+//
+// The goal of shifting is to defragment the memory space.
+//
+// How will the memory space shift memory effectively and 
+// concurrently. i.e. We need a shifting method that actually
+// produces a defragmented memory space, and does not stop
+// the user from using malloc and free as normal.
+
 typedef struct  {
     // Number of bytes in the data section.
     const uint64_t cap;
