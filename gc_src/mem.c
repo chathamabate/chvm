@@ -32,16 +32,50 @@
 //
 // If the user wants a piece of memory larger than the default
 // block size, a custom size block will be created.
-//
 // 
+// The shifting code will need to be aware of the address book.
+// Each piece of occupied memory will store its corresponding
+// virtual address. (Memory Blocks must be aware of the address book)
+//
+// Memory Blocks will not be aware of garbage collection strategies.
+// Garbage collection should be able to use the Memory Block API
+// to do all of its work.
+//
+// Pieces of Memory will have the following structure:
+//
+// size will always be divisible by two. 
+// (size will include the Header and Footer)
+// alloc will reside in the first bit. (Whether or not the piece ic occupied)
+//
+// size_t size | alloc; (Header)
+//
+// ... size - (2 * sizeof(size_t)) bytes ... (Body)
+//
+// size_t size | alloc; (Footer)
+//
+// If occupied/allocated, the body will take the folowing structure:
+//
+// The virtual address which corresponds to this block of memory.
+// addr_book_vaddr vaddr;
+// ... (originally requested number of bytes) ... 
+// Padding (if needed)
+//
+// If unoccupied/free, the body will have this structure:
+//
+// TODO.........
+//
 //
 // Unsolved Questions:
 //
-// How aware will memory blocks be of the address book??
+// Will Address books be responsible for setting up
+// specific pieces of memory???
+// How will pieces of memory be organized???
+//
+// 
 // How will the free list be organized??
 // How will shifting be implemented??
 // When we shift, must we freeze the entire block???
-// Is there a way to shift individual pieces of memory one
+// Is there a way to shift individual pieces of memory one by one??
 
 
 
