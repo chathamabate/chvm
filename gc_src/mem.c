@@ -4,6 +4,52 @@
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
 
+
+
+
+
+
+// New Memory Block Concept and Notes:
+//
+// A Memory block will be one contiguous piecce of memory
+// that the user will be able to malloc into.
+//
+// Memory blocks will be broken into pieces.
+// A free piece is a section of the memory block which is yet to
+// be allocated by the user. 
+// An occupied piece will be a section of the memory block which
+// has been allocated by the user.
+//
+// A Memory Block will add some support for "shifting".
+// This is the act of pushing all occupied pieces to the start of
+// the memory block. The result being all free pieces being combined
+// into one large free piece at the end of the block. 
+//
+// Memory Blocks will be large. (Probs >= 100kb)
+// This way, shifting only needs to be done on a per Memory Block
+// basis. As of now, data will never be shifted from
+// one block to another.
+//
+// If the user wants a piece of memory larger than the default
+// block size, a custom size block will be created.
+//
+// 
+//
+// Unsolved Questions:
+//
+// How aware will memory blocks be of the address book??
+// How will the free list be organized??
+// How will shifting be implemented??
+// When we shift, must we freeze the entire block???
+// Is there a way to shift individual pieces of memory one
+
+
+
+
+
+
+
+
 // Might need to rewrite all my code below...
 // As it no longer really works...
 //
@@ -26,6 +72,14 @@
 // concurrently. i.e. We need a shifting method that actually
 // produces a defragmented memory space, and does not stop
 // the user from using malloc and free as normal.
+//
+// How will memory pages be sorted?
+//
+// Will creating an entirely new chain of memory pages make
+// memory shifting easier to implement??? 
+//
+// We should only shift around memory it is has the potential
+// of creating large free blocks in the future.
 
 typedef struct  {
     // Number of bytes in the data section.

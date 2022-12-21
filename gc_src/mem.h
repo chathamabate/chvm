@@ -4,6 +4,13 @@
 #include <stdint.h>
 #include "./virt.h"
 
+// New Memory Block Concept and Notes:
+//
+// Memory Blocks will be large. (Probs > 100kb)
+// This way, shifting can be done on a per Memory Block
+// basis. As of now, data will never be shifted from
+// one block to another.
+
 typedef struct {} mem_page;
 
 // NOTE: the operations on the memory page itself will
