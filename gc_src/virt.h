@@ -41,7 +41,23 @@ typedef struct {
 } addr_table_put_res;
 
 // Attempt to put a physical address into the adt.
-addr_table_put_res adt_put(addr_table *adt, void *paddr);
+// init will initialize the paddr as well...
+// (i.e. write the corresponding vaddr at paddr)
+// If init is 0, table_ind will be ignored.
+addr_table_put_res adt_put_p(addr_table *adt, void *paddr, 
+        uint8_t init, uint64_t table_ind);
+
+// Attempt to put a physical address into the adt.
+static inline addr_table_put_res adt_put(addr_table *adt, void *paddr) {
+    return adt_put_p(adt, paddr, 0, 0);
+}
+
+// NOTE: this function will copy the given physical address's virtual address
+// to the bytes just before paddr.
+static inline addr_table_put_res adt_install(addr_table *adt, void *paddr, 
+        uint64_t table_ind) {
+    return adt_put_p(adt, paddr, 1, table_ind);
+}
 
 // Get the physical address at ind.
 // The read lock will be requested on the address.
@@ -58,6 +74,10 @@ void adt_unlock(addr_table *adt, uint64_t ind);
 // NOTE: behavoir is undefined if the index is out of bounds
 // or if the cell referenced is not in use. Doing these actions
 // can corrupt the ADT forever.
+//
+// NOTE: this also does no locking whatsoevery on the paddr
+// itself, it's assumed this call is never in parrallel with
+// a read or write call to the same cell.
 //
 addr_table_code adt_free(addr_table *adt, uint64_t index);
 
@@ -79,7 +99,15 @@ static inline uint8_t eq_adb_addr(addr_book_vaddr v1,
 addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap);
 void delete_addr_book(addr_book *adb);
 
-addr_book_vaddr adb_put(addr_book *adb, void *paddr);
+addr_book_vaddr adb_put_p(addr_book *adb, void *paddr, uint64_t init);
+
+static inline addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
+    return adb_put_p(adb, paddr, 0);
+}
+
+static inline addr_book_vaddr adb_install(addr_book *adb, void *paddr) {
+    return adb_put_p(adb, paddr, 1);
+}
 
 void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr);
 
@@ -90,6 +118,5 @@ void adb_unlock(addr_book *adb, addr_book_vaddr vaddr);
 void adb_free(addr_book *adb, addr_book_vaddr vaddr);
 
 uint64_t adb_get_fill(addr_book *adb);
-
 
 #endif

@@ -4,58 +4,25 @@
 #include <stdint.h>
 #include "./virt.h"
 
-// New Memory Block Concept and Notes:
+typedef struct {} mem_block;
+
+mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes);
+
+// NOTE: this will also free all vaddrs in this block's corresponding 
+// address book.
+void delete_mem_block(mem_block *mb);
+
+// Will return NULL_VADDR on failure.
+// (Maybe improve the detail of this return type when 
+// implementing memory space)
+addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes);
+void mb_free(mem_block *mb, addr_book_vaddr vaddr);
+
+// This will shift pieces to the start of the memory block.
 //
-// Memory Blocks will be large. (Probs > 100kb)
-// This way, shifting can be done on a per Memory Block
-// basis. As of now, data will never be shifted from
-// one block to another.
-
-typedef struct {} mem_page;
-
-// NOTE: the operations on the memory page itself will
-// all be thread safe (i.e. the functions below)
-// However, they are still open to user error if used
-// incorrectly.
-
-mem_page *new_mem_page(uint8_t chnl, uint64_t min_bytes);
-void delete_mem_page(mem_page *mp);
-
-// The size of the largest number of consecutive bytes which can
-// be allocated in this block. 
-uint64_t mp_get_space(mem_page *mp);
-
-// Will return NULL if there isn't enough space at the time
-// of request.
-void *mp_malloc(mem_page *mp, uint64_t min_bytes);
-
-void mp_free(mem_page *mp, void *ptr);
-
-
-
-
-
-
-// NOTE: EVERYTHING BELOW IS FOR LATER!!!!!
-
-// Here we will create the API for a garbage collected
-// memory space.....
-
-// A data block will be a variable size block of memory
-// allocatable by our memory space.
-typedef struct {} data_block;
-
-uint64_t db_get_refs_len(data_block *db);
-addr_book_vaddr *db_get_refs(data_block *db);
-
-uint64_t db_get_data_len(data_block *db);
-uint8_t *db_get_data(data_block *db);
-
-// Ok...
-
-typedef struct memory_space_struct memory_space;
-
-memory_space *new_memory_space();
-void delete_memory_space(memory_space *ms);
+// NOTE: This will write lock on allocated pieces inside
+// the memory block. Make sure you are not locking
+// on any piece before calling this function.
+void mb_shift(mem_block *mb);
 
 #endif

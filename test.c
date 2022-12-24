@@ -8,7 +8,6 @@
 #include "./util_src//test/mod.h"
 #include "./gc_src//test/mod.h"
 
-
 #define MODULES_LEN 2
 
 static const chunit_test_module *MODULES[MODULES_LEN] = {

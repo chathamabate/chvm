@@ -96,7 +96,7 @@ uint64_t adt_get_fill(addr_table *adt) {
     return fill;
 }
 
-addr_table_put_res adt_put(addr_table *adt, void *paddr) {
+addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t init, uint64_t table_ind) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
@@ -127,6 +127,20 @@ addr_table_put_res adt_put(addr_table *adt, void *paddr) {
     // Now to write to it.
     safe_wrlock(&(table[free_ind].lck));
     table[free_ind].paddr = paddr;
+
+    // This ensures that paddr cannot be retrieved until
+    // it has its correspondingg vaddr installed (If desired) 
+    if (init) {
+        addr_book_vaddr vaddr = {
+            .table_index = table_ind,
+            .cell_index = free_ind,
+        };
+
+        // NOTE: The vaddr is always copied to the 
+        // preceding bytes of the physical address given.
+        ((addr_book_vaddr *)paddr)[-1] = vaddr;
+    }
+
     safe_rwlock_unlock(&(table[free_ind].lck));
 
     res.index = free_ind;
@@ -374,7 +388,7 @@ static inline void adb_try_removal(addr_book *adb, uint64_t entry_index) {
     safe_rwlock_unlock(&(adb->lck));
 }
 
-addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
+addr_book_vaddr adb_put_p(addr_book *adb, void *paddr, uint64_t init) {
     addr_book_vaddr vaddr;
 
     while (1) {
@@ -402,7 +416,7 @@ addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
 
         // Don't need a lock or index for this one as ADT
         // addresses remain constant!
-        addr_table_put_res put_res = adt_put(adt, paddr);
+        addr_table_put_res put_res = adt_put_p(adt, paddr, init, entry_index);
 
         // The entry we pulled ended up being full.
         // Let's just try again.
