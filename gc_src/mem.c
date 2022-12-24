@@ -113,6 +113,10 @@ static inline void *mp_body(mem_piece *mp) {
     return (void *)((uint64_t *)mp + 1);
 }
 
+static inline mem_piece *mp_b_to_mp(void *mp_b) {
+    return (mem_piece *)((uint64_t *)mp_b - 1);
+}
+
 static inline mem_piece *mp_next(mem_piece *mp) {
     return (mem_piece *)((uint8_t *)mp + mp_size(mp));
 }
@@ -133,19 +137,20 @@ typedef struct mem_free_piece_header_struct {
 
 static const uint64_t MFP_PADDING = MP_PADDING + sizeof(mem_free_piece_header);
 
-static inline mem_piece *mfp_h_to_mp(mem_free_piece_header *mfp_h) {
-    // Back up to start of the piece.
-    return (mem_piece *)((uint64_t *)mfp_h - 1);
-}
-
 // This is a little confusing.
 // Returns the amount of user accessible memory which can be allocated in
 // the given free block.
 static inline uint64_t mfp_h_free_space(mem_free_piece_header *mfp_h) {
-    return mp_size(mfp_h_to_mp(mfp_h)) - MFP_PADDING;
+    return mp_size(mp_b_to_mp(mfp_h)) - MFP_PADDING;
 }
 
 typedef addr_book_vaddr mem_alloc_piece_header;
+
+// Convert the pointer to the body of an allocated block
+// into a pointer to a memory piece.
+static inline mem_piece *map_b_to_mp(void *map_b) {
+    return mp_b_to_mp((mem_alloc_piece_header *)map_b - 1);
+}
 
 static const uint64_t MAP_PADDING = MP_PADDING + sizeof(mem_alloc_piece_header);
 
@@ -226,27 +231,92 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
 
 }
 
-// This function will look at mp's neighboring pieces.
-// If either of them are free, the pieces will be combined together
-// to make a larger free piece.
-//
-// NOTE: We are assuming mp is not allocated and is not in any free
-// lists yet.
-static void mb_combine_frees_unsafe(mem_block *mb, mem_piece *mp) {
-    mem_block_header *mb_h = (mem_block_header *)mb;
-    mem_piece *start = (mem_piece *)(mb_h + 1);
-    void *end = (uint8_t *)(mb_h + 1) + mb_h->cap;
+static void mb_add_free_unsafe(mem_block *mb, mem_piece *prev, mem_piece *mp) {
 
-    // No matter what, the right neighbor must be removed from both
-    // free lists. So, it should be checked first.
-    
-    mem_piece *right = mp_next(mp);
-    if ((void *)right < end && !mp_alloc(right)) {
-        // Here right exists and is free!
-        
-        // Might need some paper for this...
+}
+
+// Remove piece from size free list only.
+static void mb_remove_by_size_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    if (mfp_h->size_free_prev) {
+        mfp_h->size_free_prev->size_free_next = mfp_h->size_free_next;
+    }
+
+    if (mfp_h->size_free_next) {
+        mfp_h->size_free_next->size_free_prev = mfp_h->size_free_prev;
+    }
+
+    // This is if we removed from the head of the list.
+    if (mfp_h == mb_h->size_free_list) {
+        mb_h->size_free_list = mfp_h->size_free_next;
     }
 }
+
+// Remove piece from address free list only.
+static void mb_remove_by_addr_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    if (mfp_h->addr_free_prev) {
+        mfp_h->addr_free_prev->addr_free_next = mfp_h->addr_free_next;
+    }
+
+    if (mfp_h->addr_free_next) {
+        mfp_h->addr_free_next->addr_free_prev = mfp_h->addr_free_prev;
+    }
+
+    // This is if we removed from the head of the list.
+    if (mfp_h == mb_h->addr_free_list) {
+        mb_h->addr_free_list = mfp_h->addr_free_next;
+    }
+}
+
+static void mb_combine_unsafe(mem_block *mb, mem_piece *mp) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+    mem_piece *start = (mem_piece *)(mb_h + 1);
+    mem_piece *end = (mem_piece *)((uint8_t *)(mb_h + 1) + mb_h->cap);
+
+    // Whether or not a combine occurred.
+    // Could do this much much better imo....
+    uint8_t combine = 0;
+
+    mem_piece *new_head = mp;
+    uint64_t new_size = mp_size(mp);
+
+    if (mp > start) {
+        mem_piece *prev = mp_prev(mp);
+
+        if (!mp_alloc(prev)) {
+            new_head = prev;
+            new_size += mp_size(mp); // Add our original size.
+            
+            mem_free_piece_header *mfp_h = mp_body(prev);
+
+            // Here we remove from size list, but not from address
+            // list.
+            mb_remove_by_size_unsafe(mb, mfp_h);
+        }
+    }
+
+    mem_piece *next = mp_next(mp);
+    if (next < end && !mp_alloc(next)) {
+        new_size += mp_size(next);
+        mem_free_piece_header *mfp_h = mp_body(next);
+
+        mb_remove_by_addr_unsafe(mb, mfp_h);
+        mb_remove_by_size_unsafe(mb, mfp_h);
+    }
+
+
+
+
+    // Her we must combine the next memory piece with the current.
+    // We know current must be large enough to fit a full free
+    // header without overwriting next.
+    
+    
+}
+
 
 void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     mem_block_header *mb_h = (mem_block_header *)mb;
@@ -263,6 +333,8 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     // shift... However, this is the purpose of the mem_lck.
     void *paddr = adb_get_read(mb_h->adb, vaddr);
     adb_unlock(mb_h->adb, vaddr);
+
+    mb_combine_unsafe(mb, map 
 
     // Discard vaddr entirely.
     adb_free(mb_h->adb, vaddr);

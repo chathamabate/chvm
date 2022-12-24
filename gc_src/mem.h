@@ -22,7 +22,8 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr);
 //
 // NOTE: This will write lock on allocated pieces inside
 // the memory block. Make sure you are not locking
-// on any piece before calling this function.
+// on any piece before calling this function. 
+// (I mean in the same thread btw)
 void mb_shift(mem_block *mb);
 
 #endif
