@@ -98,7 +98,7 @@ static inline void mp_init(mem_piece *mp, uint64_t size, uint8_t alloc) {
     uint64_t tag = size | alloc;
 
     *(uint64_t *)mp = tag;
-    *(uint64_t *)((uint8_t *)mp + size - 1) = tag;
+    ((uint64_t *)((uint8_t *)mp + size))[-1] = tag;
 }
 
 static inline uint64_t mp_size(mem_piece *mp) {
@@ -231,90 +231,211 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
 
 }
 
-static void mb_add_free_unsafe(mem_block *mb, mem_piece *prev, mem_piece *mp) {
-
-}
-
 // Remove piece from size free list only.
-static void mb_remove_by_size_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
+static void mb_remove_from_size_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
     mem_block_header *mb_h = (mem_block_header *)mb;
-
-    if (mfp_h->size_free_prev) {
-        mfp_h->size_free_prev->size_free_next = mfp_h->size_free_next;
-    }
 
     if (mfp_h->size_free_next) {
         mfp_h->size_free_next->size_free_prev = mfp_h->size_free_prev;
     }
 
-    // This is if we removed from the head of the list.
-    if (mfp_h == mb_h->size_free_list) {
+    if (mfp_h->size_free_prev) {
+        mfp_h->size_free_prev->size_free_next = mfp_h->size_free_next;
+    } else {
         mb_h->size_free_list = mfp_h->size_free_next;
     }
 }
 
-// Remove piece from address free list only.
-static void mb_remove_by_addr_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
+// Add a piece which does not currently reside in the size free list into the
+// size free list.
+static void mb_add_to_size_unsafe(mem_block *mb, mem_piece *mp) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
-    if (mfp_h->addr_free_prev) {
-        mfp_h->addr_free_prev->addr_free_next = mfp_h->addr_free_next;
+    uint64_t size = mp_size(mp); 
+    mem_free_piece_header *mfp_h = (mem_free_piece_header *)mp_body(mp);
+
+    mem_free_piece_header *iter = mb_h->size_free_list;
+    mem_free_piece_header *next_iter = NULL;
+
+    if (!iter) {
+        mb_h->size_free_list = mfp_h;
+
+        mfp_h->size_free_prev = NULL;
+        mfp_h->size_free_next = NULL;
+
+        return;
     }
 
-    if (mfp_h->addr_free_next) {
-        mfp_h->addr_free_next->addr_free_prev = mfp_h->addr_free_prev;
+    // Go until our iterator has a size <= mp.
+    while (mp_size(mp_b_to_mp(iter)) > size) {
+        next_iter = iter->size_free_next;
+
+        // Here we have made it to the end of 
+        // our list.
+        if (!next_iter) {
+            iter->size_free_next = mfp_h; 
+
+            mfp_h->size_free_prev = iter;
+            mfp_h->size_free_next = NULL;
+
+            return;
+        }
+
+        iter = next_iter;
     }
 
-    // This is if we removed from the head of the list.
-    if (mfp_h == mb_h->addr_free_list) {
-        mb_h->addr_free_list = mfp_h->addr_free_next;
+    if (iter->size_free_prev) {
+        iter->size_free_prev->size_free_next = mfp_h;
+    } else {
+        mb_h->size_free_list = mfp_h;
     }
+
+    // Insert mp just before iter.
+    mfp_h->size_free_next = iter;
+    mfp_h->size_free_prev = iter->size_free_prev;
+
+    iter->size_free_prev = mfp_h;
 }
 
-static void mb_combine_unsafe(mem_block *mb, mem_piece *mp) {
+// Pretty mmuch a copy of the size version just above.
+static void mb_add_to_addr_unsafe(mem_block *mb, mem_piece *mp) {
     mem_block_header *mb_h = (mem_block_header *)mb;
+    mem_free_piece_header *mfp_h = (mem_free_piece_header *)mp_body(mp);
+
+    mem_free_piece_header *iter = mb_h->addr_free_list;
+    mem_free_piece_header *next_iter = NULL;
+    
+    if (!iter) {
+        mb_h->addr_free_list = mfp_h;
+
+        mfp_h->addr_free_prev = NULL;
+        mfp_h->addr_free_next = NULL;
+        
+        return;
+    }
+
+    while (iter < mfp_h) {
+        next_iter = iter->addr_free_next;
+
+        if (!next_iter) {
+            iter->addr_free_next = mfp_h; 
+
+            mfp_h->addr_free_prev = iter;
+            mfp_h->addr_free_next = NULL;
+
+            return;
+        }
+
+        iter = next_iter;
+    }
+    
+    if (iter->addr_free_prev) {
+        iter->addr_free_prev->addr_free_next = mfp_h;
+    } else {
+        mb_h->addr_free_list = mfp_h;
+    }
+
+    mfp_h->addr_free_next = iter;
+    mfp_h->addr_free_prev = iter->addr_free_prev;
+
+    iter->addr_free_prev = mfp_h;
+}
+
+// mp will be a newly freed piece which is not part of any free lists yet.
+static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
     mem_piece *start = (mem_piece *)(mb_h + 1);
     mem_piece *end = (mem_piece *)((uint8_t *)(mb_h + 1) + mb_h->cap);
 
-    // Whether or not a combine occurred.
-    // Could do this much much better imo....
-    uint8_t combine = 0;
-
-    mem_piece *new_head = mp;
-    uint64_t new_size = mp_size(mp);
+    // No matter the situation, the new free block must be newly added
+    // into the size free list. 
+    
+    mem_piece *prev = NULL;
+    uint8_t prev_free = 0;
 
     if (mp > start) {
-        mem_piece *prev = mp_prev(mp);
-
-        if (!mp_alloc(prev)) {
-            new_head = prev;
-            new_size += mp_size(mp); // Add our original size.
-            
-            mem_free_piece_header *mfp_h = mp_body(prev);
-
-            // Here we remove from size list, but not from address
-            // list.
-            mb_remove_by_size_unsafe(mb, mfp_h);
-        }
+        // Only calculate prev if it is in bounds.
+        prev = mp_prev(mp); 
+        prev_free = !mp_alloc(prev);
     }
 
     mem_piece *next = mp_next(mp);
-    if (next < end && !mp_alloc(next)) {
-        new_size += mp_size(next);
-        mem_free_piece_header *mfp_h = mp_body(next);
+    uint8_t next_free = 0;
 
-        mb_remove_by_addr_unsafe(mb, mfp_h);
-        mb_remove_by_size_unsafe(mb, mfp_h);
+    if (next < end) {
+        next_free = !mp_alloc(next); 
+    } else {
+        // void the next pointer if it is out of bounds.
+        next = NULL;     
     }
 
-
-
-
-    // Her we must combine the next memory piece with the current.
-    // We know current must be large enough to fit a full free
-    // header without overwriting next.
+    // Now, get needed free piece headers and remove pieces
+    // from size free list.
     
-    
+    uint8_t size = mp_size(mp);
+
+    uint64_t prev_size = 0;
+    mem_free_piece_header *prev_mfp_h;
+    if (prev_free) {
+        prev_size = mp_size(prev);
+        prev_mfp_h = (mem_free_piece_header *)mp_body(prev);
+        mb_remove_from_size_unsafe(mb, prev_mfp_h);
+    }
+
+    uint64_t next_size = 0;
+    mem_free_piece_header *next_mfp_h;
+    if (next_free) {
+        next_size = mp_size(next);
+        next_mfp_h = (mem_free_piece_header *)mp_body(next);
+        mb_remove_from_size_unsafe(mb, next_mfp_h);
+    }
+
+    if (prev_free && next_free) {
+        // Here we remove next from the address free list.
+        // We don't need to do any special checks since we know
+        // prev must be directly to the left of next in the address
+        // free list. 
+
+        prev_mfp_h->addr_free_next = next_mfp_h->addr_free_next;
+
+        if (next_mfp_h->addr_free_next) {
+            next_mfp_h->addr_free_next->addr_free_prev = prev_mfp_h;
+        }
+
+        // Init new size!
+        mp_init(prev, prev_size + size + next_size, 0);
+        mb_add_to_size_unsafe(mb, prev);
+    } else if (prev_free) {
+        // With just prev being free, address list stays the same.
+        mp_init(prev, prev_size + size, 0);
+        mb_add_to_size_unsafe(mb, prev);
+    } else if (next_free) {
+        // Substitute the current piece in where next was in the free list.
+        mem_free_piece_header *mfp_h = (mem_free_piece_header *)mp_body(mp);
+
+        mfp_h->addr_free_next = next_mfp_h->addr_free_next;
+        mfp_h->addr_free_prev = next_mfp_h->addr_free_prev;
+
+        if (next_mfp_h->addr_free_next) {
+            next_mfp_h->addr_free_next->addr_free_prev = mfp_h;
+        }
+
+        if (next_mfp_h->addr_free_prev) {
+            next_mfp_h->addr_free_prev->addr_free_next = mfp_h;
+        } else {
+            // If it doesn't have a previous pointer, it must
+            // be the start of the list.
+            mb_h->addr_free_list = mfp_h;
+        }
+
+        mp_init(mp, size + next_size, 0);
+        mb_add_to_size_unsafe(mb, mp);
+    } else {
+        mp_init(mp, size, 0); 
+        mb_add_to_size_unsafe(mb, mp);
+        mb_add_to_addr_unsafe(mb, mp);
+    }
 }
 
 
@@ -334,10 +455,12 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     void *paddr = adb_get_read(mb_h->adb, vaddr);
     adb_unlock(mb_h->adb, vaddr);
 
-    mb_combine_unsafe(mb, map 
-
     // Discard vaddr entirely.
     adb_free(mb_h->adb, vaddr);
+
+    // Get corresponding mem_piece pointer.
+    mem_piece *mp = map_b_to_mp(paddr);
+    mb_free_unsafe(mb, mp);
     
     safe_rwlock_unlock(&(mb_h->mem_lck)); 
 }
