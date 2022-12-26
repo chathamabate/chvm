@@ -152,6 +152,10 @@ static inline mem_piece *map_b_to_mp(void *map_b) {
     return mp_b_to_mp((mem_alloc_piece_header *)map_b - 1);
 }
 
+static inline void *mp_to_map_b(mem_piece *mp) {
+    return (mem_alloc_piece_header *)mp_body(mp) + 1;
+}
+
 static const uint64_t MAP_PADDING = MP_PADDING + sizeof(mem_alloc_piece_header);
 
 // NOTE: The value of this constant MUST be even.
@@ -227,9 +231,7 @@ mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes) {
 void delete_mem_block(mem_block *mb) {
 }
 
-addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
 
-}
 
 // Remove piece from size free list only.
 static void mb_remove_from_size_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
@@ -243,6 +245,20 @@ static void mb_remove_from_size_unsafe(mem_block *mb, mem_free_piece_header *mfp
         mfp_h->size_free_prev->size_free_next = mfp_h->size_free_next;
     } else {
         mb_h->size_free_list = mfp_h->size_free_next;
+    }
+}
+
+static void mb_remove_from_addr_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    if (mfp_h->addr_free_next) {
+        mfp_h->addr_free_next->addr_free_prev = mfp_h->addr_free_prev;
+    }
+
+    if (mfp_h->addr_free_prev) {
+        mfp_h->addr_free_prev->addr_free_next = mfp_h->addr_free_next;
+    } else {
+        mb_h->addr_free_list = mfp_h->addr_free_next;
     }
 }
 
@@ -438,7 +454,6 @@ static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
     }
 }
 
-
 void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
@@ -463,6 +478,89 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     mb_free_unsafe(mb, mp);
     
     safe_rwlock_unlock(&(mb_h->mem_lck)); 
+}
+
+addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    // Must account for a lot for headers and vaddr.
+    uint64_t min_size = pad_num_bytes(min_bytes);
+
+    safe_wrlock(&(mb_h->mem_lck)); 
+
+    mem_free_piece_header *big_free_h = mb_h->size_free_list;
+
+    if (!big_free_h) {
+        safe_rwlock_unlock(&(mb_h->mem_lck));
+
+        return NULL_VADDR;
+    }
+
+    mem_piece *big_free = mp_b_to_mp(big_free_h);
+    uint64_t big_free_size = mp_size(big_free);
+
+    if (big_free_size < min_size) {
+        safe_rwlock_unlock(&(mb_h->mem_lck));
+
+        return NULL_VADDR;
+    }
+
+    // As we must have enough space, we pop our big free block
+    // off the front of the size free list.
+    mb_h->size_free_list = big_free_h->size_free_next;
+
+    if (big_free_h->size_free_next) {
+        big_free_h->size_free_next->size_free_prev = NULL;
+    }
+
+    uint64_t cut_size = big_free_size - min_size;
+
+    // Here we check to see if we should divide our big free block.
+    // This is only done when there are enough remaining bytes 
+    // to malloc at least once. 
+    if (cut_size <= MAP_PADDING) {
+        // Here there will be no division.
+        // Simply remove big free from corresponding free
+        // lists.             
+
+        mb_remove_from_addr_unsafe(mb, big_free_h);
+
+        mp_init(big_free, big_free_size, 1);
+        safe_rwlock_unlock(&(mb_h->mem_lck));
+
+        return adb_put(mb_h->adb, mp_to_map_b(big_free));
+    }
+
+    // Here we cut!
+    mem_piece *new_free = (mem_piece *)((uint8_t *)big_free + min_size);
+    mp_init(new_free, cut_size, 0);
+
+    // Substitue new free in the address list where big free once
+    // was.
+    mem_free_piece_header *new_free_h = 
+        (mem_free_piece_header *)mp_body(new_free);
+
+    new_free_h->addr_free_next = big_free_h->size_free_next;
+    new_free_h->addr_free_prev = big_free_h->size_free_prev;
+    
+    if (new_free_h->addr_free_next) {
+        new_free_h->addr_free_next->addr_free_prev = new_free_h;
+    }
+
+    if (new_free_h->addr_free_prev) {
+        new_free_h->addr_free_prev->addr_free_next = new_free_h;
+    } else {
+        mb_h->addr_free_list = new_free_h; // beginning of addr free list.
+    }
+
+    // Add new cut to size free list.
+    mb_add_to_size_unsafe(mb, new_free);
+
+    // Finally, init our new allocated block.
+    mp_init(big_free, min_size, 1);
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    return adb_put(mb_h->adb, mp_to_map_b(big_free));
 }
 
 void mb_shift(mem_block *mb) {
