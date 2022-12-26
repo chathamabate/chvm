@@ -93,6 +93,11 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     safe_printf("\n");
 
     // Now we need to test coalescing.
+    
+    const uint64_t num_sizes = 3;
+    uint64_t sizes[num_sizes] = {
+        sizeof(int), 40, 15
+    };
 
     const uint64_t vaddrs_len = 6;
     addr_book_vaddr vaddrs[vaddrs_len];
@@ -100,7 +105,7 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     uint64_t i;
     for (i = 0; i < vaddrs_len; i++) {
         // Slightly different sized blocks here.
-        vaddrs[i] = mb_malloc(mb, sizeof(int) + i);
+        vaddrs[i] = mb_malloc(mb, sizes[i % num_sizes]);
 
         assert_false(tc, null_adb_addr(vaddrs[i]));
     }
@@ -116,10 +121,10 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     mb_free(mb, vaddrs[1]);
     mb_free(mb, vaddrs[0]);
 
+    mb_print(mb);
 
-    // Since all blocks are freed, we should be left with a 
-    // free block large enough to fit the original min size.
-    assert_false(tc, null_adb_addr(mb_malloc(mb, block_min_size)));
+    addr_book_vaddr final_vaddr = mb_malloc(mb, block_min_size);
+    assert_false(tc, null_adb_addr(final_vaddr));
 
     delete_mem_block(mb);
     delete_addr_book(adb);
