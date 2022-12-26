@@ -229,6 +229,35 @@ mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes) {
 }
 
 void delete_mem_block(mem_block *mb) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    mem_piece *start  = (mem_piece *)(mb_h + 1);
+    mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
+
+    // Again, we lock here, but really, this call should never be
+    // called in parallel with any other call to the same mem
+    // block.
+    safe_wrlock(&(mb_h->mem_lck));
+
+    mem_piece *iter = start;
+
+    // Here we free all virtual addresses used by the
+    // memory block.
+    while (iter < end) {
+        if (!mp_alloc(iter)) {
+            continue;
+        }
+
+        mem_alloc_piece_header *map_h = 
+            (mem_alloc_piece_header *)mp_body(iter);
+
+        adb_free(mb_h->adb, *map_h);
+    }
+
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    safe_free(mb);
 }
 
 
@@ -564,5 +593,6 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
 }
 
 void mb_shift(mem_block *mb) {
+    // TODO... write this at some point.
 }
 
