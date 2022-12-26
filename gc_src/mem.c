@@ -6,6 +6,9 @@
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
 
+#include "../core_src/io.h"
+#include <inttypes.h>
+
 // New Memory Block Concept and Notes:
 //
 // A Memory block will be one contiguous piecce of memory
@@ -121,8 +124,12 @@ static inline mem_piece *mp_next(mem_piece *mp) {
     return (mem_piece *)((uint8_t *)mp + mp_size(mp));
 }
 
+static inline uint64_t mp_prev_size(mem_piece *mp) {
+    return ((uint64_t *)mp)[-1] & MP_SIZE_MASK; 
+}
+
 static inline mem_piece *mp_prev(mem_piece *mp) {
-    return (mem_piece *)((uint8_t *)mp - ((uint64_t *)mp)[-1]);
+    return (mem_piece *)((uint8_t *)mp - mp_prev_size(mp));
 }
 
 typedef struct mem_free_piece_header_struct {
@@ -172,7 +179,11 @@ static inline uint64_t round_num_bytes(uint64_t num_bytes) {
 
 // Pad number of bytes by the allocated piece padding, and round.
 static inline uint64_t pad_num_bytes(uint64_t num_bytes) {
-    return round_num_bytes(num_bytes) + MAP_PADDING;
+    uint64_t map_size = round_num_bytes(num_bytes) + MAP_PADDING; 
+
+    // Must have at least minimum size!
+    // (Accounting for when a block is freed)
+    return map_size < MP_MIN_SIZE ? MP_MIN_SIZE : map_size;
 }
 
 typedef struct {
@@ -201,7 +212,7 @@ mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes) {
     uint64_t padded_cap = pad_num_bytes(min_bytes);
     mem_block *mb = safe_malloc(chnl, sizeof(mem_block_header) + padded_cap);
 
-    mem_block_header *mb_h = (mem_block_header *)mb_h;
+    mem_block_header *mb_h = (mem_block_header *)mb;
 
     *(uint64_t *)&(mb_h->cap) = padded_cap;
     *(addr_book **)&(mb_h->adb) = adb;
@@ -244,23 +255,21 @@ void delete_mem_block(mem_block *mb) {
     // Here we free all virtual addresses used by the
     // memory block.
     while (iter < end) {
-        if (!mp_alloc(iter)) {
-            continue;
+        // Only free vaddrs from allocated blocks.
+        if (mp_alloc(iter)) {
+            mem_alloc_piece_header *map_h = 
+                (mem_alloc_piece_header *)mp_body(iter);
+
+            adb_free(mb_h->adb, *map_h);
         }
 
-        mem_alloc_piece_header *map_h = 
-            (mem_alloc_piece_header *)mp_body(iter);
-
-        adb_free(mb_h->adb, *map_h);
+        iter = mp_next(iter);
     }
-
 
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
     safe_free(mb);
 }
-
-
 
 // Remove piece from size free list only.
 static void mb_remove_from_size_unsafe(mem_block *mb, mem_free_piece_header *mfp_h) {
@@ -437,6 +446,7 @@ static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
     }
 
     if (prev_free && next_free) {
+        safe_printf("Prev & Next Free\n");
         // Here we remove next from the address free list.
         // We don't need to do any special checks since we know
         // prev must be directly to the left of next in the address
@@ -452,10 +462,12 @@ static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
         mp_init(prev, prev_size + size + next_size, 0);
         mb_add_to_size_unsafe(mb, prev);
     } else if (prev_free) {
+        safe_printf("Prev Free\n");
         // With just prev being free, address list stays the same.
         mp_init(prev, prev_size + size, 0);
         mb_add_to_size_unsafe(mb, prev);
     } else if (next_free) {
+        safe_printf("Next Free\n");
         // Substitute the current piece in where next was in the free list.
         mem_free_piece_header *mfp_h = (mem_free_piece_header *)mp_body(mp);
 
@@ -477,6 +489,7 @@ static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
         mp_init(mp, size + next_size, 0);
         mb_add_to_size_unsafe(mb, mp);
     } else {
+        safe_printf("Iso Free\n");
         mp_init(mp, size, 0); 
         mb_add_to_size_unsafe(mb, mp);
         mb_add_to_addr_unsafe(mb, mp);
@@ -498,6 +511,9 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     // shift... However, this is the purpose of the mem_lck.
     void *paddr = adb_get_read(mb_h->adb, vaddr);
     adb_unlock(mb_h->adb, vaddr);
+
+    safe_printf("Freeing %llu %llu (%p)\n", 
+            vaddr.table_index, vaddr.cell_index, map_b_to_mp(paddr));
 
     // Discard vaddr entirely.
     adb_free(mb_h->adb, vaddr);
@@ -547,11 +563,10 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     // Here we check to see if we should divide our big free block.
     // This is only done when there are enough remaining bytes 
     // to malloc at least once. 
-    if (cut_size <= MAP_PADDING) {
+    if (cut_size <= MP_MIN_SIZE) {
         // Here there will be no division.
         // Simply remove big free from corresponding free
         // lists.             
-
         mb_remove_from_addr_unsafe(mb, big_free_h);
 
         mp_init(big_free, big_free_size, 1);
@@ -594,5 +609,33 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
 
 void mb_shift(mem_block *mb) {
     // TODO... write this at some point.
+}
+
+void mb_print(mem_block *mb) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    safe_rdlock(&(mb_h->mem_lck));
+
+    mem_piece *start  = (mem_piece *)(mb_h + 1);
+    mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
+
+    uint64_t piece_num = 0;
+    mem_piece *iter = start;
+
+    while (iter < end) {
+        safe_printf("%" PRIu64 " : %p : Size %" PRIu64 " : ", 
+                piece_num, iter, mp_size(iter)); 
+
+        if (mp_alloc(iter)) {
+            safe_printf("Allocated\n");
+        } else {
+            safe_printf("Free\n");
+        }
+        
+        piece_num++;
+        iter = mp_next(iter);
+    }
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
 }
 

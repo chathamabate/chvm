@@ -96,6 +96,11 @@ static inline uint8_t eq_adb_addr(addr_book_vaddr v1,
         (v1.cell_index == v2.cell_index);
 }
 
+static inline uint8_t null_adb_addr(addr_book_vaddr v) {
+    return v.table_index == NULL_VADDR.table_index &&
+        v.cell_index == NULL_VADDR.cell_index;
+}
+
 addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap);
 void delete_addr_book(addr_book *adb);
 
