@@ -356,35 +356,24 @@ static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
 
     // Now, get needed free piece headers and remove pieces
     // from size free list.
-    
-    uint8_t size = mp_size(mp);
-
-    uint64_t prev_size = 0;
-    mem_free_piece_header *prev_mfp_h;
-    if (prev_free) {
-        prev_size = mp_size(prev);
-        prev_mfp_h = (mem_free_piece_header *)mp_body(prev);
-        mb_remove_from_size_unsafe(mb, prev_mfp_h);
-    }
-
-    uint64_t next_size = 0;
-    mem_free_piece_header *next_mfp_h;
-    if (next_free) {
-        next_size = mp_size(next);
-        next_mfp_h = (mem_free_piece_header *)mp_body(next);
-        mb_remove_from_size_unsafe(mb, next_mfp_h);
-    }
-
     mem_piece *new_free = mp;
     uint64_t new_size = mp_size(mp);
-
+    
+    mem_free_piece_header *prev_mfp_h;
     if (prev_free) {
+        prev_mfp_h = (mem_free_piece_header *)mp_body(prev);
+        mb_remove_from_size_unsafe(mb, prev_mfp_h);
+
         new_free = prev;
-        new_size += prev_size;
+        new_size += mp_size(prev);
     }
 
+    mem_free_piece_header *next_mfp_h;
     if (next_free) {
-        new_size += next_size;
+        next_mfp_h = (mem_free_piece_header *)mp_body(next);
+        mb_remove_from_size_unsafe(mb, next_mfp_h);
+
+        new_size += mp_size(next);
     }
 
     mp_init(new_free, new_size, 0);
@@ -506,6 +495,12 @@ void mb_print(mem_block *mb) {
             safe_printf("Allocated\n");
         } else {
             safe_printf("Free\n");
+
+            mem_free_piece_header *mfp_h = 
+                (mem_free_piece_header *)mp_body(iter);
+
+            safe_printf("  Prev : %p\n",  mfp_h->size_free_prev);
+            safe_printf("  Next : %p\n", mfp_h->size_free_next);
         }
         
         piece_num++;

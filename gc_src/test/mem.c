@@ -121,8 +121,6 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     mb_free(mb, vaddrs[1]);
     mb_free(mb, vaddrs[0]);
 
-    mb_print(mb);
-
     addr_book_vaddr final_vaddr = mb_malloc(mb, block_min_size);
     assert_false(tc, null_adb_addr(final_vaddr));
 
@@ -136,6 +134,24 @@ static const chunit_test MB_MAF_3 = {
     .timeout = 5,
 };
 
+static void test_mem_block_maf_4(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+    mem_block *mb = new_mem_block(1, adb, 100); 
+    safe_printf("\n");
+
+    // TODO implement a better test for adding to
+    // the free list.
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+static const chunit_test MB_MAF_4 = {
+    .name = "Memory Block Malloc/Free 4",
+    .t = test_mem_block_maf_4,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {
@@ -144,6 +160,7 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MAF_1,
         &MB_MAF_2,
         &MB_MAF_3,
+        &MB_MAF_4,
     },
     .tests_len = 5,
 };
