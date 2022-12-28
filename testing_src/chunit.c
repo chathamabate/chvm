@@ -118,6 +118,7 @@ static void attempt_read_cmpr_and_close(chunit_test_run *tr, int pipe_fd,
 
 static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *test, pid_t child) {
 
+
     // Test run to return.
     chunit_test_run *tr = new_test_run(test, child);
 
@@ -354,9 +355,13 @@ static chunit_test_suite_run *new_test_suite_run(const chunit_test_suite *suite)
 chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite, 
         const chunit_test_suite_decorator *decorator, void *context) {
     chunit_test_suite_run *tsr = new_test_suite_run(suite);
+    safe_printf("Suite Test Runs @ %p\n", tsr->test_runs);
 
     uint64_t i;
     for (i = 0; i < tsr->suite->tests_len; i++) {
+        safe_printf("\nStarting Run %llu\n", i);
+        print_mem_chnls();
+
         chunit_test_run *tr;
         if (decorator) {
             decorator->prep_context(suite, i, context);
@@ -369,10 +374,13 @@ chunit_test_suite_run *chunit_run_suite(const chunit_test_suite *suite,
 
         tsr->test_runs[i] = tr;
 
+        safe_printf("\nFinishing Run %llu (Wrote To %p)\n", i, tsr->test_runs + i);
+        print_mem_chnls();
 
         if (tr->result == CHUNIT_SUCCESS && tr->errors->len == 0) {
             tsr->successes++;
         }
+
     }
 
     return tsr;

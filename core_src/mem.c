@@ -2,7 +2,10 @@
 
 #include <pthread.h>
 #include <stdio.h>
+#include "./io.h"
 #include "./sys.h"
+
+#include <inttypes.h>
 
 void *try_safe_malloc(uint8_t chnl, size_t size) {
     uint8_t *raw_ptr = malloc(size + 1);
@@ -73,7 +76,7 @@ void safe_free(void *ptr) {
 uint8_t check_memory_leaks(uint8_t lb) {
     _rdlock_core_state();
     uint8_t chnl;
-    for (chnl = lb; chnl < MEM_CHANNELS; chnl++) {
+    for (chnl = lb; chnl < _core_state->num_mem_chnls; chnl++) {
         // Check if a memory leak exists in a valid channel.
         if (_core_state->mem_chnls[chnl]) {
             _unlock_core_state();
@@ -83,5 +86,22 @@ uint8_t check_memory_leaks(uint8_t lb) {
 
     _unlock_core_state();
     return 0;
+}
+
+void print_mem_chnls() {
+    _rdlock_core_state(); 
+
+    // NOTE: we can just use normal printf here since
+    // we are already blocked on sigint.
+    
+    printf("Mem Channels @ %p\n", (void *)(_core_state->mem_chnls));
+    
+    uint8_t i;
+    for (i = 0; i < _core_state->num_mem_chnls; i++) {
+        printf("%u: %" PRIu64 " (%p)\n", i, _core_state->mem_chnls[i],
+                (void *)(_core_state->mem_chnls[i]));
+    }
+
+    _unlock_core_state();
 }
 

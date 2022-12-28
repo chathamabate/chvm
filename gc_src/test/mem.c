@@ -2,6 +2,7 @@
 #include "../mem.h"
 #include "../../testing_src/assert.h"
 #include "../../core_src/io.h"
+#include "../../core_src/mem.h"
 
 static void test_new_mem_block(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
@@ -29,6 +30,10 @@ static void test_mem_block_maf_0(chunit_test_context *tc) {
 
     delete_mem_block(mb);
     delete_addr_book(adb);
+
+    if (check_memory_leaks(1)) {
+        print_mem_chnls();        
+    } 
 }
 
 static const chunit_test MB_MAF_0 = {
@@ -40,13 +45,16 @@ static const chunit_test MB_MAF_0 = {
 static void test_mem_block_maf_1(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
     mem_block *mb = new_mem_block(1, adb, 100); 
-    safe_printf("\n");
 
     // Try just mallocing a bunch of times in a row.
     while (!null_adb_addr(mb_malloc(mb, sizeof(int))));
 
     delete_mem_block(mb);
     delete_addr_book(adb);
+    
+    if (check_memory_leaks(1)) {
+        print_mem_chnls();        
+    } 
 }
 
 static const chunit_test MB_MAF_1 = {
@@ -58,7 +66,6 @@ static const chunit_test MB_MAF_1 = {
 static void test_mem_block_maf_2(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
     mem_block *mb = new_mem_block(1, adb, 100); 
-    safe_printf("\n");
 
     // Now let's try some mallocs and frees 
     // in a row.
@@ -76,6 +83,10 @@ static void test_mem_block_maf_2(chunit_test_context *tc) {
 
     delete_mem_block(mb);
     delete_addr_book(adb);
+
+    if (check_memory_leaks(1)) {
+        print_mem_chnls();        
+    } 
 }
 
 static const chunit_test MB_MAF_2 = {
@@ -95,17 +106,13 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     // Now we need to test coalescing.
     
     const uint64_t num_sizes = 3;
-    uint64_t sizes[num_sizes] = {
-        sizeof(int), 40, 15
-    };
-
     const uint64_t vaddrs_len = 6;
     addr_book_vaddr vaddrs[vaddrs_len];
 
     uint64_t i;
     for (i = 0; i < vaddrs_len; i++) {
         // Slightly different sized blocks here.
-        vaddrs[i] = mb_malloc(mb, sizes[i % num_sizes]);
+        vaddrs[i] = mb_malloc(mb, ((i % num_sizes) + 1) * 20);
 
         assert_false(tc, null_adb_addr(vaddrs[i]));
     }
@@ -124,8 +131,14 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     addr_book_vaddr final_vaddr = mb_malloc(mb, block_min_size);
     assert_false(tc, null_adb_addr(final_vaddr));
 
+    mb_print(mb);
+
     delete_mem_block(mb);
     delete_addr_book(adb);
+
+    if (check_memory_leaks(1)) {
+        print_mem_chnls();        
+    } 
 }
 
 static const chunit_test MB_MAF_3 = {
@@ -136,11 +149,24 @@ static const chunit_test MB_MAF_3 = {
 
 static void test_mem_block_maf_4(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
-    mem_block *mb = new_mem_block(1, adb, 100); 
+    mem_block *mb = new_mem_block(1, adb, 2000); 
     safe_printf("\n");
 
-    // TODO implement a better test for adding to
-    // the free list.
+    const uint64_t num_sizes = 5;
+    const uint64_t vaddrs_len = 20;
+    addr_book_vaddr vaddrs[vaddrs_len];
+
+    uint64_t i;
+    for (i = 0; i < vaddrs_len; i++) {
+        vaddrs[i] = mb_malloc(mb, ((i % num_sizes) + 1) * 15);
+        assert_false(tc, null_adb_addr(vaddrs[i]));
+    }
+
+    for (i = 0; i < vaddrs_len; i+=2) {
+        mb_free(mb, vaddrs[i]); 
+    }
+
+    // mb_print(mb);
 
     delete_mem_block(mb);
     delete_addr_book(adb);
@@ -162,5 +188,5 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MAF_3,
         &MB_MAF_4,
     },
-    .tests_len = 5,
+    .tests_len = 6,
 };

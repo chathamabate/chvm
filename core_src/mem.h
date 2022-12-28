@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define MEM_CHANNELS 16
-
 // NOTE, safe malloc and realloc will exit when getting NULL.
 // The try versions will not.
 
@@ -20,6 +18,8 @@ void safe_free(void *ptr);
 // This will check all memory channels 
 // including and above lb for memory leaks.
 uint8_t check_memory_leaks(uint8_t lb);
+
+void print_mem_chnls();
 
 static inline uint8_t get_chnl(void *ptr) {
     return ((uint8_t *)ptr)[-1];
