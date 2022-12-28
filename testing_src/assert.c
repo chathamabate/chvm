@@ -176,7 +176,8 @@ void assert_eq_char(chunit_test_context *tc, char expected, char actual) {
     cleanup_and_exit(tc);
 }
 
-void assert_eq_str(chunit_test_context *tc, char *expected, char *actual) {
+void assert_eq_str(chunit_test_context *tc, 
+        const char *expected, const char *actual) {
     if (strcmp(expected, actual) == 0) {
         return;
     }
@@ -194,8 +195,8 @@ void assert_eq_str(chunit_test_context *tc, char *expected, char *actual) {
     write_data(tc->pipe_fd, sizes, sizeof(size_t) * 2);
 
     // Then write both strings.
-    write_data(tc->pipe_fd, expected, sizes[0]);
-    write_data(tc->pipe_fd, actual, sizes[1]);
+    write_data(tc->pipe_fd, (void *)expected, sizes[0]);
+    write_data(tc->pipe_fd, (void *)actual, sizes[1]);
 
     cleanup_and_exit(tc);
 }

@@ -5,6 +5,7 @@
 #include "../../core_src/io.h"
 #include "../../core_src/thread.h"
 #include "../../util_src/thread.h"
+#include <string.h>
 
 static void test_new_addr_table(chunit_test_context *tc) {
     addr_table *adt = new_addr_table(1, 5);
@@ -256,6 +257,60 @@ static const chunit_test ADT_MULTI1 = {
     .timeout = 5,
 };
 
+static void test_adt_move(chunit_test_context *tc) {
+    addr_table *adt = new_addr_table(1, 5);
+
+    const char *message = "Hello World My Friend";
+
+    uint8_t buff[70];
+    uint8_t *paddr1 = buff + sizeof(addr_book_vaddr);
+    uint8_t *paddr2 = paddr1 + 10;
+
+    addr_table_put_res res = adt_install(adt, paddr1, 0);
+    assert_false(tc, res.code == ADT_NO_SPACE);
+
+    uint64_t cell_ind = res.index;
+
+    char *paddr = adt_get_write(adt, cell_ind);
+    assert_eq_ptr(tc, paddr1, paddr);
+
+    strcpy(paddr, message); 
+
+    adt_unlock(adt, cell_ind);
+
+    // Do the move.
+    adt_move_p(adt, cell_ind, paddr2, 
+            strlen(message) + 1, 1, 0);
+
+    paddr = adt_get_read(adt, cell_ind); 
+
+    // Confirm physical address was correctly changed.
+    assert_eq_ptr(tc, paddr2, paddr);
+
+    // Confirm string was copied correctly.
+    assert_eq_str(tc, message, paddr);
+
+    addr_book_vaddr expected_vaddr = {
+        .cell_index = cell_ind,
+        .table_index = 0,
+    };
+
+    // Here we confirm the correct virtual address
+    // was installed.
+    assert_true(tc, eq_adb_addr(expected_vaddr, 
+                ((addr_book_vaddr *)paddr)[-1]));
+
+    adt_unlock(adt, cell_ind);
+
+    delete_addr_table(adt);
+}
+
+const chunit_test ADT_MOVE = {
+    .name = "Address Table Move",
+    .t = test_adt_move,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADT = {
     .name = "Address Table Test Suite",
     .tests = {
@@ -264,8 +319,10 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
         &ADT_FREE,
         &ADT_MULTI0,
         &ADT_MULTI1,
+
+        &ADT_MOVE,
     },
-    .tests_len = 5
+    .tests_len = 6
 };
 
 // Address Book Suite Below.
@@ -483,6 +540,42 @@ static const chunit_test ADB_MULTI1 = {
     .timeout = 5,
 };
 
+static void test_adb_move(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+
+    // The main functionality is tested in the 
+    // adt version of this test.
+    
+    uint8_t buff[5] = {
+        1, 2, 3, 4, 5
+    };
+
+    uint8_t *paddr1 = buff + 2; // 3, 4, 5
+    uint8_t *paddr2 = buff;
+
+    addr_book_vaddr vaddr = adb_put(adb, paddr1);
+    adb_move(adb, vaddr, paddr2, 3);
+
+    uint8_t *paddr = adb_get_read(adb, vaddr);
+    assert_eq_ptr(tc, paddr2, paddr);
+
+    // Pretty elementary test that bytes were copied 
+    // correctly.
+    assert_eq_uint(tc, 3, paddr[0]);
+    assert_eq_uint(tc, 4, paddr[1]);
+    assert_eq_uint(tc, 5, paddr[2]);
+
+    adb_unlock(adb, vaddr);
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_MOVE = {
+    .name = "Address Book Move Test",
+    .t = test_adb_move,
+    .timeout = 5,
+};
+
 static void test_adb_misc_0(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
 
@@ -507,6 +600,7 @@ static const chunit_test ADB_MISC_0 = {
     .timeout = 5,
 };
 
+
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
     .tests = {
@@ -515,8 +609,10 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
         &ADB_FREE,
         &ADB_MULTI0,
         &ADB_MULTI1,
+
+        &ADB_MOVE,
         &ADB_MISC_0,
     },
-    .tests_len = 6
+    .tests_len = 7
 };
 

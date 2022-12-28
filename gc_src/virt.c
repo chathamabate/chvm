@@ -162,7 +162,7 @@ void adt_move_p(addr_table *adt, uint64_t cell_ind,
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
 
-    addr_table_cell *cell = table + table_ind;
+    addr_table_cell *cell = table + cell_ind;
 
     // Lock on our cell.
     safe_wrlock(&(cell->lck));
