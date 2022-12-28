@@ -3,6 +3,7 @@
 #include "../../testing_src/assert.h"
 #include "../../core_src/io.h"
 #include "../../core_src/mem.h"
+#include "../../util_src/thread.h"
 
 static void test_new_mem_block(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
@@ -173,14 +174,23 @@ static void test_mem_block_write(chunit_test_context *tc) {
         adb_unlock(adb, vaddrs[i]);
     }
 
-    const uint64_t mod = 3;
+    // Some random addresses to free.
+    const uint64_t num_frees = 10;
+    const uint64_t frees[num_frees] = {
+        3, 4,
+        7, 8,
+        5, 10,
+        13, 17, 
+        15, 16,
+    };
 
-    for (i = 0; i < vaddrs_len; i += mod) {
-        mb_free(mb, vaddrs[i]);
+    for (i = 0; i < num_frees; i++) {
+        mb_free(mb, vaddrs[frees[i]]);
+        vaddrs[frees[i]] = NULL_VADDR;
     }
 
     for (i = 0; i < vaddrs_len; i++) {
-        if (!(i % mod)) {
+        if (null_adb_addr(vaddrs[i])) {
             continue;
         }
 
@@ -201,7 +211,123 @@ const chunit_test MB_WRITE = {
     .timeout = 5,
 };
 
-// TODO Also we need a multi threaded test please.....
+typedef struct {
+    chunit_test_context *tc;
+
+    mem_block *mb;
+    addr_book *adb;
+
+    // Number of mallocs to perform.
+    uint64_t num_mallocs;
+    uint64_t malloc_size_factor;
+
+    // How to size blocks.
+    uint64_t size_mod;
+
+    // How to free blocks.
+    uint64_t free_mod;
+} test_mem_block_context_0;
+
+static void *test_mem_block_worker_0(void *arg) {
+    util_thread_spray_context *s_context = arg; 
+    test_mem_block_context_0 *c = s_context->context;
+
+    uint64_t *sizes = safe_malloc(1, sizeof(uint64_t) * c->size_mod);
+
+    // Calculate block sizes.
+    uint64_t i;
+    for (i = 0; i < c->size_mod; i++) {
+        sizes[i] = (i + 1) * c->malloc_size_factor;
+    }
+
+    addr_book_vaddr *vaddrs = 
+        safe_malloc(1, sizeof(addr_book_vaddr) * c->num_mallocs);
+
+    // Malloc a bunch of different blocks with different
+    // sizes. (Using the size mod)
+    for (i = 0; i < c->num_mallocs; i++) {
+        uint64_t min_size = sizes[i % c->size_mod];
+        vaddrs[i] = mb_malloc(c->mb, min_size);
+
+        // NOTE: we are assuming our mb is large enough to 
+        // take all of our mallocs.
+        assert_false(c->tc, null_adb_addr(vaddrs[i]));
+
+        // Here, we take our new piece, and we write the same value
+        // into all of its bytes.
+        uint8_t *map_iter = adb_get_write(c->adb, vaddrs[i]);
+        uint8_t *map_end = map_iter + min_size;
+
+        for (; map_iter < map_end; map_iter++) {
+            *map_iter = (uint8_t)(i * s_context->index);
+        }
+
+        adb_unlock(c->adb, vaddrs[i]);
+    }
+
+    // Now we free using the given mod.
+    for (i = 0; i < c->num_mallocs; i += c->free_mod) {
+        mb_free(c->mb, vaddrs[i]);
+        vaddrs[i] = NULL_VADDR;
+    }
+
+    // Finally, we check the remaining vaddrs.
+    for (i = 0; i < c->num_mallocs; i++) {
+        if (null_adb_addr(vaddrs[i])) {
+            continue; // Skip those that were already free.
+        }
+
+        uint8_t *map_iter = adb_get_read(c->adb, vaddrs[i]);
+        uint8_t *map_end = map_iter + sizes[i % c->size_mod];
+
+        // Now we confirm all bytes remain as expected.
+        for (; map_iter < map_end; map_iter++) {
+            assert_eq_int(c->tc, (uint8_t)(i * s_context->index), *map_iter);
+        }
+
+        adb_unlock(c->adb, vaddrs[i]);
+
+        mb_free(c->mb, vaddrs[i]);
+    }
+
+    safe_free(vaddrs);
+    safe_free(sizes);
+
+    return NULL;
+}
+
+static void test_mem_block_multi_0(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 10);
+    mem_block *mb = new_mem_block(1, adb, 30000);
+
+    test_mem_block_context_0 ctx = {
+        .tc = tc,
+        
+        .adb = adb,
+        .mb = mb,
+
+        .malloc_size_factor = sizeof(uint64_t),
+        .size_mod = 5,
+        .free_mod = 2,
+        .num_mallocs = 20,
+    };
+
+    const uint64_t num_threads = 20;
+
+    util_thread_spray_info *spray = util_thread_spray(1, num_threads, 
+                test_mem_block_worker_0, &ctx);
+
+    util_thread_collect(spray);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_MULTI_0 = {
+    .name = "Memory Block Multi Threaded 0",
+    .t = test_mem_block_multi_0,
+    .timeout = 5,
+};
 
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
@@ -211,8 +337,10 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MAF_1,
         &MB_MAF_2,
         &MB_MAF_3,
+
         &MB_MAF_4,
         &MB_WRITE,
+        &MB_MULTI_0,
     },
-    .tests_len = 7,
+    .tests_len = 8,
 };

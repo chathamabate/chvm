@@ -410,6 +410,11 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
 }
 
 addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
+    // Never allocate an empty piece!
+    if (min_bytes == 0) {
+        return NULL_VADDR;
+    } 
+
     mem_block_header *mb_h = (mem_block_header *)mb;
 
     // Must account for a lot for headers and vaddr.
