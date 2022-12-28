@@ -145,8 +145,6 @@ static void test_mem_block_maf_4(chunit_test_context *tc) {
 
     while (!null_adb_addr(mb_malloc(mb, 32)));
 
-    mb_print(mb);
-
     delete_mem_block(mb);
     delete_addr_book(adb);
 }
@@ -157,6 +155,54 @@ static const chunit_test MB_MAF_4 = {
     .timeout = 5,
 };
 
+static void test_mem_block_write(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+    mem_block *mb = new_mem_block(1, adb, 2000); 
+
+    const uint64_t vaddrs_len = 20;
+    addr_book_vaddr vaddrs[vaddrs_len];
+
+    uint64_t i;
+    for (i = 0; i < vaddrs_len; i++) {
+        vaddrs[i] = mb_malloc(mb, sizeof(int));
+        assert_false(tc, null_adb_addr(vaddrs[i]));
+
+        // Store index in each block.
+        int *paddr = (int *)adb_get_write(adb, vaddrs[i]); 
+        *paddr = i;
+        adb_unlock(adb, vaddrs[i]);
+    }
+
+    const uint64_t mod = 3;
+
+    for (i = 0; i < vaddrs_len; i += mod) {
+        mb_free(mb, vaddrs[i]);
+    }
+
+    for (i = 0; i < vaddrs_len; i++) {
+        if (!(i % mod)) {
+            continue;
+        }
+
+        int *paddr = (int *)adb_get_read(adb, vaddrs[i]);
+        int res = *paddr;
+        adb_unlock(adb, vaddrs[i]);
+
+        assert_eq_int(tc, i, res);
+    }
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_WRITE = {
+    .name = "Memory Block Write",
+    .t = test_mem_block_write,
+    .timeout = 5,
+};
+
+// TODO Also we need a multi threaded test please.....
+
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {
@@ -166,6 +212,7 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MAF_2,
         &MB_MAF_3,
         &MB_MAF_4,
+        &MB_WRITE,
     },
-    .tests_len = 6,
+    .tests_len = 7,
 };
