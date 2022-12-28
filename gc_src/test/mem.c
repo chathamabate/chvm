@@ -30,10 +30,6 @@ static void test_mem_block_maf_0(chunit_test_context *tc) {
 
     delete_mem_block(mb);
     delete_addr_book(adb);
-
-    if (check_memory_leaks(1)) {
-        print_mem_chnls();        
-    } 
 }
 
 static const chunit_test MB_MAF_0 = {
@@ -51,10 +47,6 @@ static void test_mem_block_maf_1(chunit_test_context *tc) {
 
     delete_mem_block(mb);
     delete_addr_book(adb);
-    
-    if (check_memory_leaks(1)) {
-        print_mem_chnls();        
-    } 
 }
 
 static const chunit_test MB_MAF_1 = {
@@ -83,10 +75,6 @@ static void test_mem_block_maf_2(chunit_test_context *tc) {
 
     delete_mem_block(mb);
     delete_addr_book(adb);
-
-    if (check_memory_leaks(1)) {
-        print_mem_chnls();        
-    } 
 }
 
 static const chunit_test MB_MAF_2 = {
@@ -100,8 +88,6 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
 
     addr_book *adb = new_addr_book(1, 5);
     mem_block *mb = new_mem_block(1, adb, block_min_size); 
-
-    safe_printf("\n");
 
     // Now we need to test coalescing.
     
@@ -118,8 +104,6 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     }
 
     // Testing freeing in random order. 
-   
-    safe_printf("Starting Frees\n");
     
     mb_free(mb, vaddrs[5]);
     mb_free(mb, vaddrs[3]);
@@ -131,14 +115,8 @@ static void test_mem_block_maf_3(chunit_test_context *tc) {
     addr_book_vaddr final_vaddr = mb_malloc(mb, block_min_size);
     assert_false(tc, null_adb_addr(final_vaddr));
 
-    mb_print(mb);
-
     delete_mem_block(mb);
     delete_addr_book(adb);
-
-    if (check_memory_leaks(1)) {
-        print_mem_chnls();        
-    } 
 }
 
 static const chunit_test MB_MAF_3 = {
@@ -150,7 +128,6 @@ static const chunit_test MB_MAF_3 = {
 static void test_mem_block_maf_4(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
     mem_block *mb = new_mem_block(1, adb, 2000); 
-    safe_printf("\n");
 
     const uint64_t num_sizes = 5;
     const uint64_t vaddrs_len = 20;
@@ -166,7 +143,9 @@ static void test_mem_block_maf_4(chunit_test_context *tc) {
         mb_free(mb, vaddrs[i]); 
     }
 
-    // mb_print(mb);
+    while (!null_adb_addr(mb_malloc(mb, 32)));
+
+    mb_print(mb);
 
     delete_mem_block(mb);
     delete_addr_book(adb);

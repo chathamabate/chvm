@@ -483,6 +483,29 @@ static const chunit_test ADB_MULTI1 = {
     .timeout = 5,
 };
 
+static void test_adb_misc_0(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+
+    const uint64_t num_vaddrs = 20;
+    addr_book_vaddr vaddrs[num_vaddrs];
+
+    uint64_t i;
+    for (i = 0; i < num_vaddrs; i++) {
+        vaddrs[i] = adb_put(adb, NULL);
+    }
+
+    for (i = 0; i < num_vaddrs; i+=2) {
+        adb_free(adb, vaddrs[i]);
+    }
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_MISC_0 = {
+    .name = "Address Book Misc Test 0",
+    .t = test_adb_misc_0,
+    .timeout = 5,
+};
 
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
@@ -492,7 +515,8 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
         &ADB_FREE,
         &ADB_MULTI0,
         &ADB_MULTI1,
+        &ADB_MISC_0,
     },
-    .tests_len = 5
+    .tests_len = 6
 };
 

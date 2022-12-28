@@ -164,8 +164,11 @@ static const uint64_t MAP_PADDING = MP_PADDING + sizeof(mem_alloc_piece_header);
 // Also note, that this value depends on what is stored in 
 // the alloc_piece_header. 
 //
+// NOTE: right now we have the plus 1 since MFP_PADDING = MAP_PADDING.
+// A free block should be mallocable for at least 1 byte.
+//
 // This should always store whichever padding value is larger.
-static const uint64_t MP_MIN_SIZE = MFP_PADDING;
+static const uint64_t MP_MIN_SIZE = MFP_PADDING + 1;
 
 // Round the given number of bytes to be divisible by two.
 static inline uint64_t round_num_bytes(uint64_t num_bytes) {
@@ -396,9 +399,6 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     void *paddr = adb_get_read(mb_h->adb, vaddr);
     adb_unlock(mb_h->adb, vaddr);
 
-    safe_printf("Freeing %llu %llu (%p)\n", 
-            vaddr.table_index, vaddr.cell_index, map_b_to_mp(paddr));
-
     // Discard vaddr entirely.
     adb_free(mb_h->adb, vaddr);
 
@@ -447,7 +447,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     // Here we check to see if we should divide our big free block.
     // This is only done when there are enough remaining bytes 
     // to malloc at least once. 
-    if (cut_size <= MP_MIN_SIZE) {
+    if (cut_size < MP_MIN_SIZE) {
         // Here there will be no division.
         // Simply remove big free from corresponding free
         // lists.             
@@ -455,7 +455,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
         mp_init(big_free, big_free_size, 1);
         safe_rwlock_unlock(&(mb_h->mem_lck));
 
-        return adb_put(mb_h->adb, mp_to_map_b(big_free));
+        return adb_install(mb_h->adb, mp_to_map_b(big_free));
     }
 
     // Here we cut!
@@ -469,7 +469,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     mp_init(big_free, min_size, 1);
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
-    return adb_put(mb_h->adb, mp_to_map_b(big_free));
+    return adb_install(mb_h->adb, mp_to_map_b(big_free));
 }
 
 void mb_shift(mem_block *mb) {
@@ -498,9 +498,14 @@ void mb_print(mem_block *mb) {
 
             mem_free_piece_header *mfp_h = 
                 (mem_free_piece_header *)mp_body(iter);
+            
+            if (mfp_h->size_free_prev) {
+                safe_printf("  Prev : %p\n", mp_b_to_mp(mfp_h->size_free_prev));
+            }
 
-            safe_printf("  Prev : %p\n",  mfp_h->size_free_prev);
-            safe_printf("  Next : %p\n", mfp_h->size_free_next);
+            if (mfp_h->size_free_next) {
+                safe_printf("  Next : %p\n", mp_b_to_mp(mfp_h->size_free_next));
+            }
         }
         
         piece_num++;
