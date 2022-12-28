@@ -5,6 +5,16 @@
 
 typedef struct {} addr_table;
 
+// NOTE: These address book definitions were below, but since
+// have moved since address table must be aware of address
+// book vaddrs.
+typedef struct addr_book_struct addr_book;
+
+typedef struct {
+    uint64_t table_index;
+    uint64_t cell_index;
+} addr_book_vaddr;
+
 // The codes will give hints to the user about the state
 // of the ADT at the time an operation occurs.
 typedef enum {
@@ -59,6 +69,32 @@ static inline addr_table_put_res adt_install(addr_table *adt, void *paddr,
     return adt_put_p(adt, paddr, 1, table_ind);
 }
 
+
+// This Copies data stored at a given cell's physical address
+// to a new physical address. The new physical address in then
+// placed in the adt at cell_ind.
+//
+// If init is 1, the cell's full vaddr will be placed
+// just before new_paddr. If init is 0, table ind is
+// ignored.
+//
+// NOTE: it is ok if the new area of memory overlaps with
+// the old area of memory.
+void adt_move_p(addr_table *adt, uint64_t cell_ind, 
+        void *new_paddr, uint64_t size, 
+        uint8_t init, uint64_t table_ind);
+
+static inline void adt_move(addr_table *adt, uint64_t cell_ind,
+        void *new_paddr, uint64_t size) {
+    adt_move_p(adt, cell_ind, new_paddr, size, 0, 0);
+}
+
+static inline void adt_reinstall(addr_table *adt, addr_book_vaddr vaddr,
+        void *new_paddr, uint64_t size) {
+    adt_move_p(adt, vaddr.cell_index, new_paddr, 
+            size, 1, vaddr.table_index);
+}
+
 // Get the physical address at ind.
 // The read lock will be requested on the address.
 void *adt_get_read(addr_table *adt, uint64_t ind);
@@ -81,12 +117,7 @@ void adt_unlock(addr_table *adt, uint64_t ind);
 //
 addr_table_code adt_free(addr_table *adt, uint64_t index);
 
-typedef struct addr_book_struct addr_book;
-
-typedef struct {
-    uint64_t table_index;
-    uint64_t cell_index;
-} addr_book_vaddr;
+// Address Book Signatures....
 
 extern const addr_book_vaddr NULL_VADDR;
 
@@ -112,6 +143,19 @@ static inline addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
 
 static inline addr_book_vaddr adb_install(addr_book *adb, void *paddr) {
     return adb_put_p(adb, paddr, 1);
+}
+
+void adb_move_p(addr_book *adb, addr_book_vaddr vaddr, 
+        void *new_paddr, uint64_t size, uint8_t init);
+
+static inline void adb_move(addr_book *adb, addr_book_vaddr vaddr, 
+        void *new_paddr, uint64_t size) {
+    adb_move_p(adb, vaddr, new_paddr, size, 0);
+}
+
+static inline void adb_reinstall(addr_book *adb, addr_book_vaddr vaddr, 
+        void *new_paddr, uint64_t size) {
+    adb_move_p(adb, vaddr, new_paddr, size, 1);
 }
 
 void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr);

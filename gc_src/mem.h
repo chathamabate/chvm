@@ -27,7 +27,11 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr);
 // the memory block. Make sure you are not locking
 // on any piece before calling this function. 
 // (I mean in the same thread btw)
-void mb_shift(mem_block *mb);
+//
+// Returns 1 if a shift occurred, 0 otherwise.
+// We only don't shift if there are no blocks
+// to shift.
+uint8_t mb_shift(mem_block *mb);
 
 // This command will safely print the structure of the 
 // memory block in an easy to read way.

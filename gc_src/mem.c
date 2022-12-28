@@ -477,8 +477,12 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     return adb_install(mb_h->adb, mp_to_map_b(big_free));
 }
 
-void mb_shift(mem_block *mb) {
-    // TODO... write this at some point.
+uint8_t mb_shift(mem_block *mb) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+
+
+    return 0;
 }
 
 void mb_print(mem_block *mb) {

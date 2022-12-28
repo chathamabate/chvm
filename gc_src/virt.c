@@ -1,6 +1,7 @@
 #include "./virt.h"
 #include <pthread.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
 #include "../core_src/sys.h"
 #include "../core_src/thread.h"
@@ -96,7 +97,19 @@ uint64_t adt_get_fill(addr_table *adt) {
     return fill;
 }
 
-addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t init, uint64_t table_ind) {
+// Small helper function for put_p and move_p
+static inline void write_vaddr_unsafe(void *paddr, 
+        uint64_t table_ind, uint64_t cell_ind) {
+    addr_book_vaddr vaddr = {
+        .cell_index = cell_ind,
+        .table_index = table_ind,
+    };
+    
+    ((addr_book_vaddr *)paddr)[-1] = vaddr;
+}
+
+addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t init, 
+        uint64_t table_ind) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
@@ -131,14 +144,7 @@ addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t init, uint64_
     // This ensures that paddr cannot be retrieved until
     // it has its correspondingg vaddr installed (If desired) 
     if (init) {
-        addr_book_vaddr vaddr = {
-            .table_index = table_ind,
-            .cell_index = free_ind,
-        };
-
-        // NOTE: The vaddr is always copied to the 
-        // preceding bytes of the physical address given.
-        ((addr_book_vaddr *)paddr)[-1] = vaddr;
+        write_vaddr_unsafe(paddr, table_ind, free_ind);
     }
 
     safe_rwlock_unlock(&(table[free_ind].lck));
@@ -146,6 +152,32 @@ addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t init, uint64_
     res.index = free_ind;
 
     return res;
+}
+
+void adt_move_p(addr_table *adt, uint64_t cell_ind, 
+        void *new_paddr, uint64_t size, 
+        uint8_t init, uint64_t table_ind) {
+
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
+
+    addr_table_cell *cell = table + table_ind;
+
+    // Lock on our cell.
+    safe_wrlock(&(cell->lck));
+
+    uint8_t *old_paddr = cell->paddr;
+
+    // NOTE: we use memmove here since there might be overlap.
+    memmove(new_paddr, old_paddr, size);
+    cell->paddr = new_paddr;
+    
+    if (init) {
+        write_vaddr_unsafe(new_paddr, table_ind, cell_ind);
+    } 
+
+    safe_rwlock_unlock(&(cell->lck));
 }
 
 // Get the physical address at ind.
@@ -452,6 +484,14 @@ static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table_index) {
     safe_rwlock_unlock(&(adb->lck));
 
     return adt;
+}
+
+void adb_move_p(addr_book *adb, addr_book_vaddr vaddr, 
+        void *new_paddr, uint64_t size, uint8_t init) {
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index); 
+
+    adt_move_p(adt, vaddr.cell_index, new_paddr, size, 
+            init, vaddr.table_index);
 }
 
 void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr) {
