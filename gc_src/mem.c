@@ -447,7 +447,18 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
         big_free_h->size_free_next->size_free_prev = NULL;
     }
 
+    addr_book_vaddr vaddr;
     uint64_t cut_size = big_free_size - min_size;
+
+    // NOTE: there is an important but sad feature found in the code
+    // below.
+    //
+    // Notice that the adb_install calls are executed while the mem_lck
+    // is held. This is done because adb_install will copy the vaddr
+    // into the memory piece's header.
+    // This header is part of the "structure" of the memory block,
+    // thus we must keep the memory block lock
+    // while doing this.
 
     // Here we check to see if we should divide our big free block.
     // This is only done when there are enough remaining bytes 
@@ -458,9 +469,10 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
         // lists.             
 
         mp_init(big_free, big_free_size, 1);
+        vaddr = adb_install(mb_h->adb, mp_to_map_b(big_free));
         safe_rwlock_unlock(&(mb_h->mem_lck));
 
-        return adb_install(mb_h->adb, mp_to_map_b(big_free));
+        return vaddr;
     }
 
     // Here we cut!
@@ -472,17 +484,63 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
 
     // Finally, init our new allocated block.
     mp_init(big_free, min_size, 1);
+    vaddr = adb_install(mb_h->adb, mp_to_map_b(big_free));
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
-    return adb_install(mb_h->adb, mp_to_map_b(big_free));
+    return vaddr;
 }
 
 uint8_t mb_shift(mem_block *mb) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
+    safe_wrlock(&(mb_h->mem_lck));
 
+    // NOTE: if the head of the free list is not shiftable
+    // and there is a second free block, the second free 
+    // block must be shiftable.
+    //
+    // (There must be at least one allocated block which
+    // divides the two free blocks.)
 
-    return 0;
+    mem_free_piece_header *mfp_h = mb_h->size_free_list;
+
+    // Memory block is full.
+    if (!mfp_h) {
+        safe_rwlock_unlock(&(mb_h->mem_lck));
+
+        return 0;
+    }
+
+    mem_piece *start = (mem_piece *)(mb_h + 1);
+    mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
+
+    mem_piece *next = mp_next(mp_b_to_mp(mfp_h));
+
+    // Don't even need to check for allocation here.
+    if (next >= end) {
+        mfp_h = mfp_h->size_free_next;
+
+        // This is the case where there is only one free
+        // piece and it is shifted all the way to the
+        // right of the memory block.
+        if (!mfp_h) {
+            safe_rwlock_unlock(&(mb_h->mem_lck));
+
+            return 0;
+        }
+
+        next = mp_next(mp_b_to_mp(mfp_h));
+    }
+
+    // If we made it here, next must be pointing to
+    // an allocated piece which comes directly after
+    // mfp_h in the memory block.
+
+    // So, here was must write in the shift I guess...
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    return 1;
 }
 
 void mb_print(mem_block *mb) {
