@@ -211,9 +211,10 @@ const chunit_test MB_WRITE = {
     .timeout = 5,
 };
 
+// These arguments are used to chop up the inside
+// of a memory block in a way which is useful for
+// testing different behavoirs of the memory block.
 typedef struct {
-    chunit_test_context *tc;
-
     mem_block *mb;
     addr_book *adb;
 
@@ -226,11 +227,54 @@ typedef struct {
 
     // How to free blocks.
     uint64_t free_mod;
+} chop_args;
+
+// Kinda like a hash function here.
+static uint8_t vaddr_to_unique_byte(addr_book_vaddr vaddr) {
+    return (uint8_t)(11 * vaddr.table_index +  13 * vaddr.cell_index);
+}
+
+static void fill_unique(addr_book *adb, addr_book_vaddr vaddr, 
+        uint64_t min_size) {
+    // We can change this method however we see fit.
+    uint8_t fill_byte = vaddr_to_unique_byte(vaddr);
+
+    uint8_t *iter = adb_get_write(adb, vaddr);
+    uint8_t *end = iter + min_size;
+
+    for (; iter < end; iter++) {
+        *iter = fill_byte;
+    }
+
+    adb_unlock(adb, vaddr);
+}
+
+static void check_unique_vaddr_body(chunit_test_context *tc, 
+        addr_book *adb, addr_book_vaddr vaddr, uint64_t min_size) {
+    uint64_t expected_data = (uint64_t)vaddr_to_unique_byte(vaddr);
+
+    uint8_t *iter = adb_get_read(adb, vaddr);
+    uint8_t *end = iter + min_size;
+
+    for (; iter < end; iter++) {
+        uint64_t found_data = (uint64_t)(*iter);
+        assert_eq_uint(tc, expected_data, found_data);
+    }
+
+    adb_unlock(adb, vaddr);
+}
+
+typedef struct {
+    chunit_test_context *tc;
+    chop_args *ca;
 } test_mem_block_context_0;
 
 static void *test_mem_block_worker_0(void *arg) {
     util_thread_spray_context *s_context = arg; 
-    test_mem_block_context_0 *c = s_context->context;
+    test_mem_block_context_0 *tmbc = s_context->context;
+
+    chunit_test_context *tc = tmbc->tc;
+    chop_args *c = tmbc->ca;
 
     uint64_t *sizes = safe_malloc(1, sizeof(uint64_t) * c->size_mod);
 
@@ -251,18 +295,8 @@ static void *test_mem_block_worker_0(void *arg) {
 
         // NOTE: we are assuming our mb is large enough to 
         // take all of our mallocs.
-        assert_false(c->tc, null_adb_addr(vaddrs[i]));
-
-        // Here, we take our new piece, and we write the same value
-        // into all of its bytes.
-        uint8_t *map_iter = adb_get_write(c->adb, vaddrs[i]);
-        uint8_t *map_end = map_iter + min_size;
-
-        for (; map_iter < map_end; map_iter++) {
-            *map_iter = (uint8_t)(i * s_context->index);
-        }
-
-        adb_unlock(c->adb, vaddrs[i]);
+        assert_false(tc, null_adb_addr(vaddrs[i]));
+        fill_unique(c->adb, vaddrs[i], min_size);
     }
 
     // Now we free using the given mod.
@@ -277,15 +311,8 @@ static void *test_mem_block_worker_0(void *arg) {
             continue; // Skip those that were already free.
         }
 
-        uint8_t *map_iter = adb_get_read(c->adb, vaddrs[i]);
-        uint8_t *map_end = map_iter + sizes[i % c->size_mod];
-
-        // Now we confirm all bytes remain as expected.
-        for (; map_iter < map_end; map_iter++) {
-            assert_eq_int(c->tc, (uint8_t)(i * s_context->index), *map_iter);
-        }
-
-        adb_unlock(c->adb, vaddrs[i]);
+        uint64_t min_size = sizes[i % c->size_mod];
+        check_unique_vaddr_body(tc, c->adb, vaddrs[i], min_size);
 
         mb_free(c->mb, vaddrs[i]);
     }
@@ -300,9 +327,7 @@ static void test_mem_block_multi_0(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 10);
     mem_block *mb = new_mem_block(1, adb, 30000);
 
-    test_mem_block_context_0 ctx = {
-        .tc = tc,
-        
+    chop_args ca = {
         .adb = adb,
         .mb = mb,
 
@@ -310,6 +335,11 @@ static void test_mem_block_multi_0(chunit_test_context *tc) {
         .size_mod = 5,
         .free_mod = 2,
         .num_mallocs = 20,
+    };
+
+    test_mem_block_context_0 ctx = {
+        .ca = &ca,
+        .tc = tc,
     };
 
     const uint64_t num_threads = 20;
@@ -375,15 +405,15 @@ const chunit_test MB_SHIFT_1 = {
     .timeout = 5,
 };
 
+// This function is very similar to the thread worker
+// above. However, it will not use tc contained in ctx.
+static void mb_chop(test_mem_block_context_0 ctx) {
+    // TODO write this...    
+}
+
 static void test_mb_shift_2(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 10);
     mem_block *mb = new_mem_block(1, adb, 1000);
-
-    const uint64_t size_mod = 3;
-    const uint64_t free_mod = 4;
-    const uint64_t size_factor = sizeof(int);
-    const uint64_t num_mallocs = 20;
-
 
 
     delete_mem_block(mb);
