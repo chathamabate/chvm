@@ -33,6 +33,12 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr);
 // to shift.
 uint8_t mb_shift(mem_block *mb);
 
+// After this call, all free pieces will be pushed together
+// to form one single free piece at one end of the block.
+static inline void mb_full_shift(mem_block *mb) {
+    while (mb_shift(mb));
+}
+
 // This command will safely print the structure of the 
 // memory block in an easy to read way.
 // Mainly for easy debugging.

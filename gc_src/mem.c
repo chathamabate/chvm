@@ -550,6 +550,8 @@ uint8_t mb_shift(mem_block *mb) {
     mem_free_piece_header *prev_fp_h = mfp_h->size_free_prev;
     mem_free_piece_header *next_fp_h = mfp_h->size_free_next;
 
+    mb_remove_from_size_unsafe(mb, mfp_h);
+
     // Size of block we will be shifting.
     uint64_t alloc_size = mp_size(next_alloc);
 
@@ -575,6 +577,7 @@ uint8_t mb_shift(mem_block *mb) {
 
     if (border < end && !mp_alloc(border)) {
         uint64_t border_size = mp_size(border);
+        // Our og free block has already been freed.
 
         mb_remove_from_size_unsafe(mb, 
                 (mem_free_piece_header *)mp_body(border));
@@ -586,10 +589,20 @@ uint8_t mb_shift(mem_block *mb) {
         mp_init(new_free, og_free_size, 0); 
         mem_free_piece_header *new_mfp_h = mp_body(new_free);
 
-        // Place our boi back in the free list like nothing 
-        // even happened.
-        prev_fp_h->size_free_next = new_mfp_h;
-        next_fp_h->size_free_next = new_mfp_h;
+        // If this runs, our free block will have the same size
+        // it started with, just in a different location.
+        // We can place it back in the free list exactly where 
+        // it was.
+
+        if (prev_fp_h) {
+            prev_fp_h->size_free_next = new_mfp_h;
+        } else {
+            mb_h->size_free_list = new_mfp_h;
+        }
+
+        if (next_fp_h) {
+            next_fp_h->size_free_prev = new_mfp_h;
+        }
 
         new_mfp_h->size_free_prev = prev_fp_h;
         new_mfp_h->size_free_next = next_fp_h;
@@ -616,7 +629,11 @@ void mb_print(mem_block *mb) {
                 piece_num, iter, mp_size(iter)); 
 
         if (mp_alloc(iter)) {
-            safe_printf("Allocated\n");
+            mem_alloc_piece_header *vaddr = 
+                (mem_alloc_piece_header *)mp_body(iter);
+
+            safe_printf("Allocated : Vaddr (%" PRIu64  ", %" PRIu64 ")\n",
+                    vaddr->table_index, vaddr->cell_index);
         } else {
             safe_printf("Free\n");
 

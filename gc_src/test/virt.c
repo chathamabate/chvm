@@ -55,7 +55,6 @@ static const chunit_test ADT_PUT_AND_GET = {
     .timeout = 5,
 };
 
-
 static void test_adt_free(chunit_test_context *tc) {
     const uint64_t table_len = 4;
     addr_table *adt = new_addr_table(1, table_len);

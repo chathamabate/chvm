@@ -329,6 +329,67 @@ const chunit_test MB_MULTI_0 = {
     .timeout = 5,
 };
 
+static void test_mb_shift_0(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 10);
+    mem_block *mb = new_mem_block(1, adb, 1000);
+
+    // With no mallocs yet, there shouldn't be anything
+    // to shift.
+    assert_false(tc, mb_shift(mb));
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_SHIFT_0 = {
+    .name = "Memory Block Shift 0",
+    .t = test_mb_shift_0,
+    .timeout = 5,
+};
+
+static void test_mb_shift_1(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 10);
+    mem_block *mb = new_mem_block(1, adb, 1000);
+
+    addr_book_vaddr vaddr1 = mb_malloc(mb, sizeof(int));
+    addr_book_vaddr vaddr2 = mb_malloc(mb, sizeof(int));
+
+    int *paddr = adb_get_write(adb, vaddr2);
+    *paddr = -5;
+    adb_unlock(adb, vaddr2);
+
+    mb_free(mb, vaddr1);
+    mb_shift(mb);
+
+    paddr = adb_get_read(adb, vaddr2);
+    assert_eq_int(tc, -5, *paddr);
+    adb_unlock(adb, vaddr2);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_SHIFT_1 = {
+    .name = "Memory Block Shift 1",
+    .t = test_mb_shift_1,
+    .timeout = 5,
+};
+
+static void test_mb_shift_2(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 10);
+    mem_block *mb = new_mem_block(1, adb, 1000);
+
+    const uint64_t size_mod = 3;
+    const uint64_t free_mod = 4;
+    const uint64_t size_factor = sizeof(int);
+    const uint64_t num_mallocs = 20;
+
+
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {
@@ -341,6 +402,8 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MAF_4,
         &MB_WRITE,
         &MB_MULTI_0,
+        &MB_SHIFT_0,
+        &MB_SHIFT_1,
     },
-    .tests_len = 8,
+    .tests_len = 10,
 };
