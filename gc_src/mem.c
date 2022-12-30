@@ -514,10 +514,10 @@ uint8_t mb_shift(mem_block *mb) {
     mem_piece *start = (mem_piece *)(mb_h + 1);
     mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
 
-    mem_piece *next = mp_next(mp_b_to_mp(mfp_h));
+    mem_piece *next_alloc = mp_next(mp_b_to_mp(mfp_h));
 
     // Don't even need to check for allocation here.
-    if (next >= end) {
+    if (next_alloc >= end) {
         mfp_h = mfp_h->size_free_next;
 
         // This is the case where there is only one free
@@ -529,14 +529,71 @@ uint8_t mb_shift(mem_block *mb) {
             return 0;
         }
 
-        next = mp_next(mp_b_to_mp(mfp_h));
+        next_alloc = mp_next(mp_b_to_mp(mfp_h));
     }
+
+    // This is the piece which lies after the piece we will 
+    // be shifting. It will be used later after the shift
+    // when editing the free list.
+    mem_piece *border = mp_next(next_alloc);
+
+    mem_piece *og_free = mp_b_to_mp(mfp_h);
+    uint64_t og_free_size = mp_size(og_free);
 
     // If we made it here, next must be pointing to
     // an allocated piece which comes directly after
     // mfp_h in the memory block.
 
-    // So, here was must write in the shift I guess...
+    // We save these pointers before doing any modifications
+    // to the free list. NOTE: Soon mfp_h will be written
+    // over entirely.
+    mem_free_piece_header *prev_fp_h = mfp_h->size_free_prev;
+    mem_free_piece_header *next_fp_h = mfp_h->size_free_next;
+
+    // Size of block we will be shifting.
+    uint64_t alloc_size = mp_size(next_alloc);
+
+    // Virtual address of block we will be shifting.
+    addr_book_vaddr vaddr = *(mem_alloc_piece_header *)mp_body(next_alloc);
+
+    // Now we will write over the original free block with a newly
+    // allocated block. (With copied data)
+    mem_piece *new_alloc = og_free;
+
+    adb_reinstall(mb_h->adb, vaddr, mp_to_map_b(new_alloc), 
+            alloc_size - MAP_PADDING);
+    mp_init(new_alloc, alloc_size, 1);
+
+    // At this point our original free block has been written
+    // over, we should not use its corresponding pointers
+    // again.
+    mfp_h = NULL;
+    og_free = NULL;
+
+    // Get our new free region.
+    mem_piece *new_free = mp_next(new_alloc);
+
+    if (border < end && !mp_alloc(border)) {
+        uint64_t border_size = mp_size(border);
+
+        mb_remove_from_size_unsafe(mb, 
+                (mem_free_piece_header *)mp_body(border));
+
+        mp_init(new_free, og_free_size + border_size, 0);
+
+        mb_add_to_size_unsafe(mb, new_free);
+    } else {
+        mp_init(new_free, og_free_size, 0); 
+        mem_free_piece_header *new_mfp_h = mp_body(new_free);
+
+        // Place our boi back in the free list like nothing 
+        // even happened.
+        prev_fp_h->size_free_next = new_mfp_h;
+        next_fp_h->size_free_next = new_mfp_h;
+
+        new_mfp_h->size_free_prev = prev_fp_h;
+        new_mfp_h->size_free_next = next_fp_h;
+    }
 
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
