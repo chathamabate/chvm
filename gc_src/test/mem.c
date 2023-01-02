@@ -215,6 +215,9 @@ const chunit_test MB_WRITE = {
 // of a memory block in a way which is useful for
 // testing different behavoirs of the memory block.
 typedef struct {
+    // Chopping will always include testing.
+    chunit_test_context *tc;
+
     mem_block *mb;
     addr_book *adb;
 
@@ -227,6 +230,13 @@ typedef struct {
 
     // How to free blocks.
     uint64_t free_mod;
+
+    // Whether or not data should be shifted 
+    // after free occurs.
+    uint8_t shift_test;
+
+    // Channel for mallocs.
+    uint8_t malloc_chnl;
 } chop_args;
 
 // Kinda like a hash function here.
@@ -264,61 +274,60 @@ static void check_unique_vaddr_body(chunit_test_context *tc,
     adb_unlock(adb, vaddr);
 }
 
-typedef struct {
-    chunit_test_context *tc;
-    chop_args *ca;
-} test_mem_block_context_0;
+static void mb_chop_and_test(chop_args *ca) {
+    uint64_t *sizes = safe_malloc(ca->malloc_chnl, 
+            sizeof(uint64_t) * ca->size_mod);
 
-static void *test_mem_block_worker_0(void *arg) {
-    util_thread_spray_context *s_context = arg; 
-    test_mem_block_context_0 *tmbc = s_context->context;
+    uint64_t i, min_size;
 
-    chunit_test_context *tc = tmbc->tc;
-    chop_args *c = tmbc->ca;
-
-    uint64_t *sizes = safe_malloc(1, sizeof(uint64_t) * c->size_mod);
-
-    // Calculate block sizes.
-    uint64_t i;
-    for (i = 0; i < c->size_mod; i++) {
-        sizes[i] = (i + 1) * c->malloc_size_factor;
+    for (i = 0; i < ca->size_mod; i++) {
+        sizes[i] = (i + 1) *ca->malloc_size_factor;
     }
 
-    addr_book_vaddr *vaddrs = 
-        safe_malloc(1, sizeof(addr_book_vaddr) * c->num_mallocs);
+    addr_book_vaddr *vaddrs = safe_malloc(ca->malloc_chnl, 
+            sizeof(addr_book_vaddr) * ca->num_mallocs);
 
-    // Malloc a bunch of different blocks with different
-    // sizes. (Using the size mod)
-    for (i = 0; i < c->num_mallocs; i++) {
-        uint64_t min_size = sizes[i % c->size_mod];
-        vaddrs[i] = mb_malloc(c->mb, min_size);
+    for (i = 0; i < ca->num_mallocs; i++) {
+        min_size = sizes[i % ca->size_mod];
+        vaddrs[i] = mb_malloc(ca->mb, min_size);
 
-        // NOTE: we are assuming our mb is large enough to 
-        // take all of our mallocs.
-        assert_false(tc, null_adb_addr(vaddrs[i]));
-        fill_unique(c->adb, vaddrs[i], min_size);
+        assert_false(ca->tc, null_adb_addr(vaddrs[i]));
+        fill_unique(ca->adb, vaddrs[i], min_size);
     }
 
-    // Now we free using the given mod.
-    for (i = 0; i < c->num_mallocs; i += c->free_mod) {
-        mb_free(c->mb, vaddrs[i]);
+    for (i = 0; i < ca->num_mallocs; i += ca->free_mod) {
+        mb_free(ca->mb, vaddrs[i]);
         vaddrs[i] = NULL_VADDR;
     }
 
-    // Finally, we check the remaining vaddrs.
-    for (i = 0; i < c->num_mallocs; i++) {
+    // safe_printf("\nAfter Free\n");
+    // mb_print(ca->mb);
+
+    if (ca->shift_test) {
+        mb_full_shift(ca->mb);
+
+        // safe_printf("\nAfter Shifts\n");
+        // mb_print(ca->mb);
+    }
+
+    for (i = 0; i < ca->num_mallocs; i++) {
         if (null_adb_addr(vaddrs[i])) {
-            continue; // Skip those that were already free.
+            continue;
         }
 
-        uint64_t min_size = sizes[i % c->size_mod];
-        check_unique_vaddr_body(tc, c->adb, vaddrs[i], min_size);
-
-        mb_free(c->mb, vaddrs[i]);
+        min_size = sizes[i % ca->size_mod];
+        check_unique_vaddr_body(ca->tc, ca->adb, vaddrs[i], min_size);
     }
 
     safe_free(vaddrs);
     safe_free(sizes);
+}
+
+static void *test_mem_block_worker_0(void *arg) {
+    util_thread_spray_context *s_context = arg; 
+    chop_args *ca = s_context->context;
+
+    mb_chop_and_test(ca);
 
     return NULL;
 }
@@ -328,6 +337,7 @@ static void test_mem_block_multi_0(chunit_test_context *tc) {
     mem_block *mb = new_mem_block(1, adb, 30000);
 
     chop_args ca = {
+        .tc = tc,
         .adb = adb,
         .mb = mb,
 
@@ -335,17 +345,15 @@ static void test_mem_block_multi_0(chunit_test_context *tc) {
         .size_mod = 5,
         .free_mod = 2,
         .num_mallocs = 20,
-    };
 
-    test_mem_block_context_0 ctx = {
-        .ca = &ca,
-        .tc = tc,
+        .shift_test = 0,
+        .malloc_chnl = 1,
     };
 
     const uint64_t num_threads = 20;
 
     util_thread_spray_info *spray = util_thread_spray(1, num_threads, 
-                test_mem_block_worker_0, &ctx);
+                test_mem_block_worker_0, &ca);
 
     util_thread_collect(spray);
 
@@ -405,20 +413,36 @@ const chunit_test MB_SHIFT_1 = {
     .timeout = 5,
 };
 
-// This function is very similar to the thread worker
-// above. However, it will not use tc contained in ctx.
-static void mb_chop(test_mem_block_context_0 ctx) {
-    // TODO write this...    
-}
-
 static void test_mb_shift_2(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 10);
-    mem_block *mb = new_mem_block(1, adb, 1000);
+    mem_block *mb = new_mem_block(1, adb, 2000);
+     
+    chop_args ca = {
+        .tc = tc,
 
+        .adb = adb,
+        .mb = mb,
+
+        .free_mod = 4,
+        .size_mod = 5,
+        .num_mallocs = 23,
+
+        .malloc_size_factor = sizeof(uint64_t),
+        .malloc_chnl = 1,
+        .shift_test = 1,
+    };
+
+    mb_chop_and_test(&ca);
 
     delete_mem_block(mb);
     delete_addr_book(adb);
 }
+
+const chunit_test MB_SHIFT_2 = {
+    .name = "Memory Block Shift 2",
+    .t = test_mb_shift_2,
+    .timeout = 5,
+};
 
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
@@ -434,6 +458,8 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MULTI_0,
         &MB_SHIFT_0,
         &MB_SHIFT_1,
+
+        &MB_SHIFT_2,
     },
-    .tests_len = 10,
+    .tests_len = 11,
 };
