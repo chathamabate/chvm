@@ -323,50 +323,6 @@ static void mb_chop_and_test(chop_args *ca) {
     safe_free(sizes);
 }
 
-static void *test_mem_block_worker_0(void *arg) {
-    util_thread_spray_context *s_context = arg; 
-    chop_args *ca = s_context->context;
-
-    mb_chop_and_test(ca);
-
-    return NULL;
-}
-
-static void test_mem_block_multi_0(chunit_test_context *tc) {
-    addr_book *adb = new_addr_book(1, 10);
-    mem_block *mb = new_mem_block(1, adb, 30000);
-
-    chop_args ca = {
-        .tc = tc,
-        .adb = adb,
-        .mb = mb,
-
-        .malloc_size_factor = sizeof(uint64_t),
-        .size_mod = 5,
-        .free_mod = 2,
-        .num_mallocs = 20,
-
-        .shift_test = 0,
-        .malloc_chnl = 1,
-    };
-
-    const uint64_t num_threads = 20;
-
-    util_thread_spray_info *spray = util_thread_spray(1, num_threads, 
-                test_mem_block_worker_0, &ca);
-
-    util_thread_collect(spray);
-
-    delete_mem_block(mb);
-    delete_addr_book(adb);
-}
-
-const chunit_test MB_MULTI_0 = {
-    .name = "Memory Block Multi Threaded 0",
-    .t = test_mem_block_multi_0,
-    .timeout = 5,
-};
-
 static void test_mb_shift_0(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 10);
     mem_block *mb = new_mem_block(1, adb, 1000);
@@ -444,6 +400,90 @@ const chunit_test MB_SHIFT_2 = {
     .timeout = 5,
 };
 
+static void *test_mem_block_worker(void *arg) {
+    util_thread_spray_context *s_context = arg; 
+    chop_args *ca = s_context->context;
+
+    mb_chop_and_test(ca);
+
+    return NULL;
+}
+
+static void test_mem_block_multi_0(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 10);
+    mem_block *mb = new_mem_block(1, adb, 30000);
+
+    chop_args ca = {
+        .tc = tc,
+
+        .adb = adb,
+        .mb = mb,
+
+        .malloc_size_factor = sizeof(uint64_t),
+        .size_mod = 5,
+        .free_mod = 2,
+        .num_mallocs = 20,
+
+        .shift_test = 0,
+        .malloc_chnl = 1,
+    };
+
+    const uint64_t num_threads = 20;
+
+    util_thread_spray_info *spray = util_thread_spray(1, num_threads, 
+                test_mem_block_worker, &ca);
+
+    util_thread_collect(spray);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_MULTI_0 = {
+    .name = "Memory Block Multi Threaded 0",
+    .t = test_mem_block_multi_0,
+    .timeout = 5,
+};
+
+// Same as above multithreaded test, but with shifting.
+// (And different chop arguments)
+static void test_mem_block_multi_1(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 32);
+    mem_block *mb = new_mem_block(1, adb, 25000);
+
+    chop_args ca = {
+        .tc = tc,
+
+        .adb = adb,
+        .mb = mb,
+
+        .malloc_size_factor = sizeof(uint64_t),
+        .size_mod = 5,
+        .free_mod = 4,
+        .num_mallocs = 20,
+
+        .shift_test = 1,
+        .malloc_chnl = 1,
+    };
+
+    const uint64_t num_threads = 20;
+
+    util_thread_spray_info *spray = util_thread_spray(1, num_threads, 
+                test_mem_block_worker, &ca);
+
+    util_thread_collect(spray);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_MULTI_1 = {
+    .name = "Memory Block Multi Threaded 1",
+    .t = test_mem_block_multi_1,
+    .timeout = 5,
+};
+
+
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {
@@ -455,11 +495,12 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
 
         &MB_MAF_4,
         &MB_WRITE,
-        &MB_MULTI_0,
         &MB_SHIFT_0,
         &MB_SHIFT_1,
-
         &MB_SHIFT_2,
+
+        &MB_MULTI_0,
+        &MB_MULTI_1,
     },
-    .tests_len = 11,
+    .tests_len = 12,
 };
