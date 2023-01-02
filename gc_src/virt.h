@@ -117,6 +117,8 @@ void adt_unlock(addr_table *adt, uint64_t ind);
 //
 addr_table_code adt_free(addr_table *adt, uint64_t index);
 
+void adt_print(addr_table *adt);
+
 // Address Book Signatures....
 
 extern const addr_book_vaddr NULL_VADDR;

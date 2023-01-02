@@ -2,6 +2,8 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <string.h>
+#include <inttypes.h>
+
 #include <sys/_pthread/_pthread_rwlock_t.h>
 #include "../core_src/sys.h"
 #include "../core_src/thread.h"
@@ -16,7 +18,7 @@ typedef struct {
     // constant.
     const uint64_t cap;
 
-    // Mutex for working with the free stack.
+    // This lock is only for editing the free stack.
     pthread_rwlock_t free_stack_lck;
     uint64_t stack_fill;
 } addr_table_header;
@@ -27,7 +29,10 @@ typedef struct {
 // after this will be the cells themselves.
 
 typedef struct {
+    // This lock is for editing the two fields below...
+    // as well as editing the memory pointed to by paddr.
     pthread_rwlock_t lck; 
+    uint8_t allocated; // Mainly for debugging.
     void *paddr;
 } addr_table_cell;
 
@@ -60,6 +65,7 @@ addr_table *new_addr_table(uint8_t chnl, uint64_t cap) {
     // Init each cell now.
     for (i = 0; i < cap; i++) {
         safe_rwlock_init(&(table[i].lck), NULL);
+        table[i].allocated = 0;
         table[i].paddr = NULL;  // Not necessary, but whatevs.
     }
 
@@ -139,6 +145,7 @@ addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t init,
     // We have aquired our free index...
     // Now to write to it.
     safe_wrlock(&(table[free_ind].lck));
+    table[free_ind].allocated = 1;
     table[free_ind].paddr = paddr;
 
     // This ensures that paddr cannot be retrieved until
@@ -211,9 +218,7 @@ void *adt_get_write(addr_table *adt, uint64_t ind) {
 void adt_unlock(addr_table *adt, uint64_t ind) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
-
-    addr_table_cell *cell = table + ind;
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap); addr_table_cell *cell = table + ind;
 
     safe_rwlock_unlock(&(cell->lck));
 }
@@ -221,8 +226,13 @@ void adt_unlock(addr_table *adt, uint64_t ind) {
 addr_table_code adt_free(addr_table *adt, uint64_t index) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
 
     addr_table_code res_code;
+
+    safe_wrlock(&(table[index].lck));
+    table[index].allocated = 0;
+    safe_rwlock_unlock(&(table[index].lck));
 
     safe_wrlock(&(adt_h->free_stack_lck));
 
@@ -235,6 +245,36 @@ addr_table_code adt_free(addr_table *adt, uint64_t index) {
     safe_rwlock_unlock(&(adt_h->free_stack_lck));
 
     return res_code;
+}
+
+void adt_print(addr_table *adt) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
+
+    safe_printf("Address table : %p\n", adt);
+
+    safe_rdlock(&(adt_h->free_stack_lck));
+    uint64_t i;
+
+    safe_printf("Free Stack : ");
+
+    for (i = 0; i < adt_h->stack_fill; i++) {
+        safe_printf("%" PRIu64 " ", free_stack[i]);
+    }
+
+    safe_rwlock_unlock(&(adt_h->free_stack_lck));
+
+    safe_printf("\nCell Table : \n");
+    for (i = 0; i < adt_h->cap; i++) {
+        addr_table_cell *cell = table + i;
+
+        if (cell->allocated) {
+        } else {
+
+        }
+    }
+
 }
 
 const addr_book_vaddr NULL_VADDR = {
