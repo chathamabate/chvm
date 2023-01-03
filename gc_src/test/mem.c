@@ -481,6 +481,42 @@ const chunit_test MB_SHIFT_4 = {
     .timeout = 5,
 };
 
+static void test_mb_shift_5(chunit_test_context *tc)  {
+    addr_book *adb = new_addr_book(1, 10);
+    mem_block *mb = new_mem_block(1, adb, 2000);
+
+    addr_book_vaddr vaddrs[4] =  {
+        mb_malloc(mb, 10),
+        mb_malloc(mb, 10),
+        mb_malloc(mb, 10),
+        mb_malloc(mb, 10),
+    };
+
+    mb_free(mb, vaddrs[0]);
+    mb_free(mb, vaddrs[2]);
+
+    adb_get_read(adb, vaddrs[1]);
+
+    // Two shifts in a row may cause a deadlock!
+    // mb_shift(mb);
+    // mb_shift(mb);
+    
+    // These won't though!
+    mb_try_shift(mb);
+    mb_try_shift(mb);
+
+    adb_unlock(adb, vaddrs[1]);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_SHIFT_5 = {
+    .name = "Memory Block Shift 5",
+    .t = test_mb_shift_5,
+    .timeout = 5,
+};
+
 static void *test_mem_block_worker(void *arg) {
     util_thread_spray_context *s_context = arg; 
     chop_args *ca = s_context->context;
@@ -582,8 +618,9 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
 
         &MB_SHIFT_3,
         &MB_SHIFT_4,
+        &MB_SHIFT_5, 
         &MB_MULTI_0,
         &MB_MULTI_1,
     },
-    .tests_len = 14,
+    .tests_len = 15,
 };

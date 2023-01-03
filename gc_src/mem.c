@@ -199,7 +199,9 @@ typedef struct {
     // the headers of a piece are being read, etc...
     //
     // NOTE: Never should this lock be held for a prolonged amount
-    // of time!
+    // of time! Some calls below allow for blocking paramenters,
+    // be careful using said calls as they can lead the memory block
+    // to block or even deadlock.
     pthread_rwlock_t mem_lck;
 
     mem_free_piece_header *size_free_list; 
@@ -563,6 +565,9 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
         if (!og_free_h) {
             if (!blk) {
                 safe_rwlock_unlock(&(mb_h->mem_lck));
+
+                // NOTE: busy is never returned if we are calling
+                // with the block flag as 1.
                 return MB_BUSY;
             }
 
