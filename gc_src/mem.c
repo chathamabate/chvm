@@ -490,8 +490,86 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     return vaddr;
 }
 
-mb_shift_res mb_shift(mem_block *mb) {
+mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
     mem_block_header *mb_h = (mem_block_header *)mb;
+    
+    mem_piece *start = (mem_piece *)(mb_h + 1);
+    mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
+     
+    safe_wrlock(&(mb_h->mem_lck));
+
+    // NOTE: we will traverse the free list once for a shiftable piece
+    // with an unlocked write lock.
+
+    mem_free_piece_header *mfp_h = mb_h->size_free_list; 
+
+    // The case where there are no free pieces.
+    if (!mfp_h) {
+        safe_rwlock_unlock(&(mb_h->mem_lck));
+        return MB_NOT_NEEDED;
+    }
+
+    // The case where there is only one free piece, but it 
+    // is already at the end of the block.
+    if (!(mfp_h->size_free_next) && mp_next(mp_b_to_mp(mfp_h)) >= end) {
+        safe_rwlock_unlock(&(mb_h->mem_lck));
+        return MB_NOT_NEEDED;
+    }
+
+    // Otherwise, a shiftable piece must exist... let's find it.
+
+    mem_piece *og_free;
+    mem_piece *og_next;
+    addr_book_vaddr vaddr;
+
+    while (1) {
+        // Determine if mfp_h can be shifted into.
+        og_free = mp_b_to_mp(mfp_h);
+        og_next = mp_next(og_free);
+
+        // NOTE: the order of the condition is essential.
+        //
+        // First, check if next is a valid piece.
+        // Second, check if next is allocated (indicating a shift is possible)
+        // Lastly, try to acquire the write lock on next.
+        //
+        // If all these things occur, we have successfully
+        if (og_next < end && mp_alloc(og_next)) {
+            vaddr = *(mem_alloc_piece_header *)mp_body(og_next);
+
+            if (!adb_try_get_write(mb_h->adb, vaddr)) {
+                // We make it in here if the lock is acquired.
+                // i.e. we have found our shiftable piece and 
+                // locked on it.
+                break;
+            }
+        }
+
+        // Otherwise, next didn't work out... let's just keep moving
+        // here...
+        mfp_h = mfp_h->size_free_next;
+        
+        if (!mfp_h) {
+            if (!blk) {
+                safe_rwlock_unlock(&(mb_h->mem_lck));
+                return MB_BUSY;
+            }
+
+            // If we are blocking, just go back to the beginning of
+            // the list.
+            mfp_h = mb_h->size_free_list;
+        }
+    } 
+
+    // NOTE: if we are here, we have acquired the write lock on vaddr.
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    return MB_SHIFT_SUCCESS;
+    
+    // --------------------------------------------------------------------
+    // OLD VERSION --------------------------------------------------------
+    // --------------------------------------------------------------------
 
     safe_wrlock(&(mb_h->mem_lck));
 

@@ -19,6 +19,12 @@ void safe_mutex_destroy(pthread_mutex_t *mut);
 void safe_rwlock_init(pthread_rwlock_t *rwlock, pthread_rwlockattr_t *attr);
 void safe_rdlock(pthread_rwlock_t *rwlock);
 void safe_wrlock(pthread_rwlock_t *rwlock);
+
+// These return 0 if the lock was acquired.
+// 1 if the lock was busy.
+uint8_t safe_try_rdlock(pthread_rwlock_t *rwlock);
+uint8_t safe_try_wrlock(pthread_rwlock_t *rwlock);
+
 void safe_rwlock_unlock(pthread_rwlock_t *rwlock);
 void safe_rwlock_destroy(pthread_rwlock_t *rwlock);
 

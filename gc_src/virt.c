@@ -213,9 +213,10 @@ void adt_move_p(addr_table *adt, uint64_t cell_ind,
     safe_rwlock_unlock(&(cell->lck));
 }
 
+
 // Get the physical address at ind.
 // The read lock will be requested on the address.
-void *adt_get_read(addr_table *adt, uint64_t ind) {
+void *adt_get_read_p(addr_table *adt, uint64_t ind, uint8_t blk) {
     adt_validate_cell_ind(adt, ind, "adt_get_read");
 
     addr_table_header *adt_h = (addr_table_header *)adt;
@@ -224,14 +225,21 @@ void *adt_get_read(addr_table *adt, uint64_t ind) {
 
     addr_table_cell *cell = table + ind;
 
-    safe_rdlock(&(cell->lck));
+    if (blk) {
+        safe_rdlock(&(cell->lck));
+    } else if (safe_try_rdlock(&(cell->lck))) {
+        // We make it here if the read lock was not 
+        // acquired.
+        return NULL;
+    }
+
     adt_validate_cell(cell, ind, "adt_get_read");
 
     return cell->paddr;
 }
 
 // Same as adt_get_read, except with a write lock.
-void *adt_get_write(addr_table *adt, uint64_t ind) {
+void *adt_get_write_p(addr_table *adt, uint64_t ind, uint8_t blk) {
     adt_validate_cell_ind(adt, ind, "adt_get_write");
 
     addr_table_header *adt_h = (addr_table_header *)adt;
@@ -240,7 +248,12 @@ void *adt_get_write(addr_table *adt, uint64_t ind) {
     
     addr_table_cell *cell = table + ind;
 
-    safe_wrlock(&(cell->lck));
+    if (blk) {
+        safe_wrlock(&(cell->lck));
+    } else if (safe_try_wrlock(&(cell->lck))) {
+        return NULL;
+    }
+
     adt_validate_cell(cell, ind, "adt_get_write");
 
     return cell->paddr;
@@ -595,11 +608,25 @@ void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr) {
     return adt_get_read(adt, vaddr.cell_index);
 }
 
+void *adb_try_get_read(addr_book *adb, addr_book_vaddr vaddr) {
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index,
+            "adb_try_get_read");
+
+    return adt_try_get_read(adt, vaddr.cell_index);
+}
+
 void *adb_get_write(addr_book *adb, addr_book_vaddr vaddr) {
     addr_table *adt = adb_get_adt(adb, vaddr.table_index,
             "adb_get_write");
 
     return adt_get_write(adt, vaddr.cell_index);
+}
+
+void *adb_try_get_write(addr_book *adb, addr_book_vaddr vaddr) {
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index,
+            "adb_try_get_write");
+
+    return adt_try_get_write(adt, vaddr.cell_index);
 }
 
 void adb_unlock(addr_book *adb, addr_book_vaddr vaddr) {

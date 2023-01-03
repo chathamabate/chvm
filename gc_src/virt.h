@@ -102,12 +102,27 @@ static inline void adt_reinstall(addr_table *adt, addr_book_vaddr vaddr,
 }
 
 
-// Get the physical address at ind.
-// The read lock will be requested on the address.
-void *adt_get_read(addr_table *adt, uint64_t ind);
+// Returns NULL if the lock wasn't acquired
+void *adt_get_read_p(addr_table *adt, uint64_t ind, uint8_t blk);
+
+static inline void *adt_get_read(addr_table *adt, uint64_t ind) {
+    return adt_get_read_p(adt, ind, 1);
+}
+
+static inline void *adt_try_get_read(addr_table *adt, uint64_t ind) {
+    return adt_get_read_p(adt, ind, 0);
+}
+
+void *adt_get_write_p(addr_table *adt, uint64_t ind, uint8_t blk);
 
 // Same as adt_get_read, except with a write lock.
-void *adt_get_write(addr_table *adt, uint64_t ind);
+static inline void *adt_get_write(addr_table *adt, uint64_t ind) {
+    return adt_get_write_p(adt, ind, 1);
+}
+
+static inline void *adt_try_get_write(addr_table *adt, uint64_t ind) {
+    return adt_get_write_p(adt, ind, 0);
+}
 
 // Unlock the entry at index.  
 void adt_unlock(addr_table *adt, uint64_t ind);
@@ -164,7 +179,11 @@ static inline void adb_reinstall(addr_book *adb, addr_book_vaddr vaddr,
 
 void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr);
 
+void *adb_try_get_read(addr_book *adb, addr_book_vaddr vaddr);
+
 void *adb_get_write(addr_book *adb, addr_book_vaddr vaddr);
+
+void *adb_try_get_write(addr_book *adb, addr_book_vaddr vaddr);
 
 void adb_unlock(addr_book *adb, addr_book_vaddr vaddr);
 

@@ -43,23 +43,22 @@ typedef enum {
     MB_NOT_NEEDED,
 } mb_shift_res;
 
-// This will shift pieces to the start of the memory block.
+// This call may shift a single allocated piece towards
+// the beginning of the block.
 //
-// NOTE: This will write lock on allocated pieces inside
-// the memory block. Make sure you are not locking
-// on any piece before calling this function. 
-// (I mean in the same thread btw)
+// If blk = 0, this call will return MB_BUSY if there are
+// no unlocked pieces to shift. 
 //
-// Returns 1 if a shift occurred, 0 otherwise.
-// We only don't shift if there are no blocks
-// to shift.
-mb_shift_res mb_shift(mem_block *mb);
+// If blk = 1, and there are only locked pieces left to shift,
+// this call will block until it can acquire the lock of 
+// one of the shiftable pieces.
+mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk);
 
 // After this call, all free pieces will be pushed together
 // to form one single free piece at one end of the block.
-static inline void mb_full_shift(mem_block *mb) {
-    while (mb_shift(mb) != MB_NOT_NEEDED);
-}
+// static inline void mb_full_shift(mem_block *mb) {
+//    while (mb_shift(mb) != MB_NOT_NEEDED);
+//}
 
 // This command will safely print the structure of the 
 // memory block in an easy to read way.
