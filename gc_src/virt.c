@@ -285,17 +285,17 @@ addr_table_code adt_free(addr_table *adt, uint64_t index) {
     return res_code;
 }
 
-void adt_print(addr_table *adt) {
+void adt_print_p(addr_table *adt, const char *prefix) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
 
-    safe_printf("Address Table : %p\n", adt);
+    safe_printf("%sAddress Table : %p\n", prefix, adt);
 
     safe_rdlock(&(adt_h->free_stack_lck));
     uint64_t i;
 
-    safe_printf("Free Stack : ");
+    safe_printf("%sFree Stack : ", prefix);
 
     for (i = 0; i < adt_h->stack_fill; i++) {
         safe_printf("%" PRIu64 " ", free_stack[i]);
@@ -303,16 +303,18 @@ void adt_print(addr_table *adt) {
 
     safe_rwlock_unlock(&(adt_h->free_stack_lck));
 
-    safe_printf("\nCell Table : \n");
+    safe_printf("\n%sCell Table : \n", prefix);
     for (i = 0; i < adt_h->cap; i++) {
         addr_table_cell *cell = table + i;
 
         safe_rdlock(&(cell->lck));
 
         if (cell->allocated) {
-            safe_printf("%" PRIu64 " : Allocated : %p\n", i, cell->paddr);
+            safe_printf("%s%" PRIu64 " : Allocated : %p\n", 
+                    prefix, i, cell->paddr);
         } else {
-            safe_printf("%" PRIu64 " : Free\n", i);
+            safe_printf("%s%" PRIu64 " : Free\n", 
+                    prefix, i);
         }
 
         safe_rwlock_unlock(&(cell->lck));
@@ -559,10 +561,18 @@ addr_book_vaddr adb_put_p(addr_book *adb, void *paddr, uint64_t init) {
     }
 }
 
-static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table_index) {
+static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table_index, 
+        const char *tag) {
     addr_table *adt;
 
     safe_rdlock(&(adb->lck));
+
+    if (table_index >= adb->book_len) {
+        safe_rwlock_unlock(&(adb->lck));
+        error_logf(1, 1, "%s: invalid table index (%" PRIu64 ")", 
+                tag, table_index);
+    }
+
     adt = adb->book[table_index].adt;
     safe_rwlock_unlock(&(adb->lck));
 
@@ -571,26 +581,30 @@ static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table_index) {
 
 void adb_move_p(addr_book *adb, addr_book_vaddr vaddr, 
         void *new_paddr, uint64_t size, uint8_t init) {
-    addr_table *adt = adb_get_adt(adb, vaddr.table_index); 
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index, 
+            "adb_move_p"); 
 
     adt_move_p(adt, vaddr.cell_index, new_paddr, size, 
             init, vaddr.table_index);
 }
 
 void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr) {
-    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index,
+            "adb_get_read");
 
     return adt_get_read(adt, vaddr.cell_index);
 }
 
 void *adb_get_write(addr_book *adb, addr_book_vaddr vaddr) {
-    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index,
+            "adb_get_write");
 
     return adt_get_write(adt, vaddr.cell_index);
 }
 
 void adb_unlock(addr_book *adb, addr_book_vaddr vaddr) {
-    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index,
+            "adb_unlock");
 
     adt_unlock(adt, vaddr.cell_index);
 }
@@ -627,7 +641,8 @@ static inline void adb_try_addition(addr_book *adb, uint64_t entry_index) {
 }
 
 void adb_free(addr_book *adb, addr_book_vaddr vaddr) {
-    addr_table *adt = adb_get_adt(adb, vaddr.table_index);
+    addr_table *adt = adb_get_adt(adb, vaddr.table_index, 
+            "adb_free");
 
     addr_table_code free_res = adt_free(adt, vaddr.cell_index);
 
@@ -652,4 +667,38 @@ uint64_t adb_get_fill(addr_book *adb) {
     safe_rwlock_unlock(&(adb->lck));
 
     return fill;
+}
+
+void adb_print(addr_book *adb) {
+    const char *prefix = "  ";
+
+    safe_rdlock(&(adb->lck));
+
+    safe_printf("Address Book : %p\n", adb);
+    safe_printf("Capacity : %" PRIu64 ", Length : %" PRIu64 "\n",
+           adb->book_cap, adb->book_len);
+
+    uint64_t i;
+    for (i = 0; i < adb->book_len; i++) {
+        addr_book_entry *entry = adb->book + i;
+
+        safe_printf("%" PRIu64 " :\n", i);
+        
+        if (entry->in_free_list) {
+            if (entry->prev != ADB_NULL_INDEX) {
+                safe_printf("%sPrev : %" PRIu64"\n", prefix, entry->prev);
+            }
+
+            if (entry->next != ADB_NULL_INDEX) {
+                safe_printf("%sNext : %" PRIu64"\n", prefix, entry->next);
+            }
+
+            // Add spacer.
+            safe_printf("\n");
+        } 
+
+        adt_print_p(entry->adt, prefix);
+    }
+
+    safe_rwlock_unlock(&(adb->lck)); 
 }

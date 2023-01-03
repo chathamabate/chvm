@@ -115,7 +115,11 @@ void adt_unlock(addr_table *adt, uint64_t ind);
 // Free a specific index in the table.
 addr_table_code adt_free(addr_table *adt, uint64_t index);
 
-void adt_print(addr_table *adt);
+void adt_print_p(addr_table *adt, const char *prefix);
+
+static inline void adt_print(addr_table *adt) {
+    adt_print_p(adt, "");
+}
 
 // Address Book Signatures....
 
@@ -167,5 +171,7 @@ void adb_unlock(addr_book *adb, addr_book_vaddr vaddr);
 void adb_free(addr_book *adb, addr_book_vaddr vaddr);
 
 uint64_t adb_get_fill(addr_book *adb);
+
+void adb_print(addr_book *adb);
 
 #endif

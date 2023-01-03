@@ -564,6 +564,7 @@ static void test_adb_multi1(chunit_test_context *tc) {
 
     assert_eq_uint(tc, 0, adb_get_fill(adb));
 
+
     delete_addr_book(adb);
 }
 
@@ -633,6 +634,27 @@ static const chunit_test ADB_MISC_0 = {
     .timeout = 5,
 };
 
+static void test_adb_bad_index(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+    adb_put(adb, NULL);
+
+    addr_book_vaddr v = {
+        .cell_index = 0,
+        .table_index = 1,
+    };
+
+    // There should be no index 1 table.
+    adb_get_read(adb, v);
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_BAD_INDEX = {
+    .name = "Address Book Bad Index",
+    .t = test_adb_bad_index,
+    .timeout = 5,
+    .should_fail = 1,
+};
 
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
@@ -645,7 +667,8 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
 
         &ADB_MOVE,
         &ADB_MISC_0,
+        &ADB_BAD_INDEX,
     },
-    .tests_len = 7
+    .tests_len = 8
 };
 
