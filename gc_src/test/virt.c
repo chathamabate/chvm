@@ -278,7 +278,7 @@ static void test_adt_move(chunit_test_context *tc) {
     adt_unlock(adt, cell_ind);
 
     // Do the move.
-    adt_move_p(adt, cell_ind, paddr2, 
+    adt_move_p(1, adt, cell_ind, paddr2, 
             strlen(message) + 1, 1, 0);
 
     paddr = adt_get_read(adt, cell_ind); 
@@ -342,6 +342,28 @@ const chunit_test ADT_UNALLOCATED_INDEX = {
     .should_fail = 1,
 };
 
+static void test_adt_try_lock(chunit_test_context *tc) {
+    addr_table *adt = new_addr_table(1, 1);
+
+    addr_table_put_res res = adt_put(adt, (void *)1);
+    assert_false(tc, ADT_NO_SPACE == res.code);
+
+    adt_get_write(adt, res.index);
+
+    // We should not be able to get our lock here.
+    assert_eq_ptr(tc, NULL, adt_try_get_write(adt, res.index));
+
+    adt_unlock(adt, res.index);
+
+    delete_addr_table(adt);
+}
+
+const chunit_test ADT_TRY_LOCK = {
+    .name = "Address Table Try Lock",
+    .t = test_adt_try_lock,
+    .timeout = 5
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADT = {
     .name = "Address Table Test Suite",
     .tests = {
@@ -354,8 +376,9 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
         &ADT_MOVE,
         &ADT_BAD_INDEX,
         &ADT_UNALLOCATED_INDEX,
+        &ADT_TRY_LOCK,
     },
-    .tests_len = 8,
+    .tests_len = 9,
 };
 
 // Address Book Suite Below.
@@ -610,18 +633,24 @@ static const chunit_test ADB_MOVE = {
 };
 
 static void test_adb_misc_0(chunit_test_context *tc) {
-    addr_book *adb = new_addr_book(1, 5);
+    addr_book *adb = new_addr_book(1, 3);
 
-    const uint64_t num_vaddrs = 20;
-    addr_book_vaddr vaddrs[num_vaddrs];
+    const uint64_t free_mod = 2;
+    const uint64_t num_puts = 15;
+
+    addr_book_vaddr vaddrs[num_puts];
 
     uint64_t i;
-    for (i = 0; i < num_vaddrs; i++) {
-        vaddrs[i] = adb_put(adb, NULL);
+    for (i = 0; i < num_puts; i++) {
+        vaddrs[i] = adb_put(adb, (void *)i);
     }
 
-    for (i = 0; i < num_vaddrs; i+=2) {
+    for (i = 0; i < num_puts; i += free_mod) {
         adb_free(adb, vaddrs[i]);
+    }
+
+    for (i = 0; i < num_puts; i += free_mod) {
+        vaddrs[i] = adb_put(adb, (void *)i);
     }
 
     delete_addr_book(adb);
@@ -655,33 +684,24 @@ static const chunit_test ADB_BAD_INDEX = {
     .should_fail = 1,
 };
 
-static void test_adb_misc(chunit_test_context *tc) {
-    addr_book *adb = new_addr_book(1, 3);
+static void test_adb_try_lock(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
 
-    const uint64_t free_mod = 2;
-    const uint64_t num_puts = 15;
+    addr_book_vaddr v = adb_put(adb, (void *)1);
 
-    addr_book_vaddr vaddrs[num_puts];
+    void *paddr = adb_get_write(adb, v);
+    assert_eq_ptr(tc, (void *)1, paddr);
 
-    uint64_t i;
-    for (i = 0; i < num_puts; i++) {
-        vaddrs[i] = adb_put(adb, (void *)i);
-    }
+    assert_eq_ptr(tc, NULL, adb_try_get_read(adb, v));
 
-    for (i = 0; i < num_puts; i += free_mod) {
-        adb_free(adb, vaddrs[i]);
-    }
-
-    for (i = 0; i < num_puts; i += free_mod) {
-        vaddrs[i] = adb_put(adb, (void *)i);
-    }
+    adb_unlock(adb, v);
 
     delete_addr_book(adb);
 }
 
-static const chunit_test ADB_MISC = {
-    .name = "Address Book Misc",
-    .t = test_adb_misc,
+static const chunit_test ADB_TRY_LOCK = {
+    .name = "Address Book Try Lock",
+    .t = test_adb_try_lock,
     .timeout = 5,
 };
 
@@ -697,7 +717,7 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
         &ADB_MOVE,
         &ADB_MISC_0,
         &ADB_BAD_INDEX,
-        &ADB_MISC,
+        &ADB_TRY_LOCK,
     },
     .tests_len = 9
 };

@@ -54,6 +54,18 @@ typedef enum {
 // one of the shiftable pieces.
 mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk);
 
+static inline mb_shift_res mb_try_shift(mem_block *mb) {
+    return mb_shift_p(mb, 0);
+}
+
+static inline mb_shift_res mb_shift(mem_block *mb) {
+    return mb_shift_p(mb, 1);
+}
+
+static inline void mb_full_shift(mem_block *mb) {
+    while (mb_shift_p(mb, 0) != MB_NOT_NEEDED);
+}
+
 // After this call, all free pieces will be pushed together
 // to form one single free piece at one end of the block.
 // static inline void mb_full_shift(mem_block *mb) {

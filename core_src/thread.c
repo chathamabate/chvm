@@ -3,6 +3,7 @@
 #include "./mem.h"
 #include <errno.h>
 #include <pthread.h>
+#include <sys/errno.h>
 
 void safe_pthread_create(pthread_t *restrict thrd, 
         const pthread_attr_t *restrict attr, 
@@ -71,27 +72,37 @@ void safe_wrlock(pthread_rwlock_t *rwlock) {
 }
 
 uint8_t safe_try_rdlock(pthread_rwlock_t *rwlock) {
-    if (pthread_rwlock_tryrdlock(rwlock)) {
-        if (errno == EBUSY) {
-            return 1;
-        }
+    int err = pthread_rwlock_tryrdlock(rwlock);
 
-        error_logf(1, 1, "Proccess failed while trying to acquire read lock"); 
+    if (!err) {
+        return 0;
     }
 
-    return 0;
+    if (err == EBUSY || err == EDEADLK) {
+        return 1;
+    }
+
+   error_logf(1, 1, "Proccess failed while trying to acquire read lock"); 
+
+   // Should never make it here.
+   return 1; 
 }
 
 uint8_t safe_try_wrlock(pthread_rwlock_t *rwlock) {
-    if (pthread_rwlock_trywrlock(rwlock)) {
-        if (errno == EBUSY) {
-            return 1;
-        }
+    int err = pthread_rwlock_trywrlock(rwlock);
 
-        error_logf(1, 1, "Proccess failed while trying to acquire write lock"); 
+    if (!err) {
+        return 0;
     }
 
-    return 0;
+    if (err == EBUSY || err == EDEADLK) {
+        return 1;
+    }
+
+   error_logf(1, 1, "Proccess failed while trying to acquire write lock"); 
+
+   // Should never make it here.
+   return 1; 
 }
 
 void safe_rwlock_unlock(pthread_rwlock_t *rwlock) {

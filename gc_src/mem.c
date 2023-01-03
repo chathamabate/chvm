@@ -495,26 +495,30 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
     
     mem_piece *start = (mem_piece *)(mb_h + 1);
     mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
+
+    safe_printf("\nStarting Shift\n");
      
     safe_wrlock(&(mb_h->mem_lck));
 
     // NOTE: we will traverse the free list once for a shiftable piece
     // with an unlocked write lock.
 
-    mem_free_piece_header *mfp_h = mb_h->size_free_list; 
+    mem_free_piece_header *og_free_h = mb_h->size_free_list;
 
     // The case where there are no free pieces.
-    if (!mfp_h) {
+    if (!og_free_h) {
         safe_rwlock_unlock(&(mb_h->mem_lck));
         return MB_NOT_NEEDED;
     }
 
     // The case where there is only one free piece, but it 
     // is already at the end of the block.
-    if (!(mfp_h->size_free_next) && mp_next(mp_b_to_mp(mfp_h)) >= end) {
+    if (!(og_free_h->size_free_next) && mp_next(mp_b_to_mp(og_free_h)) >= end) {
         safe_rwlock_unlock(&(mb_h->mem_lck));
         return MB_NOT_NEEDED;
     }
+
+    safe_printf("Shift Needed\n");
 
     // Otherwise, a shiftable piece must exist... let's find it.
 
@@ -524,7 +528,7 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
 
     while (1) {
         // Determine if mfp_h can be shifted into.
-        og_free = mp_b_to_mp(mfp_h);
+        og_free = mp_b_to_mp(og_free_h);
         og_next = mp_next(og_free);
 
         // NOTE: the order of the condition is essential.
@@ -532,8 +536,6 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
         // First, check if next is a valid piece.
         // Second, check if next is allocated (indicating a shift is possible)
         // Lastly, try to acquire the write lock on next.
-        //
-        // If all these things occur, we have successfully
         if (og_next < end && mp_alloc(og_next)) {
             vaddr = *(mem_alloc_piece_header *)mp_body(og_next);
 
@@ -547,9 +549,9 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
 
         // Otherwise, next didn't work out... let's just keep moving
         // here...
-        mfp_h = mfp_h->size_free_next;
+        og_free_h = og_free_h->size_free_next;
         
-        if (!mfp_h) {
+        if (!og_free_h) {
             if (!blk) {
                 safe_rwlock_unlock(&(mb_h->mem_lck));
                 return MB_BUSY;
@@ -557,11 +559,72 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
 
             // If we are blocking, just go back to the beginning of
             // the list.
-            mfp_h = mb_h->size_free_list;
+            og_free_h = mb_h->size_free_list;
         }
     } 
 
+    safe_printf("Shiftable Piece Found\n");
+
     // NOTE: if we are here, we have acquired the write lock on vaddr.
+    // At this point there are a few things we must do.
+    // We must shift our allocated block over into the og free block.
+    // Then join the new free block with the following block if needed.
+    
+    uint64_t og_free_size = mp_size(og_free);
+    uint64_t og_next_size = mp_size(og_next);
+    
+    // Might need to use this.
+    mem_piece *og_next_next = mp_next(og_next);
+
+    // May need to use these later as well.
+    mem_free_piece_header *og_free_h_next_h = og_free_h->size_free_next;
+    mem_free_piece_header *og_free_h_prev_h = og_free_h->size_free_prev;
+
+    // Let's remove our og_free from the free list.
+    mb_remove_from_size_unsafe(mb, og_free_h);
+
+    void *new_paddr = (mem_alloc_piece_header *)og_free_h + 1;
+
+    // Remember, the lock on our cell is already acquired.
+    adb_move_p(0, mb_h->adb, vaddr, new_paddr, og_next_size - MAP_PADDING, 1);
+    adb_unlock(mb_h->adb, vaddr); // Done with our move, unlock.
+
+    mp_init(og_free, og_next_size, 1);
+
+    // Now we move our allocated block into the og_free.
+    // The original free pointers are no more.
+    // og_free, og_free_h, og_next, and og_next_h are potentially
+    // all written over, so DO NOT use them again after this point.
+
+    mem_piece *new_alloc = og_free;
+    mem_piece *new_free = mp_next(new_alloc);
+
+    if (og_next_next < end && !mp_alloc(og_next_next)) {
+        uint64_t og_next_next_size = mp_size(og_next_next);
+        mb_remove_from_size_unsafe(mb, (mem_free_piece_header *)og_next_next);
+
+        mp_init(new_free, og_free_size + og_next_next_size, 0);
+
+        mb_add_to_size_unsafe(mb, new_free);
+    } else {
+        mp_init(new_free, og_free_size, 0);
+
+        mem_free_piece_header *new_free_h = 
+            (mem_free_piece_header *)mp_body(new_free);
+
+        new_free_h->size_free_prev = og_free_h_prev_h;
+        new_free_h->size_free_next = og_free_h_next_h;
+
+        if (og_free_h_prev_h) {
+            og_free_h_prev_h->size_free_next = new_free_h;
+        } else {
+            mb_h->size_free_list = new_free_h;
+        }
+
+        if (og_free_h_next_h) {
+            og_free_h_next_h->size_free_prev = new_free_h;
+        }
+    }
 
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
@@ -571,6 +634,7 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
     // OLD VERSION --------------------------------------------------------
     // --------------------------------------------------------------------
 
+    /*
     safe_wrlock(&(mb_h->mem_lck));
 
     // NOTE: if the head of the free list is not shiftable
@@ -689,6 +753,7 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
     return 1;
+    */
 }
 
 void mb_print(mem_block *mb) {

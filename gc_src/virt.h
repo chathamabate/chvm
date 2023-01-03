@@ -86,18 +86,21 @@ static inline addr_table_put_res adt_install(addr_table *adt, void *paddr,
 //
 // NOTE: it is ok if the new area of memory overlaps with
 // the old area of memory.
-void adt_move_p(addr_table *adt, uint64_t cell_ind, 
+//
+// I am ashamed to add a lock flag here, as it allows for unsafe 
+// operations... This is a sacrifice I must take sadly.
+void adt_move_p(uint8_t lck, addr_table *adt, uint64_t cell_ind, 
         void *new_paddr, uint64_t size, 
         uint8_t init, uint64_t table_ind);
 
 static inline void adt_move(addr_table *adt, uint64_t cell_ind,
         void *new_paddr, uint64_t size) {
-    adt_move_p(adt, cell_ind, new_paddr, size, 0, 0);
+    adt_move_p(1, adt, cell_ind, new_paddr, size, 0, 0);
 }
 
 static inline void adt_reinstall(addr_table *adt, addr_book_vaddr vaddr,
         void *new_paddr, uint64_t size) {
-    adt_move_p(adt, vaddr.cell_index, new_paddr, 
+    adt_move_p(1, adt, vaddr.cell_index, new_paddr, 
             size, 1, vaddr.table_index);
 }
 
@@ -164,17 +167,17 @@ static inline addr_book_vaddr adb_install(addr_book *adb, void *paddr) {
     return adb_put_p(adb, paddr, 1);
 }
 
-void adb_move_p(addr_book *adb, addr_book_vaddr vaddr, 
+void adb_move_p(uint8_t lck, addr_book *adb, addr_book_vaddr vaddr, 
         void *new_paddr, uint64_t size, uint8_t init);
 
 static inline void adb_move(addr_book *adb, addr_book_vaddr vaddr, 
         void *new_paddr, uint64_t size) {
-    adb_move_p(adb, vaddr, new_paddr, size, 0);
+    adb_move_p(1, adb, vaddr, new_paddr, size, 0);
 }
 
 static inline void adb_reinstall(addr_book *adb, addr_book_vaddr vaddr, 
         void *new_paddr, uint64_t size) {
-    adb_move_p(adb, vaddr, new_paddr, size, 1);
+    adb_move_p(1, adb, vaddr, new_paddr, size, 1);
 }
 
 void *adb_get_read(addr_book *adb, addr_book_vaddr vaddr);

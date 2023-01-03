@@ -304,7 +304,7 @@ static void mb_chop_and_test(chop_args *ca) {
     // mb_print(ca->mb);
 
     if (ca->shift_test) {
-        mb_full_shift(ca->mb);
+        mb_full_shift(ca->mb); 
 
         // safe_printf("\nAfter Shifts\n");
         // mb_print(ca->mb);
@@ -329,7 +329,7 @@ static void test_mb_shift_0(chunit_test_context *tc) {
 
     // With no mallocs yet, there shouldn't be anything
     // to shift.
-    assert_false(tc, mb_shift(mb));
+    assert_eq_uint(tc, MB_NOT_NEEDED, mb_shift(mb));
 
     delete_mem_block(mb);
     delete_addr_book(adb);
@@ -354,6 +354,9 @@ static void test_mb_shift_1(chunit_test_context *tc) {
 
     mb_free(mb, vaddr1);
     mb_shift(mb);
+    
+    safe_printf("\n");
+    mb_print(mb);
 
     paddr = adb_get_read(adb, vaddr2);
     assert_eq_int(tc, -5, *paddr);
@@ -385,7 +388,7 @@ static void test_mb_shift_2(chunit_test_context *tc) {
 
         .malloc_size_factor = sizeof(uint64_t),
         .malloc_chnl = 1,
-        .shift_test = 1,
+        .shift_test = 0, // Should shift.
     };
 
     mb_chop_and_test(&ca);
@@ -462,7 +465,7 @@ static void test_mem_block_multi_1(chunit_test_context *tc) {
         .free_mod = 4,
         .num_mallocs = 20,
 
-        .shift_test = 1,
+        .shift_test = 0, // Should include a shift here.
         .malloc_chnl = 1,
     };
 

@@ -174,10 +174,13 @@ static inline void adt_validate_cell_ind(addr_table *adt,
 // and that the cell has been locked on.
 //
 // This will error out if the cell is not allocated.
-static inline void adt_validate_cell(addr_table_cell *cell, uint64_t cell_ind,
+static inline void adt_validate_cell(uint8_t unlock, addr_table_cell *cell, uint64_t cell_ind,
         const char *tag) {
     if (!(cell->allocated)) {
-        safe_rwlock_unlock(&(cell->lck)); 
+        // This is a little overkill here, but whatever...
+        if (unlock) {
+            safe_rwlock_unlock(&(cell->lck)); 
+        }
 
         error_logf(1, 1,
                 "%s: unallocated cell_ind given (%" PRIu64 ")",
@@ -185,7 +188,7 @@ static inline void adt_validate_cell(addr_table_cell *cell, uint64_t cell_ind,
     }
 }
 
-void adt_move_p(addr_table *adt, uint64_t cell_ind, 
+void adt_move_p(uint8_t lck, addr_table *adt, uint64_t cell_ind, 
         void *new_paddr, uint64_t size, 
         uint8_t init, uint64_t table_ind) {
     adt_validate_cell_ind(adt, cell_ind, "adt_move_p");
@@ -196,9 +199,12 @@ void adt_move_p(addr_table *adt, uint64_t cell_ind,
 
     addr_table_cell *cell = table + cell_ind;
 
-    // Lock on our cell.
-    safe_wrlock(&(cell->lck));
-    adt_validate_cell(cell, cell_ind, "adt_move_p");
+    // Lock on our cell. (if needed)
+    if (lck) {
+        safe_wrlock(&(cell->lck));
+    }
+
+    adt_validate_cell(lck, cell, cell_ind, "adt_move_p");
 
     uint8_t *old_paddr = cell->paddr;
 
@@ -210,7 +216,9 @@ void adt_move_p(addr_table *adt, uint64_t cell_ind,
         write_vaddr_unsafe(new_paddr, table_ind, cell_ind);
     } 
 
-    safe_rwlock_unlock(&(cell->lck));
+    if (lck) {
+        safe_rwlock_unlock(&(cell->lck));
+    }
 }
 
 
@@ -233,7 +241,7 @@ void *adt_get_read_p(addr_table *adt, uint64_t ind, uint8_t blk) {
         return NULL;
     }
 
-    adt_validate_cell(cell, ind, "adt_get_read");
+    adt_validate_cell(1, cell, ind, "adt_get_read");
 
     return cell->paddr;
 }
@@ -254,7 +262,7 @@ void *adt_get_write_p(addr_table *adt, uint64_t ind, uint8_t blk) {
         return NULL;
     }
 
-    adt_validate_cell(cell, ind, "adt_get_write");
+    adt_validate_cell(1, cell, ind, "adt_get_write");
 
     return cell->paddr;
 }
@@ -263,7 +271,8 @@ void *adt_get_write_p(addr_table *adt, uint64_t ind, uint8_t blk) {
 void adt_unlock(addr_table *adt, uint64_t ind) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
-    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap); addr_table_cell *cell = table + ind;
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap); 
+    addr_table_cell *cell = table + ind;
 
     adt_validate_cell_ind(adt, ind, "adt_unlock");
 
@@ -281,7 +290,7 @@ addr_table_code adt_free(addr_table *adt, uint64_t index) {
     addr_table_code res_code;
 
     safe_wrlock(&(table[index].lck));
-    adt_validate_cell(cell, index, "adt_free");
+    adt_validate_cell(1, cell, index, "adt_free");
     table[index].allocated = 0;
     safe_rwlock_unlock(&(table[index].lck));
 
@@ -592,12 +601,12 @@ static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table_index,
     return adt;
 }
 
-void adb_move_p(addr_book *adb, addr_book_vaddr vaddr, 
+void adb_move_p(uint8_t lck, addr_book *adb, addr_book_vaddr vaddr, 
         void *new_paddr, uint64_t size, uint8_t init) {
     addr_table *adt = adb_get_adt(adb, vaddr.table_index, 
             "adb_move_p"); 
 
-    adt_move_p(adt, vaddr.cell_index, new_paddr, size, 
+    adt_move_p(lck, adt, vaddr.cell_index, new_paddr, size, 
             init, vaddr.table_index);
 }
 
