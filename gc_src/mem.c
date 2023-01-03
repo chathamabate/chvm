@@ -197,6 +197,9 @@ typedef struct {
     //
     // For example, a piece is being allocated, or
     // the headers of a piece are being read, etc...
+    //
+    // NOTE: Never should this lock be held for a prolonged amount
+    // of time!
     pthread_rwlock_t mem_lck;
 
     mem_free_piece_header *size_free_list; 
@@ -400,6 +403,13 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     adb_unlock(mb_h->adb, vaddr);
 
     // Discard vaddr entirely.
+    //
+    // NOTE: This line adds a vulnrability. 
+    // This call can block if another thread has a lock on vaddr.
+    // (note: there would never be a reason to do such a thing)
+    //
+    // If this free call does block, then other calls to this memory
+    // block will block when trying to acquire mem_lck... BAD!!!!!
     adb_free(mb_h->adb, vaddr);
 
     // Get corresponding mem_piece pointer.
@@ -535,10 +545,13 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
         if (og_next < end && mp_alloc(og_next)) {
             vaddr = *(mem_alloc_piece_header *)mp_body(og_next);
 
-            if (!adb_try_get_write(mb_h->adb, vaddr)) {
+            // Remember try get lock returns NULL if the lock is not
+            // acquired.
+            if (adb_try_get_write(mb_h->adb, vaddr)) {
                 // We make it in here if the lock is acquired.
                 // i.e. we have found our shiftable piece and 
                 // locked on it.
+
                 break;
             }
         }
@@ -624,131 +637,6 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
     return MB_SHIFT_SUCCESS;
-    
-    // --------------------------------------------------------------------
-    // OLD VERSION --------------------------------------------------------
-    // --------------------------------------------------------------------
-
-    /*
-    safe_wrlock(&(mb_h->mem_lck));
-
-    // NOTE: if the head of the free list is not shiftable
-    // and there is a second free block, the second free 
-    // block must be shiftable.
-    //
-    // (There must be at least one allocated block which
-    // divides the two free blocks.)
-
-    mem_free_piece_header *mfp_h = mb_h->size_free_list;
-
-    // Memory block is full.
-    if (!mfp_h) {
-        safe_rwlock_unlock(&(mb_h->mem_lck));
-
-        return 0;
-    }
-
-    mem_piece *start = (mem_piece *)(mb_h + 1);
-    mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
-
-    mem_piece *next_alloc = mp_next(mp_b_to_mp(mfp_h));
-
-    // Don't even need to check for allocation here.
-    if (next_alloc >= end) {
-        mfp_h = mfp_h->size_free_next;
-
-        // This is the case where there is only one free
-        // piece and it is shifted all the way to the
-        // right of the memory block.
-        if (!mfp_h) {
-            safe_rwlock_unlock(&(mb_h->mem_lck));
-
-            return 0;
-        }
-
-        next_alloc = mp_next(mp_b_to_mp(mfp_h));
-    }
-
-    // This is the piece which lies after the piece we will 
-    // be shifting. It will be used later after the shift
-    // when editing the free list.
-    mem_piece *border = mp_next(next_alloc);
-
-    mem_piece *og_free = mp_b_to_mp(mfp_h);
-    uint64_t og_free_size = mp_size(og_free);
-
-    // If we made it here, next must be pointing to
-    // an allocated piece which comes directly after
-    // mfp_h in the memory block.
-
-    // We save these pointers before doing any modifications
-    // to the free list. NOTE: Soon mfp_h will be written
-    // over entirely.
-    mem_free_piece_header *prev_fp_h = mfp_h->size_free_prev;
-    mem_free_piece_header *next_fp_h = mfp_h->size_free_next;
-
-    mb_remove_from_size_unsafe(mb, mfp_h);
-
-    // Size of block we will be shifting.
-    uint64_t alloc_size = mp_size(next_alloc);
-
-    // Virtual address of block we will be shifting.
-    addr_book_vaddr vaddr = *(mem_alloc_piece_header *)mp_body(next_alloc);
-
-    // Now we will write over the original free block with a newly
-    // allocated block. (With copied data)
-    mem_piece *new_alloc = og_free;
-
-    adb_reinstall(mb_h->adb, vaddr, mp_to_map_b(new_alloc), 
-            alloc_size - MAP_PADDING);
-    mp_init(new_alloc, alloc_size, 1);
-
-    // At this point our original free block has been written
-    // over, we should not use its corresponding pointers
-    // again.
-    mfp_h = NULL;
-    og_free = NULL;
-
-    // Get our new free region.
-    mem_piece *new_free = mp_next(new_alloc);
-
-    if (border < end && !mp_alloc(border)) {
-        uint64_t border_size = mp_size(border);
-        // Our og free block has already been freed.
-
-        mb_remove_from_size_unsafe(mb, 
-                (mem_free_piece_header *)mp_body(border));
-
-        mp_init(new_free, og_free_size + border_size, 0);
-
-        mb_add_to_size_unsafe(mb, new_free);
-    } else {
-        mp_init(new_free, og_free_size, 0); 
-        mem_free_piece_header *new_mfp_h = mp_body(new_free);
-
-        // If this runs, our free block will have the same size
-        // it started with, just in a different location.
-        // We can place it back in the free list exactly where 
-        // it was.
-
-        if (prev_fp_h) {
-            prev_fp_h->size_free_next = new_mfp_h;
-        } else {
-            mb_h->size_free_list = new_mfp_h;
-        }
-
-        if (next_fp_h) {
-            next_fp_h->size_free_prev = new_mfp_h;
-        }
-
-        new_mfp_h->size_free_prev = prev_fp_h;
-        new_mfp_h->size_free_next = next_fp_h;
-    }
-
-    safe_rwlock_unlock(&(mb_h->mem_lck));
-
-    return 1;
-    */
 }
 
 void mb_print(mem_block *mb) {

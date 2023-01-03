@@ -131,6 +131,9 @@ static inline void *adt_try_get_write(addr_table *adt, uint64_t ind) {
 void adt_unlock(addr_table *adt, uint64_t ind);
 
 // Free a specific index in the table.
+//
+// NOTE: If this is called while the user has the lock on
+// the given index acquired, behavoir is undefined.
 addr_table_code adt_free(addr_table *adt, uint64_t index);
 
 void adt_print_p(addr_table *adt, const char *prefix);

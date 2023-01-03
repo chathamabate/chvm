@@ -62,8 +62,15 @@ static inline mb_shift_res mb_shift(mem_block *mb) {
     return mb_shift_p(mb, 1);
 }
 
+// Shift until there are no more possible shifts.
+// (THIS BLOCKS)
 static inline void mb_full_shift(mem_block *mb) {
     while (mb_shift_p(mb, 0) != MB_NOT_NEEDED);
+}
+
+// Shift while there are unlocked blocks to shift.
+static inline void mb_try_full_shift(mem_block *mb) {
+    while (mb_shift_p(mb, 0) == MB_SHIFT_SUCCESS);
 }
 
 // After this call, all free pieces will be pushed together

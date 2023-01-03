@@ -279,6 +279,15 @@ void adt_unlock(addr_table *adt, uint64_t ind) {
     safe_rwlock_unlock(&(cell->lck));
 }
 
+// NOTE: This call raises some security concerns.
+//
+// In order to free a piece we must acquire its write lock.
+// Let's say someone else has the write lock....
+// In this case, free will block...
+//
+// So, we note here that if free is called while someone
+// else has a lock on the given piece, behavoir is undefined.
+//
 addr_table_code adt_free(addr_table *adt, uint64_t index) {
     adt_validate_cell_ind(adt, index, "adt_free");
 
