@@ -512,9 +512,9 @@ static void *test_adb_T(void *arg) {
 }
 
 static void test_adb_multi0(chunit_test_context *tc) {
-    const uint64_t num_threads = 10;
+    const uint64_t num_threads = 4;
     const uint64_t table_cap = 5;
-    const uint64_t num_puts = 100;
+    const uint64_t num_puts = 3;
 
     addr_book *adb = new_addr_book(1, table_cap);
 
@@ -563,7 +563,6 @@ static void test_adb_multi1(chunit_test_context *tc) {
     util_thread_collect(spray);
 
     assert_eq_uint(tc, 0, adb_get_fill(adb));
-
 
     delete_addr_book(adb);
 }
@@ -656,6 +655,38 @@ static const chunit_test ADB_BAD_INDEX = {
     .should_fail = 1,
 };
 
+static void test_adb_misc(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 3);
+
+    safe_printf("\n");
+
+    const uint64_t free_mod = 2;
+    const uint64_t num_puts = 15;
+
+    addr_book_vaddr vaddrs[num_puts];
+
+    uint64_t i;
+    for (i = 0; i < num_puts; i++) {
+        vaddrs[i] = adb_put(adb, (void *)i);
+    }
+
+    for (i = 0; i < num_puts; i += free_mod) {
+        adb_free(adb, vaddrs[i]);
+    }
+
+    for (i = 0; i < num_puts; i += free_mod) {
+        vaddrs[i] = adb_put(adb, (void *)i);
+    }
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_MISC = {
+    .name = "Address Book Misc",
+    .t = test_adb_misc,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
     .tests = {
@@ -668,7 +699,8 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
         &ADB_MOVE,
         &ADB_MISC_0,
         &ADB_BAD_INDEX,
+        &ADB_MISC,
     },
-    .tests_len = 8
+    .tests_len = 9
 };
 

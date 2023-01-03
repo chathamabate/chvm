@@ -678,6 +678,10 @@ void adb_print(addr_book *adb) {
     safe_printf("Capacity : %" PRIu64 ", Length : %" PRIu64 "\n",
            adb->book_cap, adb->book_len);
 
+    if (adb->free_list != ADB_NULL_INDEX) {
+        safe_printf("Free List : %" PRIu64 "\n", adb->free_list);
+    }
+
     uint64_t i;
     for (i = 0; i < adb->book_len; i++) {
         addr_book_entry *entry = adb->book + i;
@@ -693,8 +697,6 @@ void adb_print(addr_book *adb) {
                 safe_printf("%sNext : %" PRIu64"\n", prefix, entry->next);
             }
 
-            // Add spacer.
-            safe_printf("\n");
         } 
 
         adt_print_p(entry->adt, prefix);
