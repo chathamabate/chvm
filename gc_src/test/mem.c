@@ -355,9 +355,6 @@ static void test_mb_shift_1(chunit_test_context *tc) {
     mb_free(mb, vaddr1);
     mb_shift(mb);
     
-    safe_printf("\n");
-    mb_print(mb);
-
     paddr = adb_get_read(adb, vaddr2);
     assert_eq_int(tc, -5, *paddr);
     adb_unlock(adb, vaddr2);
@@ -388,7 +385,7 @@ static void test_mb_shift_2(chunit_test_context *tc) {
 
         .malloc_size_factor = sizeof(uint64_t),
         .malloc_chnl = 1,
-        .shift_test = 0, // Should shift.
+        .shift_test = 1, // Should shift.
     };
 
     mb_chop_and_test(&ca);
@@ -465,7 +462,7 @@ static void test_mem_block_multi_1(chunit_test_context *tc) {
         .free_mod = 4,
         .num_mallocs = 20,
 
-        .shift_test = 0, // Should include a shift here.
+        .shift_test = 1, // Should include a shift here.
         .malloc_chnl = 1,
     };
 
@@ -475,6 +472,8 @@ static void test_mem_block_multi_1(chunit_test_context *tc) {
                 test_mem_block_worker, &ca);
 
     util_thread_collect(spray);
+
+    mb_print(mb);
 
     delete_mem_block(mb);
     delete_addr_book(adb);

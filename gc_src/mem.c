@@ -496,8 +496,6 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
     mem_piece *start = (mem_piece *)(mb_h + 1);
     mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
 
-    safe_printf("\nStarting Shift\n");
-     
     safe_wrlock(&(mb_h->mem_lck));
 
     // NOTE: we will traverse the free list once for a shiftable piece
@@ -517,8 +515,6 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
         safe_rwlock_unlock(&(mb_h->mem_lck));
         return MB_NOT_NEEDED;
     }
-
-    safe_printf("Shift Needed\n");
 
     // Otherwise, a shiftable piece must exist... let's find it.
 
@@ -563,8 +559,6 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
         }
     } 
 
-    safe_printf("Shiftable Piece Found\n");
-
     // NOTE: if we are here, we have acquired the write lock on vaddr.
     // At this point there are a few things we must do.
     // We must shift our allocated block over into the og free block.
@@ -601,7 +595,8 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
 
     if (og_next_next < end && !mp_alloc(og_next_next)) {
         uint64_t og_next_next_size = mp_size(og_next_next);
-        mb_remove_from_size_unsafe(mb, (mem_free_piece_header *)og_next_next);
+        mb_remove_from_size_unsafe(mb, 
+                (mem_free_piece_header *)mp_body(og_next_next));
 
         mp_init(new_free, og_free_size + og_next_next_size, 0);
 
