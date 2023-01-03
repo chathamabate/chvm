@@ -55,7 +55,7 @@ typedef enum {
     CHUNIT_TIMEOUT, 
 
     // Test was supposed to fail.
-    CHUNIT_UNEXPECTED_SUCCESS,
+    CHUNIT_UNEXPECTED_COMPLETION,
 
     // Test had a fatal runtime error.
     CHUNIT_FATAL_ERROR,

@@ -490,7 +490,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     return vaddr;
 }
 
-uint8_t mb_shift(mem_block *mb) {
+mb_shift_res mb_shift(mem_block *mb) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
     safe_wrlock(&(mb_h->mem_lck));
@@ -655,4 +655,54 @@ void mb_print(mem_block *mb) {
 
     safe_rwlock_unlock(&(mb_h->mem_lck));
 }
+
+// TODO : Memory Space Design!!!!!!
+// Memory space will be to Memory Block as Address Book
+// is to Address Table.
+//
+// It will contain references to many Memory Blocks.
+// When malloc is called, it will choose which memory 
+// block to attempt to malloc into.
+//
+// Questions :
+//
+// How will Memory Blocks be organized in the Space?
+// Will they be sorted in some way?
+// If they are sorted in some way, how will we keep
+// this order up to date?
+//
+// What if we call malloc to a block which is in the
+// middle of a shift?
+//
+// Should we update shifts to be non-blocking?
+// When we shift we must wait for the allocated block
+// to be out of use... this is up to the user's 
+// descretion.
+//
+// This could be a fix later on...
+// Right now, it doesn't really matter all that much IMO.
+// This decision should not affect the desigm of the memory
+// space....
+//
+// Maybe the memory block lock should be promised to never
+// be held for a pro longed amount of time???
+// This way, calls to malloc are gauranteed to acquire the lock
+// in a reasonable amount of time???
+//
+// Let's say this was the case... How would the design of the 
+// Memory Space continue given this feature???
+//
+// malloc to a block could throw a BUSY, NOT_ENOUGH_SPACE, or SUCCESS
+// Should we just try random blocks while mallocing???
+// What if certain blocks are almost entirely full for long periods of
+// time??? Repeatedly checking these blocks would be a waste
+// of time... right???
+//
+// Could we hold an atomic integer for each block representing how
+// much space could be left???
+//
+// Maybe we have a free list which sorts itself from time to time???
+// Additionally, The shfiting thread should be held inside the memory
+// space... same with the ADB.
+
 

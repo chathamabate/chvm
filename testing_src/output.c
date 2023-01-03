@@ -21,7 +21,7 @@ const char *CHUNIT_TR_NAMES[CHUNIT_FATAL_ERROR + 1] = {
     "Assert Equal String Failure",
     "Memory Leak",
     "Timeout",
-    "Unexpected Success",
+    "Unexpected Completion",
     "Fatal Error", 
 };
 
@@ -118,7 +118,7 @@ static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
                     prefix, tr->test->timeout);
             break;
 
-        case CHUNIT_UNEXPECTED_SUCCESS:
+        case CHUNIT_UNEXPECTED_COMPLETION:
             // Nothing really to do here.
             break;
 

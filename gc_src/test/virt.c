@@ -658,8 +658,6 @@ static const chunit_test ADB_BAD_INDEX = {
 static void test_adb_misc(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 3);
 
-    safe_printf("\n");
-
     const uint64_t free_mod = 2;
     const uint64_t num_puts = 15;
 

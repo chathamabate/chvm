@@ -19,7 +19,29 @@ void delete_mem_block(mem_block *mb);
 // (Maybe improve the detail of this return type when 
 // implementing memory space)
 addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes);
+
 void mb_free(mem_block *mb, addr_book_vaddr vaddr);
+
+typedef enum {
+    // This is returned when a shift is executed 
+    // successfully on a single piece.
+    MB_SHIFT_SUCCESS = 0,
+
+    // This is returned when a shift was possible
+    // however, the piece which NEEDED to be shifted
+    // was locked on.
+    // // NOTE: This should be quite rare. When the memory
+    // block tries to shift a busy piece, it will simply 
+    // move to another piece. This will only be returned
+    // when the only pieces left to shift are all locked on.
+    MB_BUSY,
+
+    // This is returned when the memory block is
+    // entirely shfited. That is there exists a
+    // single free piece left, and it is pushed all
+    // the way to one side of the block.
+    MB_NOT_NEEDED,
+} mb_shift_res;
 
 // This will shift pieces to the start of the memory block.
 //
@@ -31,12 +53,12 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr);
 // Returns 1 if a shift occurred, 0 otherwise.
 // We only don't shift if there are no blocks
 // to shift.
-uint8_t mb_shift(mem_block *mb);
+mb_shift_res mb_shift(mem_block *mb);
 
 // After this call, all free pieces will be pushed together
 // to form one single free piece at one end of the block.
 static inline void mb_full_shift(mem_block *mb) {
-    while (mb_shift(mb));
+    while (mb_shift(mb) != MB_NOT_NEEDED);
 }
 
 // This command will safely print the structure of the 

@@ -10,14 +10,14 @@ typedef struct util_linked_list_node_header {
     util_ll_node_header *prv;
 } util_ll_node_header;
 
-typedef struct util_linked_list {
+struct util_linked_list {
     size_t cell_size;
 
     uint64_t len;
 
     util_ll_node_header *start;
     util_ll_node_header *end;
-} util_ll;
+}; // util_ll;
 
 util_ll *new_linked_list(uint8_t chnl, size_t cs) {
     if (cs == 0) {

@@ -205,7 +205,7 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
     // If we make it here, there was no hard exit of any kind.
     // Thus, the test ran "smoothly". 
     if (test->should_fail) {
-        tr->result = CHUNIT_UNEXPECTED_SUCCESS;
+        tr->result = CHUNIT_UNEXPECTED_COMPLETION;
         attempt_safe_close(tr, pipe_fd);
 
         return tr;

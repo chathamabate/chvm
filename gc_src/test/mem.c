@@ -410,7 +410,7 @@ static void *test_mem_block_worker(void *arg) {
 }
 
 static void test_mem_block_multi_0(chunit_test_context *tc) {
-    addr_book *adb = new_addr_book(1, 4);
+    addr_book *adb = new_addr_book(1, 10);
     mem_block *mb = new_mem_block(1, adb, 30000);
 
     chop_args ca = {
@@ -422,13 +422,13 @@ static void test_mem_block_multi_0(chunit_test_context *tc) {
         .malloc_size_factor = sizeof(uint64_t),
         .size_mod = 5,
         .free_mod = 2,
-        .num_mallocs = 11,
+        .num_mallocs = 20,
 
         .shift_test = 0,
         .malloc_chnl = 1,
     };
 
-    const uint64_t num_threads = 3;
+    const uint64_t num_threads = 10;
 
     util_thread_spray_info *spray = util_thread_spray(1, num_threads, 
                 test_mem_block_worker, &ca);
