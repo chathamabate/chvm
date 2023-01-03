@@ -54,9 +54,11 @@ typedef enum {
     // Test took too long.
     CHUNIT_TIMEOUT, 
 
+    // Test was supposed to fail.
+    CHUNIT_UNEXPECTED_SUCCESS,
+
     // Test had a fatal runtime error.
     CHUNIT_FATAL_ERROR,
-    
 } chunit_test_result;
 
 // This exit code should be used when there is a 
@@ -115,7 +117,15 @@ typedef struct {
     const char *name;
     const time_t timeout; // Length of test run (in seconds)
 
-    void (*t)(chunit_test_context *tc);
+    // If this is set to 1, we expect the test to exit
+    // with a non reserved exit code.
+    //
+    // A successful run wil cause the test to fail.
+    //
+    // NOTE: assertion failures do not count.
+    const uint8_t should_fail;
+
+    void (* const t)(chunit_test_context *tc);
 } chunit_test;
 
 typedef struct {

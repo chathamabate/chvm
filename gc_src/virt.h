@@ -69,6 +69,12 @@ static inline addr_table_put_res adt_install(addr_table *adt, void *paddr,
     return adt_put_p(adt, paddr, 1, table_ind);
 }
 
+// NOTE: For safety, I have added an allocation flag to each
+// cell in the address table.
+// Thus, the following calls will be able to check if
+// given indeces are valid at the time of call.
+//
+// If bad arguments are given, we just exit and print a message.
 
 // This Copies data stored at a given cell's physical address
 // to a new physical address. The new physical address in then
@@ -95,6 +101,7 @@ static inline void adt_reinstall(addr_table *adt, addr_book_vaddr vaddr,
             size, 1, vaddr.table_index);
 }
 
+
 // Get the physical address at ind.
 // The read lock will be requested on the address.
 void *adt_get_read(addr_table *adt, uint64_t ind);
@@ -106,15 +113,6 @@ void *adt_get_write(addr_table *adt, uint64_t ind);
 void adt_unlock(addr_table *adt, uint64_t ind);
 
 // Free a specific index in the table.
-//
-// NOTE: behavoir is undefined if the index is out of bounds
-// or if the cell referenced is not in use. Doing these actions
-// can corrupt the ADT forever.
-//
-// NOTE: this also does no locking whatsoevery on the paddr
-// itself, it's assumed this call is never in parrallel with
-// a read or write call to the same cell.
-//
 addr_table_code adt_free(addr_table *adt, uint64_t index);
 
 void adt_print(addr_table *adt);

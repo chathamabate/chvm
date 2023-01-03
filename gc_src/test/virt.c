@@ -310,6 +310,38 @@ const chunit_test ADT_MOVE = {
     .timeout = 5,
 };
 
+static void test_adt_bad_index(chunit_test_context *tc) {
+    addr_table *adt = new_addr_table(1, 1);
+
+    // Out of bounds index here.
+    adt_free(adt, 1);
+
+    delete_addr_table(adt);
+}
+
+const chunit_test ADT_BAD_INDEX = {
+    .name = "Address Table Bad Index",
+    .t = test_adt_bad_index,
+    .timeout = 5,
+    .should_fail = 1,
+};
+
+static void test_adt_unallocated_index(chunit_test_context *tc) {
+    addr_table *adt = new_addr_table(1, 1);
+
+    // Freeing an unallocated index.
+    adt_free(adt, 0);
+
+    delete_addr_table(adt);
+}
+
+const chunit_test ADT_UNALLOCATED_INDEX = {
+    .name = "Address Table Unallocated Index",
+    .t = test_adt_unallocated_index,
+    .timeout = 5,
+    .should_fail = 1,
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADT = {
     .name = "Address Table Test Suite",
     .tests = {
@@ -320,8 +352,10 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
         &ADT_MULTI1,
 
         &ADT_MOVE,
+        &ADT_BAD_INDEX,
+        &ADT_UNALLOCATED_INDEX,
     },
-    .tests_len = 6
+    .tests_len = 8,
 };
 
 // Address Book Suite Below.

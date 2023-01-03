@@ -115,11 +115,16 @@ void _unlock_core_state();
 // 1 for quiet, 0 for loud.
 void set_core_quiet(uint8_t q);
 
+uint8_t core_get_quiet(uint8_t lck);
+
 void vforce_core_logf(uint8_t lck, const char *fmt, va_list args);
 
 // Same as core_logf, but this will always print.
 // (Regardless of whether the core is privvate.
 void force_core_logf(uint8_t lck, const char *fmt, ...);
+
+void force_error_logf(uint8_t lck, int exit_code, 
+        const char *fmt, ...);
 
 // Logging function used by core and accessable to
 // the user!
@@ -128,6 +133,9 @@ void force_core_logf(uint8_t lck, const char *fmt, ...);
 // If we arlready have the lock (in read or write mode)
 // lck should be 0, 1 otherwise.
 void core_logf(uint8_t lck, const char *fmt, ...);
+
+void error_logf(uint8_t lck, int exit_code, 
+        const char *fmt, ...);
 
 // This will fork and record the child's pid in the
 // _core_state.

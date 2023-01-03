@@ -21,6 +21,7 @@ const char *CHUNIT_TR_NAMES[CHUNIT_FATAL_ERROR + 1] = {
     "Assert Equal String Failure",
     "Memory Leak",
     "Timeout",
+    "Unexpected Success",
     "Fatal Error", 
 };
 
@@ -115,6 +116,10 @@ static void print_tr_warn(const char *prefix, chunit_test_run *tr) {
             safe_printf("%s" S_WARN BULLET_PREFIX CC_RESET N_WARN
                     "Process exceeded specified time limit (%lu)" CC_RESET "\n", 
                     prefix, tr->test->timeout);
+            break;
+
+        case CHUNIT_UNEXPECTED_SUCCESS:
+            // Nothing really to do here.
             break;
 
         default:

@@ -161,9 +161,34 @@ addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t init,
     return res;
 }
 
+// No locks needed for this call as capacity is a constant.
+static inline void adt_validate_cell_ind(addr_table *adt, 
+        uint64_t cell_ind, const char *tag) {
+    if (cell_ind >= ((addr_table_header *)adt)->cap) {
+        error_logf(1, 1, "%s: invalid cell_ind given (%"PRIu64")", 
+                tag, cell_ind);
+    }
+}
+
+// Here we are assuming cell points a valid cell
+// and that the cell has been locked on.
+//
+// This will error out if the cell is not allocated.
+static inline void adt_validate_cell(addr_table_cell *cell, uint64_t cell_ind,
+        const char *tag) {
+    if (!(cell->allocated)) {
+        safe_rwlock_unlock(&(cell->lck)); 
+
+        error_logf(1, 1,
+                "%s: unallocated cell_ind given (%" PRIu64 ")",
+                tag, cell_ind);
+    }
+}
+
 void adt_move_p(addr_table *adt, uint64_t cell_ind, 
         void *new_paddr, uint64_t size, 
         uint8_t init, uint64_t table_ind) {
+    adt_validate_cell_ind(adt, cell_ind, "adt_move_p");
 
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
@@ -173,6 +198,7 @@ void adt_move_p(addr_table *adt, uint64_t cell_ind,
 
     // Lock on our cell.
     safe_wrlock(&(cell->lck));
+    adt_validate_cell(cell, cell_ind, "adt_move_p");
 
     uint8_t *old_paddr = cell->paddr;
 
@@ -190,6 +216,8 @@ void adt_move_p(addr_table *adt, uint64_t cell_ind,
 // Get the physical address at ind.
 // The read lock will be requested on the address.
 void *adt_get_read(addr_table *adt, uint64_t ind) {
+    adt_validate_cell_ind(adt, ind, "adt_get_read");
+
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
@@ -197,12 +225,15 @@ void *adt_get_read(addr_table *adt, uint64_t ind) {
     addr_table_cell *cell = table + ind;
 
     safe_rdlock(&(cell->lck));
+    adt_validate_cell(cell, ind, "adt_get_read");
 
     return cell->paddr;
 }
 
 // Same as adt_get_read, except with a write lock.
 void *adt_get_write(addr_table *adt, uint64_t ind) {
+    adt_validate_cell_ind(adt, ind, "adt_get_write");
+
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
@@ -210,6 +241,7 @@ void *adt_get_write(addr_table *adt, uint64_t ind) {
     addr_table_cell *cell = table + ind;
 
     safe_wrlock(&(cell->lck));
+    adt_validate_cell(cell, ind, "adt_get_write");
 
     return cell->paddr;
 }
@@ -220,17 +252,23 @@ void adt_unlock(addr_table *adt, uint64_t ind) {
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap); addr_table_cell *cell = table + ind;
 
+    adt_validate_cell_ind(adt, ind, "adt_unlock");
+
     safe_rwlock_unlock(&(cell->lck));
 }
 
 addr_table_code adt_free(addr_table *adt, uint64_t index) {
+    adt_validate_cell_ind(adt, index, "adt_free");
+
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
+    addr_table_cell *cell = table + index;
 
     addr_table_code res_code;
 
     safe_wrlock(&(table[index].lck));
+    adt_validate_cell(cell, index, "adt_free");
     table[index].allocated = 0;
     safe_rwlock_unlock(&(table[index].lck));
 
@@ -252,7 +290,7 @@ void adt_print(addr_table *adt) {
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
     addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
 
-    safe_printf("Address table : %p\n", adt);
+    safe_printf("Address Table : %p\n", adt);
 
     safe_rdlock(&(adt_h->free_stack_lck));
     uint64_t i;
@@ -269,10 +307,15 @@ void adt_print(addr_table *adt) {
     for (i = 0; i < adt_h->cap; i++) {
         addr_table_cell *cell = table + i;
 
-        if (cell->allocated) {
-        } else {
+        safe_rdlock(&(cell->lck));
 
+        if (cell->allocated) {
+            safe_printf("%" PRIu64 " : Allocated : %p\n", i, cell->paddr);
+        } else {
+            safe_printf("%" PRIu64 " : Free\n", i);
         }
+
+        safe_rwlock_unlock(&(cell->lck));
     }
 
 }

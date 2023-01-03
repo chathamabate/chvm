@@ -199,6 +199,20 @@ void set_core_quiet(uint8_t q) {
     _unlock_core_state();
 }
 
+uint8_t core_get_quiet(uint8_t lck) {
+    if (lck) {
+        _rdlock_core_state();
+    }    
+
+    uint8_t q = _core_state->quiet;
+
+    if (lck) {
+        _unlock_core_state();
+    }
+
+    return q;
+}
+
 void vforce_core_logf(uint8_t lck, const char *fmt, va_list args) {
     // To read the root field, we need to lock and block
     // on the core.
@@ -244,18 +258,21 @@ void force_core_logf(uint8_t lck, const char *fmt, ...) {
     va_end(args);
 }
 
+void force_error_logf(uint8_t lck, int exit_code, 
+        const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+
+    vforce_core_logf(lck, fmt, args);
+
+    va_end(args);
+
+    safe_exit(exit_code);
+}
+
+
 void core_logf(uint8_t lck, const char *fmt, ...) {
-    if (lck) {
-        _rdlock_core_state();
-    }    
-
-    uint8_t q = _core_state->quiet;
-
-    if (lck) {
-        _unlock_core_state();
-    }
-
-    if (q) {
+    if (core_get_quiet(lck)) {
         return;
     }
 
@@ -266,6 +283,23 @@ void core_logf(uint8_t lck, const char *fmt, ...) {
 
     va_end(args);
 }
+
+void error_logf(uint8_t lck, int exit_code, 
+        const char *fmt, ...) {
+    if (core_get_quiet(lck)) {
+        safe_exit(exit_code);
+    }
+
+    va_list args;
+    va_start(args, fmt);
+
+    vforce_core_logf(lck, fmt, args);
+
+    va_end(args);
+
+    safe_exit(exit_code);
+}
+
 
 int safe_fork() {
     _wrlock_core_state();

@@ -117,8 +117,6 @@ static void attempt_read_cmpr_and_close(chunit_test_run *tr, int pipe_fd,
 }
 
 static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *test, pid_t child) {
-
-
     // Test run to return.
     chunit_test_run *tr = new_test_run(test, child);
 
@@ -194,8 +192,20 @@ static chunit_test_run *chunit_parent_process(int fds[2], const chunit_test *tes
 
     // This is a positive exit status outside of the pipe error exit code.
     if (WEXITSTATUS(stat) > 0) {
-        // Ashamed of the copy and paste which occured here.
-        tr->result = CHUNIT_FATAL_ERROR;
+
+        // If we should fail... this is a success!
+        tr->result = test->should_fail 
+            ? CHUNIT_SUCCESS : CHUNIT_FATAL_ERROR;
+
+        attempt_safe_close(tr, pipe_fd);
+
+        return tr;
+    }
+
+    // If we make it here, there was no hard exit of any kind.
+    // Thus, the test ran "smoothly". 
+    if (test->should_fail) {
+        tr->result = CHUNIT_UNEXPECTED_SUCCESS;
         attempt_safe_close(tr, pipe_fd);
 
         return tr;
