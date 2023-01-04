@@ -600,7 +600,6 @@ const chunit_test MB_MULTI_1 = {
     .timeout = 5,
 };
 
-
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {

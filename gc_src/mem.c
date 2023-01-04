@@ -8,6 +8,7 @@
 
 #include "../core_src/io.h"
 #include <inttypes.h>
+#include <sys/_pthread/_pthread_rwlock_t.h>
 
 // New Memory Block Concept and Notes:
 //
@@ -52,43 +53,6 @@
 // ... size - (2 * sizeof(size_t)) bytes ... (Body)
 //
 // size_t size | alloc; (Footer)
-//
-// If occupied/allocated, the body will take the folowing structure:
-//
-// The virtual address which corresponds to this block of memory.
-// addr_book_vaddr vaddr;
-// ... (originally requested number of bytes) ... 
-// Padding (if needed)
-//
-// If unoccupied/free, the body will have this structure:
-//
-// Free list pointers. A free memory piece will be in two free lists.
-// One will be sorted by address of the free block.
-// The other sorted by size.
-//
-// void *addr_prev;
-// void *addr_next;
-//
-// void *size_prev;
-// void *size_next;
-//
-// Unsolved Questions:
-// 
-// What assumptions are needed for thread safety??
-// How will the free list be sorted???
-// How many locks will the block have??
-// Maybe just one free list lock???
-//
-// Will Address books be responsible for setting up
-// specific pieces of memory???
-// How will pieces of memory be organized???
-//
-// How will the free list be organized??
-// How will shifting be implemented??
-// When we shift, must we freeze the entire block???
-// Is there a way to shift individual pieces of memory one by one??
-
-// As of now, all operations on free blocks will be atomic.
 
 typedef struct {} mem_piece;
 
@@ -265,6 +229,24 @@ void delete_mem_block(mem_block *mb) {
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
     safe_free(mb);
+}
+
+uint64_t mb_free_space(mem_block *mb) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+    uint64_t space = 0;
+
+    safe_rdlock(&(mb_h->mem_lck));
+
+    if (mb_h->size_free_list) {
+        uint64_t big_free_size = 
+            mp_size(mp_b_to_mp(mb_h->size_free_list)); 
+
+        space = big_free_size - MAP_PADDING;
+    }
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    return space;
 }
 
 // Remove piece from size free list only.
@@ -687,6 +669,8 @@ void mb_print(mem_block *mb) {
     safe_rwlock_unlock(&(mb_h->mem_lck));
 }
 
+
+
 // TODO : Memory Space Design!!!!!!
 // Memory space will be to Memory Block as Address Book
 // is to Address Table.
@@ -735,5 +719,59 @@ void mb_print(mem_block *mb) {
 // Maybe we have a free list which sorts itself from time to time???
 // Additionally, The shfiting thread should be held inside the memory
 // space... same with the ADB.
+// Maybe largest free space could be sent back...
+//
+// A worker thread really could do everything!
+// Or sort on command???
+
+typedef struct mem_space_list_entry_struct {
+    struct mem_space_list_entry_struct *prev; 
+    struct mem_space_list_entry_struct *next; 
+
+    mem_block *mb;
+} mem_space_list_entry;
+
+// For sorting... we want a linked list!
+struct mem_space_struct {
+    addr_book *adb;
+
+    uint64_t mb_def_cap;
+
+    // Lock for working on the list below.
+    pthread_rwlock_t ms_lck;
+    
+    // How will this be maintained??
+    // Malloc, Free, and Shift shouldn't block
+    // for too long... although maybe a busy
+    // return type could be in order??
+    // After all, free does take O(n)... (By current implementation)
+    // What would happen if this were the case though???
+    // Just try the next guy??
+    //
+    // Get the lock fast... We may want to improve free algorithm.
+    // Both try shift and free run in O(n).
+    //
+    // Should malloc have a try malloc mechanism...
+    // Maybe this could be better?
+    //
+    // 1) Block on the first memory block to see if space is
+    // there... if not, no need to traverse the whole list.
+    //
+    // How will MS Free work???
+    // We need to pass a vaddr in mb free???
+    // How do we know which mb to use when freeing an arbitrary 
+    // vaddr??? (PROBABLY THE LARGEST PROBLEM)
+    // Some sort of map for going between vaddrs and MBs?
+    //
+    // Maybe we could completely separate memory space and memory block???
+    // Not even in the same file what so ever???
+    // This could be a move???
+    // Maybe just store a pointer in the allocated piece???
+    // The memory block doesn't even need to know about this!!!!
+    // Aye yo... not the best solution, but not a bad one.
+    //
+    mem_space_list_entry *mb_list;
+}
+
 
 

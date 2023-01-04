@@ -15,6 +15,10 @@ mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes);
 // block.
 void delete_mem_block(mem_block *mb);
 
+// This returns the largest possible call to malloc possible
+// for the given memory block at the given time.
+uint64_t mb_free_space(mem_block *mb);
+
 // Will return NULL_VADDR on failure.
 // (Maybe improve the detail of this return type when 
 // implementing memory space)
@@ -73,15 +77,22 @@ static inline void mb_try_full_shift(mem_block *mb) {
     while (mb_shift_p(mb, 0) == MB_SHIFT_SUCCESS);
 }
 
-// After this call, all free pieces will be pushed together
-// to form one single free piece at one end of the block.
-// static inline void mb_full_shift(mem_block *mb) {
-//    while (mb_shift(mb) != MB_NOT_NEEDED);
-//}
-
 // This command will safely print the structure of the 
 // memory block in an easy to read way.
 // Mainly for easy debugging.
 void mb_print(mem_block *mb);
+
+// Should there be worker threads???
+// In the memspace???
+
+typedef struct mem_space_struct mem_space;
+
+addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes);
+void ms_free(mem_space *ms, addr_book_vaddr vaddr);
+
+// Must there be anything else???
+// Honestly???
+// MB handles most the work in honesty.
+
 
 #endif
