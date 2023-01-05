@@ -1,5 +1,5 @@
-#ifndef GC_MEM_H
-#define GC_MEM_H
+#ifndef GC_MB_H
+#define GC_MB_H
 
 #include <stdint.h>
 #include "./virt.h"
@@ -15,7 +15,7 @@ mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes);
 // block.
 void delete_mem_block(mem_block *mb);
 
-// This returns the largest possible call to malloc possible
+// This returns the largest call to malloc possible
 // for the given memory block at the given time.
 uint64_t mb_free_space(mem_block *mb);
 
@@ -50,49 +50,18 @@ typedef enum {
 // This call may shift a single allocated piece towards
 // the beginning of the block.
 //
-// If blk = 0, this call will return MB_BUSY if there are
+// This call will return MB_BUSY if there are
 // no unlocked pieces to shift. 
-//
-// If blk = 1, and there are only locked pieces left to shift,
-// this call will block until it can acquire the lock of 
-// one of the shiftable pieces.
-mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk);
-
-static inline mb_shift_res mb_try_shift(mem_block *mb) {
-    return mb_shift_p(mb, 0);
-}
-
-static inline mb_shift_res mb_shift(mem_block *mb) {
-    return mb_shift_p(mb, 1);
-}
-
-// Shift until there are no more possible shifts.
-// (THIS BLOCKS)
-static inline void mb_full_shift(mem_block *mb) {
-    while (mb_shift_p(mb, 0) != MB_NOT_NEEDED);
-}
+mb_shift_res mb_try_shift(mem_block *mb);
 
 // Shift while there are unlocked blocks to shift.
 static inline void mb_try_full_shift(mem_block *mb) {
-    while (mb_shift_p(mb, 0) == MB_SHIFT_SUCCESS);
+    while (mb_try_shift(mb) == MB_SHIFT_SUCCESS);
 }
 
 // This command will safely print the structure of the 
 // memory block in an easy to read way.
 // Mainly for easy debugging.
 void mb_print(mem_block *mb);
-
-// Should there be worker threads???
-// In the memspace???
-
-typedef struct mem_space_struct mem_space;
-
-addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes);
-void ms_free(mem_space *ms, addr_book_vaddr vaddr);
-
-// Must there be anything else???
-// Honestly???
-// MB handles most the work in honesty.
-
 
 #endif

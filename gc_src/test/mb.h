@@ -1,5 +1,5 @@
-#ifndef GC_TEST_MEM_H
-#define GC_TEST_MEM_H
+#ifndef GC_TEST_MB_H
+#define GC_TEST_MB_H
 
 #include "../../testing_src/chunit.h"
 

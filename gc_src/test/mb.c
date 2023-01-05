@@ -1,5 +1,5 @@
-#include "mem.h"
-#include "../mem.h"
+#include "mb.h"
+#include "../mb.h"
 #include "../../testing_src/assert.h"
 #include "../../core_src/io.h"
 #include "../../core_src/mem.h"
@@ -304,7 +304,7 @@ static void mb_chop_and_test(chop_args *ca) {
     // mb_print(ca->mb);
 
     if (ca->shift_test) {
-        mb_full_shift(ca->mb); 
+        mb_try_full_shift(ca->mb); 
 
         // safe_printf("\nAfter Shifts\n");
         // mb_print(ca->mb);
@@ -329,7 +329,7 @@ static void test_mb_shift_0(chunit_test_context *tc) {
 
     // With no mallocs yet, there shouldn't be anything
     // to shift.
-    assert_eq_uint(tc, MB_NOT_NEEDED, mb_shift(mb));
+    assert_eq_uint(tc, MB_NOT_NEEDED, mb_try_shift(mb));
 
     delete_mem_block(mb);
     delete_addr_book(adb);
@@ -353,7 +353,7 @@ static void test_mb_shift_1(chunit_test_context *tc) {
     adb_unlock(adb, vaddr2);
 
     mb_free(mb, vaddr1);
-    mb_shift(mb);
+    mb_try_shift(mb);
     
     paddr = adb_get_read(adb, vaddr2);
     assert_eq_int(tc, -5, *paddr);

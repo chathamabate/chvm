@@ -1,6 +1,6 @@
 #include "./mod.h"
 #include "./virt.h"
-#include "./mem.h"
+#include "./mb.h"
 
 const chunit_test_module GC_TEST_MOD = {
     .name = "Garbage Collection Module",

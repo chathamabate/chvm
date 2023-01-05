@@ -1,4 +1,4 @@
-#include "./mem.h"
+#include "./mb.h"
 #include "virt.h"
 #include <stdlib.h>
 
@@ -484,7 +484,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     return vaddr;
 }
 
-mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
+mb_shift_res mb_try_shift(mem_block *mb) {
     mem_block_header *mb_h = (mem_block_header *)mb;
     
     mem_piece *start = (mem_piece *)(mb_h + 1);
@@ -516,7 +516,7 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
     mem_piece *og_next;
     addr_book_vaddr vaddr;
 
-    while (1) {
+    while (og_free_h) {
         // Determine if mfp_h can be shifted into.
         og_free = mp_b_to_mp(og_free_h);
         og_next = mp_next(og_free);
@@ -543,21 +543,17 @@ mb_shift_res mb_shift_p(mem_block *mb, uint8_t blk) {
         // Otherwise, next didn't work out... let's just keep moving
         // here...
         og_free_h = og_free_h->size_free_next;
-        
-        if (!og_free_h) {
-            if (!blk) {
-                safe_rwlock_unlock(&(mb_h->mem_lck));
-
-                // NOTE: busy is never returned if we are calling
-                // with the block flag as 1.
-                return MB_BUSY;
-            }
-
-            // If we are blocking, just go back to the beginning of
-            // the list.
-            og_free_h = mb_h->size_free_list;
-        }
     } 
+
+    // This is means we made it all the way to the end of our free
+    // list without acquiring a lock. return Busy.
+    if (!og_free_h) {
+        safe_rwlock_unlock(&(mb_h->mem_lck));
+
+        // NOTE: busy is never returned if we are calling
+        // with the block flag as 1.
+        return MB_BUSY;
+    }
 
     // NOTE: if we are here, we have acquired the write lock on vaddr.
     // At this point there are a few things we must do.
@@ -668,110 +664,4 @@ void mb_print(mem_block *mb) {
 
     safe_rwlock_unlock(&(mb_h->mem_lck));
 }
-
-
-
-// TODO : Memory Space Design!!!!!!
-// Memory space will be to Memory Block as Address Book
-// is to Address Table.
-//
-// It will contain references to many Memory Blocks.
-// When malloc is called, it will choose which memory 
-// block to attempt to malloc into.
-//
-// Questions :
-//
-// How will Memory Blocks be organized in the Space?
-// Will they be sorted in some way?
-// If they are sorted in some way, how will we keep
-// this order up to date?
-//
-// What if we call malloc to a block which is in the
-// middle of a shift?
-//
-// Should we update shifts to be non-blocking?
-// When we shift we must wait for the allocated block
-// to be out of use... this is up to the user's 
-// descretion.
-//
-// This could be a fix later on...
-// Right now, it doesn't really matter all that much IMO.
-// This decision should not affect the desigm of the memory
-// space....
-//
-// Maybe the memory block lock should be promised to never
-// be held for a pro longed amount of time???
-// This way, calls to malloc are gauranteed to acquire the lock
-// in a reasonable amount of time???
-//
-// Let's say this was the case... How would the design of the 
-// Memory Space continue given this feature???
-//
-// malloc to a block could throw a BUSY, NOT_ENOUGH_SPACE, or SUCCESS
-// Should we just try random blocks while mallocing???
-// What if certain blocks are almost entirely full for long periods of
-// time??? Repeatedly checking these blocks would be a waste
-// of time... right???
-//
-// Could we hold an atomic integer for each block representing how
-// much space could be left???
-//
-// Maybe we have a free list which sorts itself from time to time???
-// Additionally, The shfiting thread should be held inside the memory
-// space... same with the ADB.
-// Maybe largest free space could be sent back...
-//
-// A worker thread really could do everything!
-// Or sort on command???
-
-typedef struct mem_space_list_entry_struct {
-    struct mem_space_list_entry_struct *prev; 
-    struct mem_space_list_entry_struct *next; 
-
-    mem_block *mb;
-} mem_space_list_entry;
-
-// For sorting... we want a linked list!
-struct mem_space_struct {
-    addr_book *adb;
-
-    uint64_t mb_def_cap;
-
-    // Lock for working on the list below.
-    pthread_rwlock_t ms_lck;
-    
-    // How will this be maintained??
-    // Malloc, Free, and Shift shouldn't block
-    // for too long... although maybe a busy
-    // return type could be in order??
-    // After all, free does take O(n)... (By current implementation)
-    // What would happen if this were the case though???
-    // Just try the next guy??
-    //
-    // Get the lock fast... We may want to improve free algorithm.
-    // Both try shift and free run in O(n).
-    //
-    // Should malloc have a try malloc mechanism...
-    // Maybe this could be better?
-    //
-    // 1) Block on the first memory block to see if space is
-    // there... if not, no need to traverse the whole list.
-    //
-    // How will MS Free work???
-    // We need to pass a vaddr in mb free???
-    // How do we know which mb to use when freeing an arbitrary 
-    // vaddr??? (PROBABLY THE LARGEST PROBLEM)
-    // Some sort of map for going between vaddrs and MBs?
-    //
-    // Maybe we could completely separate memory space and memory block???
-    // Not even in the same file what so ever???
-    // This could be a move???
-    // Maybe just store a pointer in the allocated piece???
-    // The memory block doesn't even need to know about this!!!!
-    // Aye yo... not the best solution, but not a bad one.
-    //
-    mem_space_list_entry *mb_list;
-}
-
-
 
