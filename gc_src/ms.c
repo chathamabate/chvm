@@ -1,9 +1,10 @@
 #include "ms.h"
 #include "mb.h"
+#include "virt.h"
+
 #include "../core_src/thread.h"
 #include "../core_src/mem.h"
-
-#include "virt.h"
+#include "../core_src/sys.h"
 
 // For sorting... we want a linked list!
 struct mem_space_struct {
@@ -83,9 +84,6 @@ void delete_mem_space(mem_space *ms) {
 
 typedef mem_block *mem_space_malloc_header;
 
-// We attempt to malloc into (len / search_divisor) memory blocks.
-static const uint64_t SEARCH_DIV = 3;
-
 static inline uint64_t ms_next_rnd(mem_space *ms) {
     uint64_t curr_seed;
 
@@ -107,6 +105,9 @@ static inline uint64_t ms_next_rnd(mem_space *ms) {
     return (a * a * a) + (b * b);
 }
 
+// We attempt to malloc into (len / search_divisor) memory blocks.
+static const uint64_t SEARCH_DIV = 3;
+
 addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
     uint64_t padded_bytes = min_bytes + sizeof(mem_space_malloc_header);
 
@@ -126,12 +127,12 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
     
     // Random start index.
     uint64_t i = ms_next_rnd(ms) % ms->mb_list_len;
+    mem_block *mb;
+
     uint64_t moves;
 
-
     for (moves = 0; moves < search_len; moves++) {
-        mem_block *mb = ms->mb_list[i]; 
-        
+        mb = ms->mb_list[i]; 
         res = mb_malloc(mb, padded_bytes);
 
         // Here, our malloc was a success!
@@ -150,8 +151,39 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
     // This is when we never founnd space for
     // our malloc.
     if (null_adb_addr(res)) {
-        // gotta make us a nice new memory block.
+        // Determine if we request a size greater than the default
+        // mem block size.
+        uint64_t req_bytes = padded_bytes > ms->mb_min_bytes 
+            ? padded_bytes : ms->mb_min_bytes;
+
+        mb = new_mem_block(get_chnl(ms), ms->adb, req_bytes);
+
+        // NOTE: this malloc should always work!
+        res = mb_malloc(mb, padded_bytes); 
+
+        // Finally, after our successful malloc, add mb to the mb_list.
+        safe_wrlock(&(ms->mb_list_lck));
+
+        if (ms->mb_list_len == ms->mb_list_cap) {
+            // NOTE: One day we may want to check for overflow...
+            // However, I think we'd run out of memory before this occurs.
+            ms->mb_list_cap *= 2;
+            ms->mb_list = safe_realloc(ms->mb_list, sizeof(mem_block *) * ms->mb_list_cap);
+        }
+
+        // Add our memory block to the end of the list.
+        ms->mb_list[(ms->mb_list_len)++] = mb;
+        
+        safe_rwlock_unlock(&(ms->mb_list_lck));
     } 
+
+    // If we make it here, we have a virtual address to an of size physical
+    // address.
+    // TODO : finish this up here.
+
+    // NO, we must write which MB we wrote to.
+    // If we did find space, do we just return???
+    
     return res;
 }
 

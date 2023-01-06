@@ -550,8 +550,6 @@ mb_shift_res mb_try_shift(mem_block *mb) {
     if (!og_free_h) {
         safe_rwlock_unlock(&(mb_h->mem_lck));
 
-        // NOTE: busy is never returned if we are calling
-        // with the block flag as 1.
         return MB_BUSY;
     }
 
