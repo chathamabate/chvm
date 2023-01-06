@@ -5,99 +5,141 @@
 
 #include "virt.h"
 
-
-typedef struct mem_space_list_entry_struct {
-    struct mem_space_list_entry_struct *prev; 
-    struct mem_space_list_entry_struct *next; 
-
-    mem_block *mb;
-} mem_space_list_entry;
-
 // For sorting... we want a linked list!
 struct mem_space_struct {
-    addr_book * const adb;
+    addr_book * const adb; 
     const uint64_t mb_min_bytes;
 
-    // Lock for working on the list below.
-    // When will this 
-    pthread_rwlock_t ms_lck;
+    // Classic arraylist construction
+    // below for mb_list. 
 
-    // So, there exist memory blocks.
-    // These are fixed size pieces of memory we can malloc and 
-    // free into.
-    //
-    // The memory space struct will manage memory blocks without
-    // user interference. It will allocate new memory blocks
-    // when memory is needed.
-    // When a user calls malloc, the memory space try and find
-    // a block which can be malloced into as fast as possible.
-    //
-    // Can we sort memory blocks by the number of bytes they have
-    // open? One single list may be kinda slow tbh..
-    //
-    // Could we try a single list implementation for now???
-    //  
-    // 
-    // The list will need to be resorted after a malloc, free,
-    // or shift.
-    // So, just make sure these operations are atomic???
-    //
+    // Data used for simple thread safe pseudo random number
+    // generation. May want to take this out of here at some point.
+    // Also nice for custom rng tho...
+    pthread_mutex_t rnd_lck;
+    uint64_t seed;
 
-    mem_space_list_entry *mb_list;
+    pthread_rwlock_t mb_list_lck;
+
+    uint64_t mb_list_len;
+    uint64_t mb_list_cap;
+
+    // NOTE: this never ever ever shrinks!
+    mem_block **mb_list;
 };
 
-mem_space *new_mem_space(uint8_t chnl, uint64_t adt_cap, uint64_t mb_m_bytes) {
+mem_space *new_mem_space(uint8_t chnl, addr_book *adb, uint64_t mb_m_bytes) {
     mem_space *ms = safe_malloc(chnl, sizeof(mem_space));
 
-    *(addr_book **)&(ms->adb) = new_addr_book(chnl, adt_cap);
+    *(addr_book **)&(ms->adb) = adb;
     *(uint64_t *)&(ms->mb_min_bytes) = mb_m_bytes;
 
-    safe_rwlock_init(&(ms->ms_lck), NULL);
+    safe_mutex_init(&(ms->rnd_lck), NULL);
+    ms->seed = 1;
 
-    mem_space_list_entry *first_entry = 
-        safe_malloc(chnl, sizeof(mem_space_list_entry));
+    // Create our memory space with one single empty memory block.
+    safe_rwlock_init(&(ms->mb_list_lck), NULL);
 
-    first_entry->prev = NULL;
-    first_entry->next = NULL;
+    ms->mb_list_cap = 2;
+    ms->mb_list = safe_malloc(chnl, sizeof(mem_block *) * ms->mb_list_cap);   
 
-    first_entry->mb = new_mem_block(chnl, ms->adb, mb_m_bytes);
+    ms->mb_list_len = 1;
+    ms->mb_list[0] = new_mem_block(chnl, adb, mb_m_bytes);
 
     return ms;
 }
 
 void delete_mem_space(mem_space *ms) {
-    safe_wrlock(&(ms->ms_lck));
+    // Not gonna delete the adb as it was given to us!
 
-    mem_space_list_entry *iter = ms->mb_list; 
-    mem_space_list_entry *next;
-    while (iter) {
-        next = iter->next;
+    // Again, this is just for consistency.
+    // delete mem space should never be called in parallel
+    // with any other calls to the given ms. 
+    safe_wrlock(&(ms->mb_list_lck));
 
-        delete_mem_block(iter->mb);
-        safe_free(iter);
-
-        iter = next;
+    uint64_t i;
+    for (i = 0; i < ms->mb_list_len; i++) {
+        delete_mem_block(ms->mb_list[i]);
     }
 
-    safe_rwlock_unlock(&(ms->ms_lck));
+    safe_free(ms->mb_list);
 
-    // NOTE: must delete memory blocks before deleting 
-    // Address book!
-    
-    delete_addr_book(ms->adb);
-    safe_rwlock_destroy(&(ms->ms_lck));
+    ms->mb_list_cap = 0;
+    ms->mb_list_len = 0;
+    ms->mb_list = NULL;
+
+    safe_rwlock_unlock(&(ms->mb_list_lck));
+
+    safe_rwlock_destroy(&(ms->mb_list_lck));
+    safe_mutex_destroy(&(ms->rnd_lck));
 
     // finally, delete the memory space itself.
     safe_free(ms);
 }
 
+// When we malloc, we will additionally write the constant address
+// of the parent memory block into the allocated cell.
+// The memory block doesn't need to know about this.
+
+typedef mem_block *mem_space_malloc_header;
+
+// We attempt to malloc into (len / search_divisor) memory blocks.
+static const uint64_t SEARCH_DIV = 3;
+
+static inline uint64_t ms_next_ind(mem_space *ms) {
+    uint64_t curr_seed;
+
+    safe_mutex_lock(&(ms->rnd_lck));
+    curr_seed = ms->seed;
+
+    if ((ms->seed)++ == 0) {
+        ms->seed = 1;
+    }
+    safe_mutex_unlock(&(ms->rnd_lck));
+
+    // NOTE: Here is my very simple algorithm.
+    // Hopefully one day I could read more on how
+    // to make this more effective.
+    
+    uint64_t a = curr_seed * 15485863;
+    uint64_t b = curr_seed * 2038074743;
+
+    return (5 * a) + (3 * b);
+}
+
 addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
+    uint64_t padded_bytes = min_bytes + sizeof(mem_space_malloc_header);
+
+    // NOTE: Here comes a nice random algorithm for the boys back at 
+    // Rice. (This may make testing a little tricky...)
+    
+    safe_rdlock(&(ms->mb_list_lck));
+
+    uint64_t search_len = ms->mb_list_len / SEARCH_DIV;
+
+    // Make sure to try at least one memory block.
+    if (search_len == 0) {
+        search_len = 1;
+    }
+    
+    uint64_t start_ind = ms_next_ind(ms) % ms->mb_list_len;
+    
+    // TODO Gotta do a cyclic loop here...
+
+
+    // How do we get a nice random number here???
+
+    safe_rwlock_unlock(&(ms->mb_list_lck));
+
+    // There is an issue with the traditional free list design
+    // If take this that and that...
+    
     addr_book_vaddr v;
     return v;
 }
 
 void ms_free(mem_space *ms, addr_book_vaddr vaddr) {
-
+    // This shoudl be very easy to write??? 
 }
 
 
