@@ -86,7 +86,7 @@ typedef mem_block *mem_space_malloc_header;
 // We attempt to malloc into (len / search_divisor) memory blocks.
 static const uint64_t SEARCH_DIV = 3;
 
-static inline uint64_t ms_next_ind(mem_space *ms) {
+static inline uint64_t ms_next_rnd(mem_space *ms) {
     uint64_t curr_seed;
 
     safe_mutex_lock(&(ms->rnd_lck));
@@ -104,11 +104,13 @@ static inline uint64_t ms_next_ind(mem_space *ms) {
     uint64_t a = curr_seed * 15485863;
     uint64_t b = curr_seed * 2038074743;
 
-    return (5 * a) + (3 * b);
+    return (a * a * a) + (b * b);
 }
 
 addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
     uint64_t padded_bytes = min_bytes + sizeof(mem_space_malloc_header);
+
+    addr_book_vaddr res = NULL_VADDR;
 
     // NOTE: Here comes a nice random algorithm for the boys back at 
     // Rice. (This may make testing a little tricky...)
@@ -122,20 +124,35 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
         search_len = 1;
     }
     
-    uint64_t start_ind = ms_next_ind(ms) % ms->mb_list_len;
-    
-    // TODO Gotta do a cyclic loop here...
+    // Random start index.
+    uint64_t i = ms_next_rnd(ms) % ms->mb_list_len;
+    uint64_t moves;
 
 
-    // How do we get a nice random number here???
+    for (moves = 0; moves < search_len; moves++) {
+        mem_block *mb = ms->mb_list[i]; 
+        
+        res = mb_malloc(mb, padded_bytes);
+
+        // Here, our malloc was a success!
+        if (!null_adb_addr(res)) {
+            break;
+        }
+
+        // Cyclically increment i.
+        i = (i + 1) % ms->mb_list_len;
+    }
 
     safe_rwlock_unlock(&(ms->mb_list_lck));
 
-    // There is an issue with the traditional free list design
-    // If take this that and that...
+    // TODO: Finish this all up...
     
-    addr_book_vaddr v;
-    return v;
+    // This is when we never founnd space for
+    // our malloc.
+    if (null_adb_addr(res)) {
+        // gotta make us a nice new memory block.
+    } 
+    return res;
 }
 
 void ms_free(mem_space *ms, addr_book_vaddr vaddr) {
