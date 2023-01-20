@@ -1,6 +1,7 @@
 #include "./mod.h"
 #include "./virt.h"
 #include "./mb.h"
+#include "ms.h"
 
 const chunit_test_module GC_TEST_MOD = {
     .name = "Garbage Collection Module",
@@ -8,6 +9,7 @@ const chunit_test_module GC_TEST_MOD = {
         &GC_TEST_SUITE_ADT,
         &GC_TEST_SUITE_ADB,
         &GC_TEST_SUITE_MB,
+        &GC_TEST_SUITE_MS,
     },
-    .suites_len = 3
+    .suites_len = 4
 };
