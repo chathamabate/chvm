@@ -29,14 +29,15 @@ struct mem_space_struct {
     mem_block **mb_list;
 };
 
-mem_space *new_mem_space(uint8_t chnl, addr_book *adb, uint64_t mb_m_bytes) {
+mem_space *new_mem_space_seed(uint64_t chnl, uint64_t seed, 
+        uint64_t adb_t_cap, uint64_t mb_m_bytes) {
     mem_space *ms = safe_malloc(chnl, sizeof(mem_space));
 
-    *(addr_book **)&(ms->adb) = adb;
+    *(addr_book **)&(ms->adb) = new_addr_book(chnl, adb_t_cap);;
     *(uint64_t *)&(ms->mb_min_bytes) = mb_m_bytes;
 
     safe_mutex_init(&(ms->rnd_lck), NULL);
-    ms->seed = 1;
+    ms->seed = seed;
 
     // Create our memory space with one single empty memory block.
     safe_rwlock_init(&(ms->mb_list_lck), NULL);
@@ -45,7 +46,7 @@ mem_space *new_mem_space(uint8_t chnl, addr_book *adb, uint64_t mb_m_bytes) {
     ms->mb_list = safe_malloc(chnl, sizeof(mem_block *) * ms->mb_list_cap);   
 
     ms->mb_list_len = 1;
-    ms->mb_list[0] = new_mem_block(chnl, adb, mb_m_bytes);
+    ms->mb_list[0] = new_mem_block(chnl, ms->adb, mb_m_bytes);
 
     return ms;
 }
@@ -71,6 +72,9 @@ void delete_mem_space(mem_space *ms) {
 
     safe_rwlock_unlock(&(ms->mb_list_lck));
 
+    // Must do this after deleting blocks.
+    delete_addr_book(ms->adb);
+
     safe_rwlock_destroy(&(ms->mb_list_lck));
     safe_mutex_destroy(&(ms->rnd_lck));
 
@@ -88,11 +92,13 @@ static inline uint64_t ms_next_rnd(mem_space *ms) {
     uint64_t curr_seed;
 
     safe_mutex_lock(&(ms->rnd_lck));
-    curr_seed = ms->seed;
-
-    if ((ms->seed)++ == 0) {
+    ms->seed++;
+    
+    if (ms->seed == 0) {
         ms->seed = 1;
     }
+
+    curr_seed = ms->seed;
     safe_mutex_unlock(&(ms->rnd_lck));
 
     // NOTE: Here is my very simple algorithm.
@@ -146,8 +152,6 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
 
     safe_rwlock_unlock(&(ms->mb_list_lck));
 
-    // TODO: Finish this all up...
-    
     // This is when we never founnd space for
     // our malloc.
     if (null_adb_addr(res)) {
@@ -177,18 +181,34 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
         safe_rwlock_unlock(&(ms->mb_list_lck));
     } 
 
-    // If we make it here, we have a virtual address to an of size physical
-    // address.
-    // TODO : finish this up here.
-
-    // NO, we must write which MB we wrote to.
-    // If we did find space, do we just return???
+    mem_space_malloc_header *ms_mh = adb_get_write(ms->adb, res);
+    *ms_mh = mb; // Place our mem block pointer at the beginning of our 
+                 // allocated memory piece.
+    adb_unlock(ms->adb, res);
     
     return res;
 }
 
 void ms_free(mem_space *ms, addr_book_vaddr vaddr) {
-    // This shoudl be very easy to write??? 
+    mem_block *mb;
+
+    mem_space_malloc_header *ms_mh = adb_get_read(ms->adb, vaddr);
+    mb = *ms_mh; // Get our corresponding memory block.
+    adb_unlock(ms->adb, vaddr);
+    
+    mb_free(mb, vaddr);
+}
+
+void *ms_get_write(mem_space *ms, addr_book_vaddr vaddr) {
+    return (mem_space_malloc_header *)adb_get_write(ms->adb, vaddr) + 1;
+}
+
+void *ms_get_read(mem_space *ms,addr_book_vaddr vaddr) {
+    return (mem_space_malloc_header *)adb_get_read(ms->adb, vaddr) + 1;
+}
+
+void ms_unlock(mem_space *ms,addr_book_vaddr vaddr) {
+    adb_unlock(ms->adb, vaddr);
 }
 
 
