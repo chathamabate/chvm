@@ -3,6 +3,7 @@
 
 #include <time.h>
 #include "./virt.h"
+#include "./mb.h"
 
 typedef struct mem_space_struct mem_space;
 
@@ -17,10 +18,13 @@ static inline mem_space *new_mem_space(uint64_t chnl, uint64_t adb_t_cap,
 
 void delete_mem_space(mem_space *ms);
 
+// This is something the users will see.
+typedef struct {
+    mem_block *mb;
+} mem_space_malloc_header;
+
 addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes);
 void ms_free(mem_space *ms, addr_book_vaddr vaddr);
-
-addr_book *ms_get_adb(mem_space *ms);
 
 void *ms_get_write(mem_space *ms, addr_book_vaddr vaddr);
 void *ms_get_read(mem_space *ms,addr_book_vaddr vaddr);

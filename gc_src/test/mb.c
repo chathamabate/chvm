@@ -6,11 +6,11 @@
 #include "../../util_src/thread.h"
 
 // Kinda like a hash function here.
-static uint8_t vaddr_to_unique_byte(addr_book_vaddr vaddr) {
+static inline uint8_t vaddr_to_unique_byte(addr_book_vaddr vaddr) {
     return (uint8_t)(11 * vaddr.table_index +  13 * vaddr.cell_index);
 }
 
-void fill_unique(addr_book *adb, addr_book_vaddr vaddr, 
+static void fill_unique(addr_book *adb, addr_book_vaddr vaddr, 
         uint64_t min_size) {
     // We can change this method however we see fit.
     uint8_t fill_byte = vaddr_to_unique_byte(vaddr);
@@ -25,7 +25,7 @@ void fill_unique(addr_book *adb, addr_book_vaddr vaddr,
     adb_unlock(adb, vaddr);
 }
 
-void check_unique_vaddr_body(chunit_test_context *tc, 
+static void check_unique_vaddr_body(chunit_test_context *tc, 
         addr_book *adb, addr_book_vaddr vaddr, uint64_t min_size) {
     uint64_t expected_data = (uint64_t)vaddr_to_unique_byte(vaddr);
 

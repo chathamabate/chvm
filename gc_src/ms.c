@@ -5,6 +5,7 @@
 #include "../core_src/thread.h"
 #include "../core_src/mem.h"
 #include "../core_src/sys.h"
+#include "../core_src/io.h"
 
 // For sorting... we want a linked list!
 struct mem_space_struct {
@@ -82,16 +83,9 @@ void delete_mem_space(mem_space *ms) {
     safe_free(ms);
 }
 
-// This is a constant, needs no lock.
-addr_book *ms_get_adb(mem_space *ms) {
-    return ms->adb;
-}
-
 // When we malloc, we will additionally write the constant address
 // of the parent memory block into the allocated cell.
 // The memory block doesn't need to know about this.
-
-typedef mem_block *mem_space_malloc_header;
 
 static inline uint64_t ms_next_rnd(mem_space *ms) {
     uint64_t curr_seed;
@@ -187,7 +181,7 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
     } 
 
     mem_space_malloc_header *ms_mh = adb_get_write(ms->adb, res);
-    *ms_mh = mb; // Place our mem block pointer at the beginning of our 
+    ms_mh->mb = mb; // Place our mem block pointer at the beginning of our 
                  // allocated memory piece.
     adb_unlock(ms->adb, res);
     
@@ -198,7 +192,7 @@ void ms_free(mem_space *ms, addr_book_vaddr vaddr) {
     mem_block *mb;
 
     mem_space_malloc_header *ms_mh = adb_get_read(ms->adb, vaddr);
-    mb = *ms_mh; // Get our corresponding memory block.
+    mb = ms_mh->mb; // Get our corresponding memory block.
     adb_unlock(ms->adb, vaddr);
     
     mb_free(mb, vaddr);

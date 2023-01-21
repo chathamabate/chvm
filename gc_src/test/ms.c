@@ -3,6 +3,7 @@
 
 #include "../ms.h"
 #include "../../testing_src/assert.h"
+#include "../../core_src/io.h"
 #include <string.h>
 
 static void test_new_mem_space(chunit_test_context *tc) {
@@ -75,6 +76,11 @@ typedef struct {
     uint64_t free_mod;
 } ms_chop_args;
 
+// Kinda like a hash function here.
+static inline uint8_t vaddr_to_unique_byte(addr_book_vaddr vaddr) {
+    return (uint8_t)(11 * vaddr.table_index +  13 * vaddr.cell_index);
+}
+
 static void ms_chop_and_check(ms_chop_args *args) {
     addr_book_vaddr *vaddrs = 
         safe_malloc(args->vaddr_chnl, sizeof(addr_book_vaddr) * args->num_mallocs);
@@ -87,8 +93,19 @@ static void ms_chop_and_check(ms_chop_args *args) {
         assert_false(args->tc, null_adb_addr(v));
 
         vaddrs[i] = v;
-        
-        fill_unique(ms_get_adb(args->ms), v, min_size);
+
+        // Write a unique byte into the memory piece given...
+        uint8_t ub = vaddr_to_unique_byte(v);
+
+        mem_space_malloc_header *ms_mh = ms_get_write(args->ms, v);
+        uint8_t *iter =  (uint8_t *)(ms_mh + 1);
+        uint8_t *end = iter + min_size;
+
+        for (; iter < end; iter++) {
+            *iter = ub;
+        }
+
+        ms_unlock(args->ms, v);    
     }
 
     for (i = 0; i < args->num_mallocs; i += args->free_mod) {
@@ -102,8 +119,18 @@ static void ms_chop_and_check(ms_chop_args *args) {
         }
         
         uint64_t min_size = args->size_factor * (i % args->size_mod);
-        check_unique_vaddr_body(args->tc, 
-                ms_get_adb(args->ms), vaddrs[i], min_size);
+
+        // Confirm the expected memory bytes.
+        uint8_t ub = vaddr_to_unique_byte(vaddrs[i]);
+        mem_space_malloc_header *ms_mh = ms_get_read(args->ms, vaddrs[i]);
+
+        uint8_t *iter =  (uint8_t *)(ms_mh + 1);
+        uint8_t *end = iter + min_size;
+
+        for (; iter < end; iter++) {
+            assert_eq_char(args->tc, ub, *iter);
+        }
+        ms_unlock(args->ms, vaddrs[i]);    
     }
 
     safe_free(vaddrs);
@@ -118,10 +145,10 @@ static void test_ms_maf_2(chunit_test_context *tc) {
 
         .vaddr_chnl = 1,
 
-        .num_mallocs = 10,
-        .free_mod = 3,
+        .num_mallocs = 200,
+        .free_mod = 7,
         .size_factor = sizeof(int),
-        .size_mod = 4,
+        .size_mod = 6,
     };
 
     ms_chop_and_check(&args);
