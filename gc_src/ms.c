@@ -82,6 +82,11 @@ void delete_mem_space(mem_space *ms) {
     safe_free(ms);
 }
 
+// This is a constant, needs no lock.
+addr_book *ms_get_adb(mem_space *ms) {
+    return ms->adb;
+}
+
 // When we malloc, we will additionally write the constant address
 // of the parent memory block into the allocated cell.
 // The memory block doesn't need to know about this.

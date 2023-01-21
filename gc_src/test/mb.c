@@ -5,6 +5,41 @@
 #include "../../core_src/mem.h"
 #include "../../util_src/thread.h"
 
+// Kinda like a hash function here.
+static uint8_t vaddr_to_unique_byte(addr_book_vaddr vaddr) {
+    return (uint8_t)(11 * vaddr.table_index +  13 * vaddr.cell_index);
+}
+
+void fill_unique(addr_book *adb, addr_book_vaddr vaddr, 
+        uint64_t min_size) {
+    // We can change this method however we see fit.
+    uint8_t fill_byte = vaddr_to_unique_byte(vaddr);
+
+    uint8_t *iter = adb_get_write(adb, vaddr);
+    uint8_t *end = iter + min_size;
+
+    for (; iter < end; iter++) {
+        *iter = fill_byte;
+    }
+
+    adb_unlock(adb, vaddr);
+}
+
+void check_unique_vaddr_body(chunit_test_context *tc, 
+        addr_book *adb, addr_book_vaddr vaddr, uint64_t min_size) {
+    uint64_t expected_data = (uint64_t)vaddr_to_unique_byte(vaddr);
+
+    uint8_t *iter = adb_get_read(adb, vaddr);
+    uint8_t *end = iter + min_size;
+
+    for (; iter < end; iter++) {
+        uint64_t found_data = (uint64_t)(*iter);
+        assert_eq_uint(tc, expected_data, found_data);
+    }
+
+    adb_unlock(adb, vaddr);
+}
+
 static void test_new_mem_block(chunit_test_context *tc) {
     addr_book *adb = new_addr_book(1, 5);
     mem_block *mb = new_mem_block(1, adb, 10); 
@@ -238,41 +273,6 @@ typedef struct {
     // Channel for mallocs.
     uint8_t malloc_chnl;
 } chop_args;
-
-// Kinda like a hash function here.
-static uint8_t vaddr_to_unique_byte(addr_book_vaddr vaddr) {
-    return (uint8_t)(11 * vaddr.table_index +  13 * vaddr.cell_index);
-}
-
-static void fill_unique(addr_book *adb, addr_book_vaddr vaddr, 
-        uint64_t min_size) {
-    // We can change this method however we see fit.
-    uint8_t fill_byte = vaddr_to_unique_byte(vaddr);
-
-    uint8_t *iter = adb_get_write(adb, vaddr);
-    uint8_t *end = iter + min_size;
-
-    for (; iter < end; iter++) {
-        *iter = fill_byte;
-    }
-
-    adb_unlock(adb, vaddr);
-}
-
-static void check_unique_vaddr_body(chunit_test_context *tc, 
-        addr_book *adb, addr_book_vaddr vaddr, uint64_t min_size) {
-    uint64_t expected_data = (uint64_t)vaddr_to_unique_byte(vaddr);
-
-    uint8_t *iter = adb_get_read(adb, vaddr);
-    uint8_t *end = iter + min_size;
-
-    for (; iter < end; iter++) {
-        uint64_t found_data = (uint64_t)(*iter);
-        assert_eq_uint(tc, expected_data, found_data);
-    }
-
-    adb_unlock(adb, vaddr);
-}
 
 static void mb_chop_and_test(chop_args *ca) {
     uint64_t *sizes = safe_malloc(ca->malloc_chnl, 

@@ -20,6 +20,8 @@ void delete_mem_space(mem_space *ms);
 addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes);
 void ms_free(mem_space *ms, addr_book_vaddr vaddr);
 
+addr_book *ms_get_adb(mem_space *ms);
+
 void *ms_get_write(mem_space *ms, addr_book_vaddr vaddr);
 void *ms_get_read(mem_space *ms,addr_book_vaddr vaddr);
 void ms_unlock(mem_space *ms,addr_book_vaddr vaddr);
