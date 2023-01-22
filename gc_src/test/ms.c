@@ -72,6 +72,10 @@ typedef struct {
 
     uint8_t vaddr_chnl;
 
+    // Whether or not we should shift after
+    // freeing.
+    uint8_t shift;
+
     uint64_t num_mallocs; 
     uint64_t size_factor;
     uint64_t size_mod;
@@ -109,7 +113,9 @@ static void ms_chop_and_check(ms_chop_args *args) {
         vaddrs[i] = NULL_VADDR;
     }
 
-    // Add shift logic here...
+    if (args->shift) {
+        ms_try_full_shift(args->ms);
+    }
 
     for (i = 0; i < args->num_mallocs; i++) {
         if (null_adb_addr(vaddrs[i])) {
@@ -131,13 +137,15 @@ static void ms_chop_and_check(ms_chop_args *args) {
 }
 
 static void test_ms_maf_2(chunit_test_context *tc) {
-    mem_space *ms = new_mem_space_seed(1, 1, 10, sizeof(int) * 10);
+    mem_space *ms = new_mem_space_seed(1, 1, 10, sizeof(int) * 40);
 
     ms_chop_args args = {
         .tc = tc,
         .ms = ms,
 
         .vaddr_chnl = 1,
+
+        .shift = 0,
 
         .num_mallocs = 50,
         .free_mod = 7,
@@ -156,6 +164,34 @@ const chunit_test MS_MAF_2 = {
     .timeout = 5,
 };
 
+static void test_ms_maf_shift(chunit_test_context *tc) {
+    mem_space *ms = new_mem_space_seed(1, 1, 10, sizeof(int) * 200);
+
+    ms_chop_args args = {
+        .tc = tc,
+        .ms = ms,
+
+        .vaddr_chnl = 1,
+
+        .shift = 1,
+
+        .num_mallocs = 600,
+        .free_mod = 3,
+
+        .size_factor = sizeof(int),
+        .size_mod = 5,
+    };
+
+    ms_chop_and_check(&args);
+
+    delete_mem_space(ms);
+}
+
+const chunit_test MS_MAF_SHIFT = {
+    .name = "Memory Space Malloc, Free, and Shift",
+    .t = test_ms_maf_shift,
+    .timeout = 5
+};
 
 static void *test_ms_worker(void *arg) {
     util_thread_spray_context *s_context = arg;
@@ -166,15 +202,15 @@ static void *test_ms_worker(void *arg) {
     return NULL;
 }
 
-
 static void test_ms_multi_maf(chunit_test_context *tc) {
-    mem_space *ms = new_mem_space_seed(1, 1, 10, sizeof(int) * 30);
+    mem_space *ms = new_mem_space_seed(1, 1, 10, sizeof(int) * 300);
 
     ms_chop_args m_ca = {
         .tc = tc,
         .ms = ms,
 
         .vaddr_chnl = 1,
+        .shift = 0,
 
         .num_mallocs = 50,
         .free_mod = 7,
@@ -182,7 +218,7 @@ static void test_ms_multi_maf(chunit_test_context *tc) {
         .size_mod = 6,
     };
 
-    const uint64_t num_threads = 1;
+    const uint64_t num_threads = 10;
 
     util_thread_spray_info *spray = 
         util_thread_spray(1, num_threads, test_ms_worker, &m_ca);
@@ -198,6 +234,38 @@ const chunit_test MS_MULTI_MAF = {
     .timeout = 5,
 };
 
+static void test_ms_multi_maf_shift(chunit_test_context *tc) {
+    mem_space *ms = new_mem_space_seed(1, 1, 10, sizeof(int) * 1000);
+
+    ms_chop_args m_ca = {
+        .tc = tc,
+        .ms = ms,
+
+        .vaddr_chnl = 1,
+        .shift = 1,
+
+        .num_mallocs = 100,
+        .free_mod = 3,
+        .size_factor = sizeof(int) * 5,
+        .size_mod = 7,
+    };
+
+    const uint64_t num_threads = 20;
+
+    util_thread_spray_info *spray = 
+        util_thread_spray(1, num_threads, test_ms_worker, &m_ca);
+
+    util_thread_collect(spray);
+
+    delete_mem_space(ms);
+}
+
+const chunit_test MS_MULTI_MAF_SHIFT = {
+    .name = "Memory Space Multi Malloc, Free, and Shift",
+    .t = test_ms_multi_maf_shift,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_MS = {
     .name = "Memory Space Test Suite",
     .tests = {
@@ -205,7 +273,10 @@ const chunit_test_suite GC_TEST_SUITE_MS = {
         &MS_MAF_0,
         &MS_MAF_1,
         &MS_MAF_2,
+        &MS_MAF_SHIFT,
+
         &MS_MULTI_MAF,
+        &MS_MULTI_MAF_SHIFT,
     },
-    .tests_len = 5
+    .tests_len = 7
 };

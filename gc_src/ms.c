@@ -7,6 +7,8 @@
 #include "../core_src/sys.h"
 #include "../core_src/io.h"
 
+#include <inttypes.h>
+
 // For sorting... we want a linked list!
 struct mem_space_struct {
     addr_book * const adb; 
@@ -122,34 +124,30 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
     // Rice. (This may make testing a little tricky...)
     
     safe_rdlock(&(ms->mb_list_lck));
-
-    uint64_t search_len = ms->mb_list_len / SEARCH_DIV;
+    uint64_t num_throws = ms->mb_list_len / SEARCH_DIV;
+    safe_rwlock_unlock(&(ms->mb_list_lck));
 
     // Make sure to try at least one memory block.
-    if (search_len == 0) {
-        search_len = 1;
+    if (num_throws == 0) {
+        num_throws = 1;
     }
     
-    // Random start index.
-    uint64_t i = ms_next_rnd(ms) % ms->mb_list_len;
+    uint64_t throw, dart;
     mem_block *mb;
 
-    uint64_t moves;
+    for (throw = 0; throw < num_throws; throw++) {
+        safe_rdlock(&(ms->mb_list_lck));
+        dart = ms_next_rnd(ms) % ms->mb_list_len;
+        mb = ms->mb_list[dart]; 
+        safe_rwlock_unlock(&(ms->mb_list_lck));
 
-    for (moves = 0; moves < search_len; moves++) {
-        mb = ms->mb_list[i]; 
         res = mb_malloc(mb, padded_bytes);
 
         // Here, our malloc was a success!
         if (!null_adb_addr(res)) {
             break;
         }
-
-        // Cyclically increment i.
-        i = (i + 1) % ms->mb_list_len;
     }
-
-    safe_rwlock_unlock(&(ms->mb_list_lck));
 
     // This is when we never founnd space for
     // our malloc.
@@ -198,6 +196,24 @@ void ms_free(mem_space *ms, addr_book_vaddr vaddr) {
     mb_free(mb, vaddr);
 }
 
+void ms_try_full_shift(mem_space *ms) {
+    uint64_t len, i;
+
+    safe_rdlock(&(ms->mb_list_lck));
+    len = ms->mb_list_len;
+    safe_rwlock_unlock(&(ms->mb_list_lck));
+
+    for (i = 0; i < len; i++) {
+        safe_rdlock(&(ms->mb_list_lck));
+        mem_block *mb = ms->mb_list[i];
+        safe_rwlock_unlock(&(ms->mb_list_lck));
+
+        // Don't hold the lock while doing the mb shift...
+        // this could potentially take some time.
+        mb_try_full_shift(mb);
+    }
+}
+
 void *ms_get_write(mem_space *ms, addr_book_vaddr vaddr) {
     return (mem_space_malloc_header *)adb_get_write(ms->adb, vaddr) + 1;
 }
@@ -210,4 +226,17 @@ void ms_unlock(mem_space *ms,addr_book_vaddr vaddr) {
     adb_unlock(ms->adb, vaddr);
 }
 
+void ms_print(mem_space *ms) {
+    safe_rdlock(&(ms->mb_list_lck));
+
+    safe_printf("Memory Space : %p : (Len = %" PRIu64 ")\n\n", ms, ms->mb_list_len);
+
+    uint64_t i;
+    for (i = 0; i < ms->mb_list_len; i++) {
+        safe_printf("Memory Block %" PRIu64 " :\n", i);
+        mb_print(ms->mb_list[i]);
+    }
+
+    safe_rwlock_unlock(&(ms->mb_list_lck));
+}
 

@@ -26,8 +26,14 @@ typedef struct {
 addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes);
 void ms_free(mem_space *ms, addr_book_vaddr vaddr);
 
+// This will call try full shift on all memory blocks
+// in the mem space at the time of the call.
+void ms_try_full_shift(mem_space *ms);
+
 void *ms_get_write(mem_space *ms, addr_book_vaddr vaddr);
-void *ms_get_read(mem_space *ms,addr_book_vaddr vaddr);
-void ms_unlock(mem_space *ms,addr_book_vaddr vaddr);
+void *ms_get_read(mem_space *ms, addr_book_vaddr vaddr);
+void ms_unlock(mem_space *ms, addr_book_vaddr vaddr);
+
+void ms_print(mem_space *ms);
 
 #endif
