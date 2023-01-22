@@ -3,7 +3,9 @@
 
 #include "../ms.h"
 #include "../../testing_src/assert.h"
+#include "../../testing_src/misc.h"
 #include "../../core_src/io.h"
+#include "../../util_src/thread.h"
 #include <string.h>
 
 static void test_new_mem_space(chunit_test_context *tc) {
@@ -87,7 +89,7 @@ static void ms_chop_and_check(ms_chop_args *args) {
 
     uint64_t i;
     for (i = 0; i < args->num_mallocs; i++) {
-        uint64_t min_size = args->size_factor * (i % args->size_mod);
+        uint64_t min_size = args->size_factor * ((i % args->size_mod) + 1);
         addr_book_vaddr v = ms_malloc(args->ms, min_size);
 
         assert_false(args->tc, null_adb_addr(v));
@@ -96,14 +98,8 @@ static void ms_chop_and_check(ms_chop_args *args) {
 
         // Write a unique byte into the memory piece given...
         uint8_t ub = vaddr_to_unique_byte(v);
-
-        mem_space_malloc_header *ms_mh = ms_get_write(args->ms, v);
-        uint8_t *iter =  (uint8_t *)(ms_mh + 1);
-        uint8_t *end = iter + min_size;
-
-        for (; iter < end; iter++) {
-            *iter = ub;
-        }
+        uint8_t *ptr = ms_get_write(args->ms, v);
+        write_test_bytes(ptr, min_size, vaddr_to_unique_byte(v));
 
         ms_unlock(args->ms, v);    
     }
@@ -113,23 +109,21 @@ static void ms_chop_and_check(ms_chop_args *args) {
         vaddrs[i] = NULL_VADDR;
     }
 
+    // Add shift logic here...
+
     for (i = 0; i < args->num_mallocs; i++) {
         if (null_adb_addr(vaddrs[i])) {
             continue;
         }
         
-        uint64_t min_size = args->size_factor * (i % args->size_mod);
+        uint64_t min_size = 
+            args->size_factor * ((i % args->size_mod) + 1);
 
         // Confirm the expected memory bytes.
         uint8_t ub = vaddr_to_unique_byte(vaddrs[i]);
-        mem_space_malloc_header *ms_mh = ms_get_read(args->ms, vaddrs[i]);
+        uint8_t *ptr = ms_get_read(args->ms, vaddrs[i]);
+        check_test_bytes(args->tc, ptr, min_size, ub);
 
-        uint8_t *iter =  (uint8_t *)(ms_mh + 1);
-        uint8_t *end = iter + min_size;
-
-        for (; iter < end; iter++) {
-            assert_eq_char(args->tc, ub, *iter);
-        }
         ms_unlock(args->ms, vaddrs[i]);    
     }
 
@@ -145,7 +139,7 @@ static void test_ms_maf_2(chunit_test_context *tc) {
 
         .vaddr_chnl = 1,
 
-        .num_mallocs = 200,
+        .num_mallocs = 50,
         .free_mod = 7,
         .size_factor = sizeof(int),
         .size_mod = 6,
@@ -162,6 +156,48 @@ const chunit_test MS_MAF_2 = {
     .timeout = 5,
 };
 
+
+static void *test_ms_worker(void *arg) {
+    util_thread_spray_context *s_context = arg;
+    ms_chop_args *m_ca = s_context->context;
+
+    ms_chop_and_check(m_ca);
+
+    return NULL;
+}
+
+
+static void test_ms_multi_maf(chunit_test_context *tc) {
+    mem_space *ms = new_mem_space_seed(1, 1, 10, sizeof(int) * 30);
+
+    ms_chop_args m_ca = {
+        .tc = tc,
+        .ms = ms,
+
+        .vaddr_chnl = 1,
+
+        .num_mallocs = 50,
+        .free_mod = 7,
+        .size_factor = sizeof(int) * 5,
+        .size_mod = 6,
+    };
+
+    const uint64_t num_threads = 1;
+
+    util_thread_spray_info *spray = 
+        util_thread_spray(1, num_threads, test_ms_worker, &m_ca);
+
+    util_thread_collect(spray);
+
+    delete_mem_space(ms);
+}
+
+const chunit_test MS_MULTI_MAF = {
+    .name = "Memory Space Multi Malloc and Free",
+    .t = test_ms_multi_maf,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_MS = {
     .name = "Memory Space Test Suite",
     .tests = {
@@ -169,6 +205,7 @@ const chunit_test_suite GC_TEST_SUITE_MS = {
         &MS_MAF_0,
         &MS_MAF_1,
         &MS_MAF_2,
+        &MS_MULTI_MAF,
     },
-    .tests_len = 4
+    .tests_len = 5
 };

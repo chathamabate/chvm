@@ -194,7 +194,7 @@ void ms_free(mem_space *ms, addr_book_vaddr vaddr) {
     mem_space_malloc_header *ms_mh = adb_get_read(ms->adb, vaddr);
     mb = ms_mh->mb; // Get our corresponding memory block.
     adb_unlock(ms->adb, vaddr);
-    
+
     mb_free(mb, vaddr);
 }
 

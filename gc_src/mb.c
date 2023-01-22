@@ -128,11 +128,12 @@ static const uint64_t MAP_PADDING = MP_PADDING + sizeof(mem_alloc_piece_header);
 // Also note, that this value depends on what is stored in 
 // the alloc_piece_header. 
 //
-// NOTE: right now we have the plus 1 since MFP_PADDING = MAP_PADDING.
-// A free block should be mallocable for at least 1 byte.
+// NOTE: right now we have the plus 2 since MFP_PADDING = MAP_PADDING.
+// A free block should be mallocable for at least 1 byte. (Also must
+// have an even size).
 //
 // This should always store whichever padding value is larger.
-static const uint64_t MP_MIN_SIZE = MFP_PADDING + 1;
+static const uint64_t MP_MIN_SIZE = MFP_PADDING + 2;
 
 // Round the given number of bytes to be divisible by two.
 static inline uint64_t round_num_bytes(uint64_t num_bytes) {
@@ -331,6 +332,7 @@ static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
     if (mp > start) {
         // Only calculate prev if it is in bounds.
         prev = mp_prev(mp); 
+
         prev_free = !mp_alloc(prev);
     }
 
@@ -398,6 +400,7 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
 
     // Get corresponding mem_piece pointer.
     mem_piece *mp = map_b_to_mp(paddr);
+
     mb_free_unsafe(mb, mp);
     
     safe_rwlock_unlock(&(mb_h->mem_lck)); 
@@ -479,6 +482,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     // Finally, init our new allocated block.
     mp_init(big_free, min_size, 1);
     vaddr = adb_install(mb_h->adb, mp_to_map_b(big_free));
+    
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
     return vaddr;

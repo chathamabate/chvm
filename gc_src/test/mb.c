@@ -1,6 +1,7 @@
 #include "mb.h"
 #include "../mb.h"
 #include "../../testing_src/assert.h"
+#include "../../testing_src/misc.h"
 #include "../../core_src/io.h"
 #include "../../core_src/mem.h"
 #include "../../util_src/thread.h"
@@ -10,33 +11,22 @@ static inline uint8_t vaddr_to_unique_byte(addr_book_vaddr vaddr) {
     return (uint8_t)(11 * vaddr.table_index +  13 * vaddr.cell_index);
 }
 
+// Kinda some repeat functions here...
+
 static void fill_unique(addr_book *adb, addr_book_vaddr vaddr, 
         uint64_t min_size) {
     // We can change this method however we see fit.
     uint8_t fill_byte = vaddr_to_unique_byte(vaddr);
-
-    uint8_t *iter = adb_get_write(adb, vaddr);
-    uint8_t *end = iter + min_size;
-
-    for (; iter < end; iter++) {
-        *iter = fill_byte;
-    }
-
+    uint8_t *ptr = adb_get_write(adb, vaddr);
+    write_test_bytes(ptr, min_size, fill_byte);
     adb_unlock(adb, vaddr);
 }
 
 static void check_unique_vaddr_body(chunit_test_context *tc, 
         addr_book *adb, addr_book_vaddr vaddr, uint64_t min_size) {
-    uint64_t expected_data = (uint64_t)vaddr_to_unique_byte(vaddr);
-
-    uint8_t *iter = adb_get_read(adb, vaddr);
-    uint8_t *end = iter + min_size;
-
-    for (; iter < end; iter++) {
-        uint64_t found_data = (uint64_t)(*iter);
-        assert_eq_uint(tc, expected_data, found_data);
-    }
-
+    uint8_t expected_byte = vaddr_to_unique_byte(vaddr);
+    uint8_t *ptr = adb_get_read(adb, vaddr);
+    check_test_bytes(tc, ptr, min_size, expected_byte);
     adb_unlock(adb, vaddr);
 }
 
