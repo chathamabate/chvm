@@ -239,6 +239,46 @@ void ms_unlock(mem_space *ms,addr_book_vaddr vaddr) {
     adb_unlock(ms->adb, vaddr);
 }
 
+typedef struct {
+    // The original consumer given.
+    mp_consumer c;
+    
+    // The original Context given.
+    void *ctx;
+} ms_foreach_og_args;
+
+static void mp_ms_consumer(addr_book_vaddr v, void *paddr, 
+        void *ctx) {
+    ms_foreach_og_args *og_args = ctx; 
+
+    // Skip over malloced header.
+    void *new_paddr = (mem_space_malloc_header *)paddr + 1;
+
+    // Pass new physical address into original consumer.
+    og_args->c(v, new_paddr, og_args->ctx); 
+}
+
+void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr) {
+    ms_foreach_og_args og_args = {
+        .c = c,
+        .ctx = ctx,
+    };
+
+    uint64_t len, i;
+
+    safe_rdlock(&(ms->mb_list_lck));
+    len = ms->mb_list_len;
+    safe_rwlock_unlock(&(ms->mb_list_lck));
+
+    for (i = 0; i < len; i++) {
+        safe_rdlock(&(ms->mb_list_lck));
+        mem_block *mb = ms->mb_list[i];
+        safe_rwlock_unlock(&(ms->mb_list_lck));
+
+        mb_foreach(mb, mp_ms_consumer, &og_args, wr);
+    }
+}
+
 void ms_print(mem_space *ms) {
     safe_rdlock(&(ms->mb_list_lck));
 

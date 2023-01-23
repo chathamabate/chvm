@@ -285,6 +285,41 @@ const chunit_test MS_MALLOC_AND_HOLD = {
     .should_fail = 1,
 };
 
+static void ms_summer(addr_book_vaddr v, void *paddr, void *ctx) {
+    *(uint64_t *)ctx += *(uint64_t *)paddr; 
+}
+
+static void test_ms_foreach(chunit_test_context *tc) {
+    mem_space *ms = new_mem_space(1, 10, 100);
+
+    uint64_t expected_sum = 0;
+
+    uint64_t i;
+    for (i = 0; i < 100; i++) {
+        uint64_t val;
+
+        malloc_res res = ms_malloc_and_hold(ms, sizeof(uint64_t));
+        val = res.vaddr.table_index + res.vaddr.cell_index;
+        *(uint64_t *)(res.paddr) = val;
+        ms_unlock(ms, res.vaddr);
+
+        expected_sum += val;
+    }
+
+    uint64_t actual_sum = 0;
+    ms_foreach(ms, ms_summer, &actual_sum, 0);
+
+    assert_eq_uint(tc, expected_sum, actual_sum);
+
+    delete_mem_space(ms);
+}
+
+const chunit_test MS_FOREACH = {
+    .name = "Memory Space Foreach",
+    .t = test_ms_foreach,
+    .timeout = 5, 
+};
+
 const chunit_test_suite GC_TEST_SUITE_MS = {
     .name = "Memory Space Test Suite",
     .tests = {
@@ -297,6 +332,7 @@ const chunit_test_suite GC_TEST_SUITE_MS = {
         &MS_MULTI_MAF,
         &MS_MULTI_MAF_SHIFT,
         &MS_MALLOC_AND_HOLD,
+        &MS_FOREACH,
     },
-    .tests_len = 8
+    .tests_len = 9
 };
