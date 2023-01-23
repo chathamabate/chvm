@@ -640,6 +640,40 @@ mb_shift_res mb_try_shift(mem_block *mb) {
     return MB_SHIFT_SUCCESS;
 }
 
+void mb_foreach(mem_block *mb, mp_consumer c, void *ctx, uint8_t wr) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    // NOTE: we use the read lock on the memory block since the structure
+    // of the memory block will never change from this call.
+    safe_rdlock(&(mb_h->mem_lck));
+
+    mem_piece *start  = (mem_piece *)(mb_h + 1);
+    mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
+
+    mem_piece *iter = start;
+    for (; iter < end; iter = mp_next(iter)) {
+        // Only look at allocated pieces.
+        if (!mp_alloc(iter)) {
+            continue;
+        }
+
+        addr_book_vaddr v = *(addr_book_vaddr *)mp_body(iter);
+
+        // NOTE: We block!
+        if (wr) {
+            adb_get_write(mb_h->adb, v);        
+        } else {
+            adb_get_read(mb_h->adb, v);        
+        }
+
+        c(v, mp_to_map_b(iter), ctx);
+
+        adb_unlock(mb_h->adb, v);
+    }
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+}
+
 void mb_print(mem_block *mb) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 

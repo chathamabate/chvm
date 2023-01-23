@@ -612,6 +612,52 @@ const chunit_test MB_MALLOC_AND_HOLD = {
     .timeout = 5,
 };
 
+static void mp_summer(addr_book_vaddr v, void *paddr, void *ctx) {
+    (void)v;
+
+    uint64_t *actual_sum = ctx; 
+    *actual_sum += *(uint64_t *)paddr;
+}
+
+static void test_mb_foreach(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 3);
+    mem_block *mb = new_mem_block(1, adb, 1000);
+
+    uint64_t expected_sum = 0;
+    uint64_t num_mallocs = 10; 
+
+    safe_printf("\n");
+
+    uint64_t i;
+    for (i = 0; i < num_mallocs; i++) {
+        malloc_res res = mb_malloc_and_hold(mb, sizeof(uint64_t));
+
+        assert_non_null(tc, res.paddr);
+        assert_false(tc, null_adb_addr(res.vaddr));
+
+        uint64_t vaddr_num = res.vaddr.table_index + res.vaddr.cell_index;
+        expected_sum += vaddr_num;
+        
+        *(uint64_t *)res.paddr = vaddr_num;
+
+        adb_unlock(adb, res.vaddr);
+    }   
+
+    uint64_t actual_sum = 0;
+    mb_foreach(mb, mp_summer, &actual_sum, 0);
+
+    assert_eq_uint(tc, expected_sum, actual_sum);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_FOREACH = {
+    .name = "Memory Block Foreach",
+    .t = test_mb_foreach,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {
@@ -634,6 +680,7 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MULTI_1,
 
         &MB_MALLOC_AND_HOLD,
+        &MB_FOREACH,
     },
-    .tests_len = 16,
+    .tests_len = 17,
 };
