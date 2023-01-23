@@ -265,7 +265,7 @@ static void test_adt_move(chunit_test_context *tc) {
     uint8_t *paddr1 = buff + sizeof(addr_book_vaddr);
     uint8_t *paddr2 = paddr1 + 10;
 
-    addr_table_put_res res = adt_install(adt, paddr1, 0);
+    addr_table_put_res res = adt_put(adt, paddr1);
     assert_false(tc, res.code == ADT_NO_SPACE);
 
     uint64_t cell_ind = res.index;
@@ -288,16 +288,6 @@ static void test_adt_move(chunit_test_context *tc) {
 
     // Confirm string was copied correctly.
     assert_eq_str(tc, message, paddr);
-
-    addr_book_vaddr expected_vaddr = {
-        .cell_index = cell_ind,
-        .table_index = 0,
-    };
-
-    // Here we confirm the correct virtual address
-    // was installed.
-    assert_true(tc, eq_adb_addr(expected_vaddr, 
-                ((addr_book_vaddr *)paddr)[-1]));
 
     adt_unlock(adt, cell_ind);
 
@@ -364,6 +354,25 @@ const chunit_test ADT_TRY_LOCK = {
     .timeout = 5
 };
 
+static void test_adt_put_and_hold(chunit_test_context *tc) {
+    addr_table *adt = new_addr_table(1, 5);    
+    uint64_t i = 0;
+
+    addr_table_put_res res = adt_put_and_hold(adt, &i);
+    assert_false(tc, ADT_NO_SPACE == res.code);
+    assert_eq_ptr(tc, NULL, adt_try_get_read(adt, res.index));
+
+    adt_unlock(adt, res.index);
+
+    delete_addr_table(adt);
+}
+
+const chunit_test ADT_PUT_AND_HOLD = {
+    .name = "Address Table Put and Hold",
+    .t = test_adt_put_and_hold,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADT = {
     .name = "Address Table Test Suite",
     .tests = {
@@ -377,8 +386,9 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
         &ADT_BAD_INDEX,
         &ADT_UNALLOCATED_INDEX,
         &ADT_TRY_LOCK,
+        &ADT_PUT_AND_HOLD,
     },
-    .tests_len = 9,
+    .tests_len = 10,
 };
 
 // Address Book Suite Below.
@@ -705,6 +715,24 @@ static const chunit_test ADB_TRY_LOCK = {
     .timeout = 5,
 };
 
+static void test_adb_put_and_hold(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+    int i = 0;
+
+    addr_book_vaddr vaddr = adb_put_and_hold(adb, &i);
+    assert_eq_ptr(tc, NULL, adb_try_get_read(adb, vaddr));
+
+    adb_unlock(adb, vaddr);
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_PUT_AND_HOLD = {
+    .name = "Address Book Put and Hold",
+    .t = test_adb_put_and_hold,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
     .tests = {
@@ -718,7 +746,8 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
         &ADB_MISC_0,
         &ADB_BAD_INDEX,
         &ADB_TRY_LOCK,
+        &ADB_PUT_AND_HOLD,
     },
-    .tests_len = 9
+    .tests_len = 10
 };
 

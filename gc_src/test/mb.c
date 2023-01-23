@@ -590,6 +590,28 @@ const chunit_test MB_MULTI_1 = {
     .timeout = 5,
 };
 
+static void test_mb_malloc_and_hold(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 3);
+    mem_block *mb = new_mem_block(1, adb, 200);
+
+    malloc_res res = mb_malloc_and_hold(mb, 100);
+    assert_false(tc, null_adb_addr(res.vaddr));
+    assert_non_null(tc, res.paddr);
+
+    assert_eq_ptr(tc, NULL, adb_try_get_read(adb, res.vaddr));
+
+    adb_unlock(adb, res.vaddr);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_MALLOC_AND_HOLD = {
+    .name = "Memory Block Malloc and Hold",
+    .t = test_mb_malloc_and_hold,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {
@@ -610,6 +632,8 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_SHIFT_5, 
         &MB_MULTI_0,
         &MB_MULTI_1,
+
+        &MB_MALLOC_AND_HOLD,
     },
-    .tests_len = 15,
+    .tests_len = 16,
 };

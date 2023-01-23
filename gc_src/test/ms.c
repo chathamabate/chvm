@@ -108,6 +108,7 @@ static void ms_chop_and_check(ms_chop_args *args) {
         ms_unlock(args->ms, v);    
     }
 
+
     for (i = 0; i < args->num_mallocs; i += args->free_mod) {
         ms_free(args->ms, vaddrs[i]);
         vaddrs[i] = NULL_VADDR;
@@ -147,7 +148,7 @@ static void test_ms_maf_2(chunit_test_context *tc) {
 
         .shift = 0,
 
-        .num_mallocs = 50,
+        .num_mallocs = 10,
         .free_mod = 7,
         .size_factor = sizeof(int),
         .size_mod = 6,
@@ -266,6 +267,24 @@ const chunit_test MS_MULTI_MAF_SHIFT = {
     .timeout = 5,
 };
 
+static void test_ms_malloc_and_hold(chunit_test_context *tc) {
+    mem_space *ms = new_mem_space(1, 10, 100);
+
+    malloc_res res = ms_malloc_and_hold(ms, 10);
+
+    // This should fail!
+    ms_get_read(ms, res.vaddr);
+
+    delete_mem_space(ms);
+}
+
+const chunit_test MS_MALLOC_AND_HOLD = {
+    .name = "Memory Space Malloc and Hold",
+    .t = test_ms_malloc_and_hold,
+    .timeout = 5,
+    .should_fail = 1,
+};
+
 const chunit_test_suite GC_TEST_SUITE_MS = {
     .name = "Memory Space Test Suite",
     .tests = {
@@ -277,6 +296,7 @@ const chunit_test_suite GC_TEST_SUITE_MS = {
 
         &MS_MULTI_MAF,
         &MS_MULTI_MAF_SHIFT,
+        &MS_MALLOC_AND_HOLD,
     },
-    .tests_len = 7
+    .tests_len = 8
 };

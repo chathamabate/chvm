@@ -23,13 +23,13 @@ typedef struct {
     mem_block *mb;
 } mem_space_malloc_header;
 
-addr_book_vaddr ms_malloc_p(mem_space *ms, uint64_t min_bytes, uint8_t hold);
+malloc_res ms_malloc_p(mem_space *ms, uint64_t min_bytes, uint8_t hold);
 
 static inline addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
-    return ms_malloc_p(ms, min_bytes, 0);
+    return ms_malloc_p(ms, min_bytes, 0).vaddr;
 }
 
-static inline addr_book_vaddr ms_malloc_and_hold(mem_space *ms, 
+static inline malloc_res ms_malloc_and_hold(mem_space *ms, 
         uint64_t min_bytes) {
     return ms_malloc_p(ms, min_bytes, 1);
 }

@@ -87,7 +87,6 @@ gc_space *new_gc_space_seed(uint64_t chnl, uint64_t seed,
     gc_space *gc = safe_malloc(1, sizeof(gc_space));
 
     *(mem_space **)&(gc->ms) = ms;
-    *(addr_book_vaddr *)&(gc->root) = root;
 
     return gc;
 }

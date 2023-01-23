@@ -406,8 +406,8 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     safe_rwlock_unlock(&(mb_h->mem_lck)); 
 }
 
-mb_malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold) {
-    mb_malloc_res res = {
+malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold) {
+    malloc_res res = {
         .paddr = NULL,
         .vaddr = NULL_VADDR,
     };
@@ -498,10 +498,10 @@ mb_malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold) {
     res.vaddr = vaddr;
 
     if (hold) {
-        res.paddr = big_free;
+        res.paddr = mp_to_map_b(big_free);
     }
 
-    return vaddr;
+    return res;
 }
 
 mb_shift_res mb_try_shift(mem_block *mb) {

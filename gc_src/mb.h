@@ -22,7 +22,7 @@ uint64_t mb_free_space(mem_block *mb);
 typedef struct {
     void *paddr;
     addr_book_vaddr vaddr;
-} mb_malloc_res;
+} malloc_res;
 
 // Will return NULL_VADDR on failure.
 // (Maybe improve the detail of this return type when 
@@ -41,13 +41,13 @@ typedef struct {
 // even after this function returns. Addtionally, the paddr will be given in
 // the corresponding result.
 //
-mb_malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold);
+malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold);
 
 static inline addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     return mb_malloc_p(mb, min_bytes, 0).vaddr;
 }
 
-static inline mb_malloc_res mb_malloc_and_hold(mem_block *mb, 
+static inline malloc_res mb_malloc_and_hold(mem_block *mb, 
         uint64_t min_bytes) {
     return mb_malloc_p(mb, min_bytes, 1);
 }

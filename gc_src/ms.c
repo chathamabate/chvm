@@ -112,13 +112,32 @@ static inline uint64_t ms_next_rnd(mem_space *ms) {
     return (a * a * a) + (b * b);
 }
 
+// This assumes the malloc succeeded and is holding the corresponding paddr.
+static inline malloc_res ms_interpret_malloc_res(mem_space *ms, mem_block *mb,
+        malloc_res res, uint8_t hold) {
+    mem_space_malloc_header *ms_mh = res.paddr; 
+    ms_mh->mb = mb;
+
+    if (hold) {
+        res.paddr = ms_mh + 1;
+    } else {
+        res.paddr = NULL;
+        adb_unlock(ms->adb, res.vaddr);
+    }
+
+    return res;
+}
+
 // We attempt to malloc into (len / search_divisor) memory blocks.
 static const uint64_t SEARCH_DIV = 3;
 
-addr_book_vaddr ms_malloc_p(mem_space *ms, uint64_t min_bytes, uint8_t hold) {
+malloc_res ms_malloc_p(mem_space *ms, uint64_t min_bytes, uint8_t hold) {
     uint64_t padded_bytes = min_bytes + sizeof(mem_space_malloc_header);
 
-    addr_book_vaddr res = NULL_VADDR;
+    malloc_res res = {
+        .vaddr = NULL_VADDR,
+        .paddr = NULL,
+    };
 
     // NOTE: Here comes a nice random algorithm for the boys back at 
     // Rice. (This may make testing a little tricky...)
@@ -141,47 +160,41 @@ addr_book_vaddr ms_malloc_p(mem_space *ms, uint64_t min_bytes, uint8_t hold) {
         mb = ms->mb_list[dart]; 
         safe_rwlock_unlock(&(ms->mb_list_lck));
 
-        res = mb_malloc_p(mb, padded_bytes, hold);
+        res = mb_malloc_and_hold(mb, padded_bytes);
 
         // Here, our malloc was a success!
-        if (!null_adb_addr(res)) {
-            break;
+        if (!null_adb_addr(res.vaddr)) {
+            return ms_interpret_malloc_res(ms, mb, res, hold);
         }
     }
 
     // This is when we never founnd space for
     // our malloc.
-    if (null_adb_addr(res)) {
-        // Determine if we request a size greater than the default
-        // mem block size.
-        uint64_t req_bytes = padded_bytes > ms->mb_min_bytes 
-            ? padded_bytes : ms->mb_min_bytes;
+    // Determine if we request a size greater than the default
+    // mem block size.
+    uint64_t req_bytes = padded_bytes > ms->mb_min_bytes 
+        ? padded_bytes : ms->mb_min_bytes;
 
-        mb = new_mem_block(get_chnl(ms), ms->adb, req_bytes);
+    mb = new_mem_block(get_chnl(ms), ms->adb, req_bytes);
 
-        // NOTE: this malloc should always work!
-        res = mb_malloc_p(mb, padded_bytes, hold); 
+    // NOTE: this malloc should always work!
+    res = mb_malloc_and_hold(mb, padded_bytes);
+    res = ms_interpret_malloc_res(ms, mb, res, hold);
 
-        // Finally, after our successful malloc, add mb to the mb_list.
-        safe_wrlock(&(ms->mb_list_lck));
+    // Finally, after our successful malloc, add mb to the mb_list.
+    safe_wrlock(&(ms->mb_list_lck));
 
-        if (ms->mb_list_len == ms->mb_list_cap) {
-            // NOTE: One day we may want to check for overflow...
-            // However, I think we'd run out of memory before this occurs.
-            ms->mb_list_cap *= 2;
-            ms->mb_list = safe_realloc(ms->mb_list, sizeof(mem_block *) * ms->mb_list_cap);
-        }
+    if (ms->mb_list_len == ms->mb_list_cap) {
+        // NOTE: One day we may want to check for overflow...
+        // However, I think we'd run out of memory before this occurs.
+        ms->mb_list_cap *= 2;
+        ms->mb_list = safe_realloc(ms->mb_list, sizeof(mem_block *) * ms->mb_list_cap);
+    }
 
-        // Add our memory block to the end of the list.
-        ms->mb_list[(ms->mb_list_len)++] = mb;
-        
-        safe_rwlock_unlock(&(ms->mb_list_lck));
-    } 
-
-    mem_space_malloc_header *ms_mh = adb_get_write(ms->adb, res);
-    ms_mh->mb = mb; // Place our mem block pointer at the beginning of our 
-                    // allocated memory piece.
-    adb_unlock(ms->adb, res);
+    // Add our memory block to the end of the list.
+    ms->mb_list[(ms->mb_list_len)++] = mb;
+    
+    safe_rwlock_unlock(&(ms->mb_list_lck));
     
     return res;
 }
