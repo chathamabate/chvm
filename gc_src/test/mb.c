@@ -626,8 +626,6 @@ static void test_mb_foreach(chunit_test_context *tc) {
     uint64_t expected_sum = 0;
     uint64_t num_mallocs = 10; 
 
-    safe_printf("\n");
-
     uint64_t i;
     for (i = 0; i < num_mallocs; i++) {
         malloc_res res = mb_malloc_and_hold(mb, sizeof(uint64_t));
@@ -658,6 +656,98 @@ const chunit_test MB_FOREACH = {
     .timeout = 5,
 };
 
+typedef struct {
+    mem_block *mb;
+    addr_book *adb;
+
+    uint64_t num_mallocs;
+} mw_context;
+
+static void *mb_malloc_worker(void *arg) {
+    util_thread_spray_context *s_context = arg; 
+    mw_context *mw = s_context->context;
+    
+    uint64_t i;
+    for (i = 0; i < mw->num_mallocs; i++) {
+        // NOTE: This is a proof of concept!
+        // The below code will usually fail as we do not
+        // call malloc and hold!
+        /*
+        addr_book_vaddr v = mb_malloc(mw->mb, sizeof(uint64_t));
+
+        if (null_adb_addr(v)) {
+            break;
+        }
+
+        uint64_t j, k;
+        for (j = 0; j < 10000; j++) {
+            k += j;
+        }
+
+        uint64_t *paddr = adb_get_write(mw->adb, v);
+        *paddr = v.table_index + v.cell_index;
+        adb_unlock(mw->adb, v);
+        */
+
+        
+        malloc_res res = 
+            mb_malloc_and_hold(mw->mb, sizeof(uint64_t)); 
+
+        if (!(res.paddr)) {
+            break;
+        }
+
+        // Simulate a long init time!
+        uint64_t j, k;
+        for (j = 0; j < 10000; j++) {
+            k += j;
+        }
+
+        *(uint64_t *)(res.paddr) = res.vaddr.table_index + 
+            res.vaddr.cell_index;
+
+        adb_unlock(mw->adb, res.vaddr);         
+    }
+
+    return NULL;
+}
+
+static void mb_malloc_checker(addr_book_vaddr v, void *paddr, void *ctx) {
+    chunit_test_context *tc = ctx;    
+    assert_eq_uint(tc, v.table_index + v.cell_index, *(uint64_t *)paddr);
+}
+
+static void test_mb_foreach_multi(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+    mem_block *mb = new_mem_block(1, adb, 1000000);
+
+    mw_context mw = {
+        .adb = adb, 
+        .mb = mb,
+
+        .num_mallocs = 500,
+    };
+
+    const uint64_t num_threads = 10;
+    util_thread_spray_info *spray = util_thread_spray(1, num_threads, mb_malloc_worker, &mw);
+
+    uint64_t i;
+    for (i = 0; i < 100; i++) {
+        mb_foreach(mb, mb_malloc_checker, tc, 0);
+    }
+
+    util_thread_collect(spray);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+const chunit_test MB_FOREACH_MULTI = {
+    .name = "Memory Block Foreach Multi",
+    .t = test_mb_foreach_multi,
+    .timeout = 5, 
+};
+
 const chunit_test_suite GC_TEST_SUITE_MB = {
     .name = "Memory Block Test Suite",
     .tests = {
@@ -681,6 +771,7 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
 
         &MB_MALLOC_AND_HOLD,
         &MB_FOREACH,
+        &MB_FOREACH_MULTI,
     },
-    .tests_len = 17,
+    .tests_len = 18,
 };
