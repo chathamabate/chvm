@@ -406,10 +406,15 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     safe_rwlock_unlock(&(mb_h->mem_lck)); 
 }
 
-addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
+mb_malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold) {
+    mb_malloc_res res = {
+        .paddr = NULL,
+        .vaddr = NULL_VADDR,
+    };
+
     // Never allocate an empty piece!
     if (min_bytes == 0) {
-        return NULL_VADDR;
+        return res;
     } 
 
     mem_block_header *mb_h = (mem_block_header *)mb;
@@ -424,7 +429,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     if (!big_free_h) {
         safe_rwlock_unlock(&(mb_h->mem_lck));
 
-        return NULL_VADDR;
+        return res;
     }
 
     mem_piece *big_free = mp_b_to_mp(big_free_h);
@@ -433,7 +438,7 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     if (big_free_size < min_size) {
         safe_rwlock_unlock(&(mb_h->mem_lck));
 
-        return NULL_VADDR;
+        return res;
     }
 
     // As we must have enough space, we pop our big free block
@@ -456,6 +461,11 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
     // This header is part of the "structure" of the memory block,
     // thus we must keep the memory block lock
     // while doing this.
+    //
+    // Since I wrote the comment above, adb_install has been removed.
+    // the mem_piece header is not part of the space accessible by the user 
+    // in the malloc'd piece. Thus, we do not need the lock on the piece
+    // to write it. We only acquire said lock if the user specifies hold.
 
     // Here we check to see if we should divide our big free block.
     // This is only done when there are enough remaining bytes 
@@ -466,24 +476,30 @@ addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
         // lists.             
 
         mp_init(big_free, big_free_size, 1);
-        vaddr = adb_install(mb_h->adb, mp_to_map_b(big_free));
-        safe_rwlock_unlock(&(mb_h->mem_lck));
+    } else {
+        // Here we cut!
+        mem_piece *new_free = (mem_piece *)((uint8_t *)big_free + min_size);
+        mp_init(new_free, cut_size, 0);
 
-        return vaddr;
+        // Add new cut to size free list.
+        mb_add_to_size_unsafe(mb, new_free);
+
+        // Finally, init our new allocated block.
+        mp_init(big_free, min_size, 1);
     }
 
-    // Here we cut!
-    mem_piece *new_free = (mem_piece *)((uint8_t *)big_free + min_size);
-    mp_init(new_free, cut_size, 0);
+    // Finally add our new piece to the address book.
 
-    // Add new cut to size free list.
-    mb_add_to_size_unsafe(mb, new_free);
-
-    // Finally, init our new allocated block.
-    mp_init(big_free, min_size, 1);
-    vaddr = adb_install(mb_h->adb, mp_to_map_b(big_free));
+    vaddr = adb_put_p(mb_h->adb, mp_to_map_b(big_free), hold);
+    *(mem_alloc_piece_header *)mp_body(big_free) = vaddr;
     
     safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    res.vaddr = vaddr;
+
+    if (hold) {
+        res.paddr = big_free;
+    }
 
     return vaddr;
 }

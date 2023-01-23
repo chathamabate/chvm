@@ -115,7 +115,7 @@ static inline uint64_t ms_next_rnd(mem_space *ms) {
 // We attempt to malloc into (len / search_divisor) memory blocks.
 static const uint64_t SEARCH_DIV = 3;
 
-addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
+addr_book_vaddr ms_malloc_p(mem_space *ms, uint64_t min_bytes, uint8_t hold) {
     uint64_t padded_bytes = min_bytes + sizeof(mem_space_malloc_header);
 
     addr_book_vaddr res = NULL_VADDR;
@@ -141,7 +141,7 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
         mb = ms->mb_list[dart]; 
         safe_rwlock_unlock(&(ms->mb_list_lck));
 
-        res = mb_malloc(mb, padded_bytes);
+        res = mb_malloc_p(mb, padded_bytes, hold);
 
         // Here, our malloc was a success!
         if (!null_adb_addr(res)) {
@@ -160,7 +160,7 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
         mb = new_mem_block(get_chnl(ms), ms->adb, req_bytes);
 
         // NOTE: this malloc should always work!
-        res = mb_malloc(mb, padded_bytes); 
+        res = mb_malloc_p(mb, padded_bytes, hold); 
 
         // Finally, after our successful malloc, add mb to the mb_list.
         safe_wrlock(&(ms->mb_list_lck));
@@ -180,7 +180,7 @@ addr_book_vaddr ms_malloc(mem_space *ms, uint64_t min_bytes) {
 
     mem_space_malloc_header *ms_mh = adb_get_write(ms->adb, res);
     ms_mh->mb = mb; // Place our mem block pointer at the beginning of our 
-                 // allocated memory piece.
+                    // allocated memory piece.
     adb_unlock(ms->adb, res);
     
     return res;

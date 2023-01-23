@@ -19,10 +19,38 @@ void delete_mem_block(mem_block *mb);
 // for the given memory block at the given time.
 uint64_t mb_free_space(mem_block *mb);
 
+typedef struct {
+    void *paddr;
+    addr_book_vaddr vaddr;
+} mb_malloc_res;
+
 // Will return NULL_VADDR on failure.
 // (Maybe improve the detail of this return type when 
 // implementing memory space)
-addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes);
+//
+// NOTE: I have realized an issue, when we malloc, the returned memory piece
+// has not data at all initialized (Except for its virtaul address)
+// If we decided to call malloc, then lock to initlalize the data,
+// there is no promise that another thread doesn't access the piece 
+// before the lock is acquired.
+// This is specifically a problem with the garbage collector. When we iterate
+// over a memory block's pieces, we want to be certain we aren't accessing any
+// unitilized pieces!
+//
+// So, if hold is specified the piece will be malloced and its lock will be held
+// even after this function returns. Addtionally, the paddr will be given in
+// the corresponding result.
+//
+mb_malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold);
+
+static inline addr_book_vaddr mb_malloc(mem_block *mb, uint64_t min_bytes) {
+    return mb_malloc_p(mb, min_bytes, 0).vaddr;
+}
+
+static inline mb_malloc_res mb_malloc_and_hold(mem_block *mb, 
+        uint64_t min_bytes) {
+    return mb_malloc_p(mb, min_bytes, 1);
+}
 
 void mb_free(mem_block *mb, addr_book_vaddr vaddr);
 

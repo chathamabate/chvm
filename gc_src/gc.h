@@ -5,6 +5,15 @@
 #include <time.h>
 #include <stdint.h>
 
+// A gc_space will be one level of abstraction above mem_space.
+// Interfacing with a gc_space will promise consistent structure
+// of all memory pieces inside the mem_space being used.
+//
+// All pieces will be in the form of an "object" which holds data
+// and references.
+//
+// This structure will allow for garbage collection!
+
 typedef struct gc_space_struct gc_space;
 
 gc_space *new_gc_space_seed(uint64_t chnl, uint64_t seed, 
@@ -19,5 +28,7 @@ static inline gc_space *new_gc_space(uint64_t chnl,
 }
 
 void delete_gc_space(gc_space *gc);
+
+
 
 #endif

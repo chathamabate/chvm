@@ -51,22 +51,17 @@ typedef struct {
 } addr_table_put_res;
 
 // Attempt to put a physical address into the adt.
-// init will initialize the paddr as well...
-// (i.e. write the corresponding vaddr at paddr)
-// If init is 0, table_ind will be ignored.
-addr_table_put_res adt_put_p(addr_table *adt, void *paddr, 
-        uint8_t init, uint64_t table_ind);
+// If hold is specified, the lock on the paddr will be held after
+// this function returns.
+addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t hold);
 
 // Attempt to put a physical address into the adt.
 static inline addr_table_put_res adt_put(addr_table *adt, void *paddr) {
-    return adt_put_p(adt, paddr, 0, 0);
+    return adt_put_p(adt, paddr, 0);
 }
 
-// NOTE: this function will copy the given physical address's virtual address
-// to the bytes just before paddr.
-static inline addr_table_put_res adt_install(addr_table *adt, void *paddr, 
-        uint64_t table_ind) {
-    return adt_put_p(adt, paddr, 1, table_ind);
+static inline addr_table_put_res adt_put_and_hold(addr_table *adt, void *paddr) {
+    return adt_put_p(adt, paddr, 1);
 }
 
 // NOTE: For safety, I have added an allocation flag to each
@@ -160,13 +155,13 @@ static inline uint8_t null_adb_addr(addr_book_vaddr v) {
 addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap);
 void delete_addr_book(addr_book *adb);
 
-addr_book_vaddr adb_put_p(addr_book *adb, void *paddr, uint64_t init);
+addr_book_vaddr adb_put_p(addr_book *adb, void *paddr, uint8_t hold);
 
 static inline addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
     return adb_put_p(adb, paddr, 0);
 }
 
-static inline addr_book_vaddr adb_install(addr_book *adb, void *paddr) {
+static inline addr_book_vaddr adb_put_and_hold(addr_book *adb, void *paddr) {
     return adb_put_p(adb, paddr, 1);
 }
 

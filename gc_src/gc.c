@@ -2,6 +2,7 @@
 #include "ms.h"
 #include "virt.h"
 #include "../core_src/mem.h"
+#include "../core_src/thread.h"
 
 typedef enum {
     GC_UNVISITED,
@@ -21,17 +22,34 @@ typedef struct {
     uint64_t da_size;
 } obj_header;
 
+
+typedef union {
+    uint64_t next_free;
+    addr_book_vaddr vaddr;
+} root_set_entry;
+
 struct gc_space_struct {
     mem_space * const ms;
 
-    // The root will be a persistent object used for garbage 
-    // collection. It will not hold any data, and will not
-    // be accessibly by the user.
-    const addr_book_vaddr root;
+    // NOTE: the gc_space with have a set of "root objects".
+    // A root object is just like any other object.
+    // It will be stored in the memory space and will
+    // be refered to by a virtual address.
+    //
+    // However, it will only have a reference table, no data.
+    // The user will always use root objects to access other
+    // arbitrary objects.
+    pthread_rwlock_t root_set_lock;
+
+    // If this is UINT64T_MAX, the free list is empty.
+    uint64_t free_head;
+    root_set_entry *root_set;
 };
 
 static addr_book_vaddr ms_new_obj(mem_space *ms, uint64_t rt_len, 
         uint64_t da_size) {
+    // TODO... rewrite this below...
+    
     uint64_t obj_size = sizeof(obj_header) + 
         (rt_len * sizeof(addr_book_vaddr)) +
         (da_size * sizeof(uint8_t));
