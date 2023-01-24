@@ -48,6 +48,10 @@ uint64_t cs_new_root(collected_space *cs, uint64_t rt_len);
 // reference table length given for the new root being created.
 uint64_t cs_copy_root(collected_space *cs, uint64_t root_ind, uint64_t rt_len);
 
+// Remove a root object from the root set.
+// (It will eventually be garbage collected)
+void cs_remove_root(collected_space *cs, uint64_t root_ind);
+
 // Create a new object and store it at a certain offset in a root object. 
 void cs_new_obj(collected_space *cs, uint64_t root_ind, uint64_t offset,
         uint64_t rt_len, uint64_t da_size);
