@@ -5,6 +5,7 @@
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
 #include "../core_src/sys.h"
+#include <string.h>
 
 typedef enum {
     GC_NEWLY_ADDED,
@@ -89,6 +90,17 @@ void delete_collected_space(collected_space *cs) {
     delete_mem_space(cs->ms);
 
     safe_free(cs);
+}
+
+static inline addr_book_vaddr cs_get_root_vaddr(collected_space *cs, 
+        uint64_t root_ind) {
+    addr_book_vaddr root_vaddr;
+
+    safe_rdlock(&(cs->root_set_lock));
+    root_vaddr = cs->root_set[root_ind].vaddr;
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    return root_vaddr;
 }
 
 static inline malloc_res cs_malloc_object_p(collected_space *cs, 
@@ -187,11 +199,7 @@ uint64_t cs_new_root(collected_space *cs, uint64_t rt_len) {
 }
 
 uint64_t cs_copy_root(collected_space *cs, uint64_t src_root_ind, uint64_t dest_rt_len) {
-    addr_book_vaddr src_root_vaddr;
-
-    safe_rdlock(&(cs->root_set_lock)); 
-    src_root_vaddr = cs->root_set[src_root_ind].vaddr;
-    safe_rwlock_unlock(&(cs->root_set_lock));
+    addr_book_vaddr src_root_vaddr = cs_get_root_vaddr(cs, src_root_ind);
 
     // NOTE: Given the underlying memory space is only being used through these 
     // calls... It is impossible another thread would have access to 
@@ -247,32 +255,101 @@ void cs_remove_root(collected_space *cs, uint64_t root_ind) {
 
 void cs_new_obj(collected_space *cs, uint64_t root_ind, uint64_t offset,
         uint64_t rt_len, uint64_t da_size) {
-    // TODO.
+    addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+    
+    obj_header *root_h = ms_get_write(cs->ms, root_vaddr);
+    addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1);
+    
+    // Store our new object in the root's reference table at offset.
+    root_rt[offset] = cs_malloc_object(cs, GC_NEWLY_ADDED, rt_len, da_size);
+    
+    ms_unlock(cs->ms, root_vaddr);
 }
 
 void cs_move_reference(collected_space *cs, uint64_t root_ind,
         uint64_t dest_offset, uint64_t src_offset) {
-    // TODO
+    addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+    obj_header *root_h = ms_get_write(cs->ms, root_vaddr);
+
+    addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1); 
+    root_rt[dest_offset] = root_rt[src_offset];
+
+    ms_unlock(cs->ms, root_vaddr);
 }
 
 void cs_load_reference(collected_space *cs, uint64_t root_ind,
         uint64_t dest_offset, uint64_t src_offset, uint64_t src_rt_offset) {
-    // TODO
+    addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+    obj_header *root_h = ms_get_write(cs->ms, root_vaddr);
+
+    addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1); 
+    addr_book_vaddr src_vaddr = root_rt[src_offset];
+
+    obj_header *src_h = ms_get_read(cs->ms, src_vaddr);
+
+    addr_book_vaddr *src_rt = (addr_book_vaddr *)(src_h + 1);
+    root_rt[dest_offset] = src_rt[src_rt_offset];
+    
+    ms_unlock(cs->ms, src_vaddr);
+
+    ms_unlock(cs->ms, root_vaddr);
 }
 
 void cs_store_reference(collected_space *cs, uint64_t root_ind,
         uint64_t dest_offset, uint64_t dest_rt_offset, uint64_t src_offset) {
-    // TODO
+    addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+    obj_header *root_h = ms_get_read(cs->ms, root_vaddr);
+
+    addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1); 
+    addr_book_vaddr dest_vaddr = root_rt[dest_offset];
+
+    obj_header *dest_h = ms_get_write(cs->ms, dest_vaddr);
+    addr_book_vaddr *dest_rt = (addr_book_vaddr *)(dest_h + 1);
+
+    dest_rt[dest_rt_offset] = root_rt[src_offset];
+
+    ms_unlock(cs->ms, dest_vaddr);
+
+    ms_unlock(cs->ms, root_vaddr);
 }
 
 void cs_read_data(collected_space *cs, uint64_t root_ind, 
-        uint64_t src_offset, uint64_t src_da_offset, uint64_t len, void *output_buf) {
-    // TODO
+        uint64_t src_offset, uint64_t src_da_offset, uint64_t len, void *dest) {
+    addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+    obj_header *root_h = ms_get_read(cs->ms, root_vaddr);
+
+    addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1);
+    addr_book_vaddr src_vaddr = root_rt[src_offset];
+
+    obj_header *src_h = ms_get_read(cs->ms, src_vaddr);
+
+    addr_book_vaddr *src_rt = (addr_book_vaddr *)(src_h + 1);
+    uint8_t *src_da = (uint8_t *)(src_rt + src_h->rt_len);
+
+    memcpy(dest, src_da + src_da_offset, len);
+
+    ms_unlock(cs->ms, src_vaddr);
+
+    ms_unlock(cs->ms, root_vaddr);
 }
 
 void cs_write_data(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, void *input_buf) {
-    // TODO
+        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, void *src) {
+    addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+    obj_header *root_h = ms_get_read(cs->ms, root_vaddr);
+
+    addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1);
+    addr_book_vaddr dest_vaddr = root_rt[dest_offset];
+
+    obj_header *dest_h = ms_get_write(cs->ms, dest_vaddr);
+
+    addr_book_vaddr *dest_rt = (addr_book_vaddr *)(dest_h + 1);
+    uint8_t *dest_da = (uint8_t *)(dest_rt + dest_h->rt_len);
+
+    memcpy(dest_da + dest_da_offset, src, len);
+
+    ms_unlock(cs->ms, dest_vaddr);
+    ms_unlock(cs->ms, root_vaddr);
 }
 
 void cs_collect_garbage(collected_space *cs) {
@@ -280,6 +357,6 @@ void cs_collect_garbage(collected_space *cs) {
 }
 
 void cs_try_full_shift(collected_space *cs) {
-    // TODO
+    ms_try_full_shift(cs->ms);
 }
 

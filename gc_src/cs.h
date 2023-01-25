@@ -71,13 +71,16 @@ void cs_load_reference(collected_space *cs, uint64_t root_ind,
 void cs_store_reference(collected_space *cs, uint64_t root_ind,
         uint64_t dest_offset, uint64_t dest_rt_offset, uint64_t src_offset);
 
+// NOTE: For data reading operations below... buffers cannot be overlaping!
+// (i.e. we use memcpy)
+
 // Read len bytes from an objects offset data array, and copy them into buf.
 void cs_read_data(collected_space *cs, uint64_t root_ind, 
-        uint64_t src_offset, uint64_t src_da_offset, uint64_t len, void *output_buf);
+        uint64_t src_offset, uint64_t src_da_offset, uint64_t len, void *dest);
 
 // Write data to an object's offset data array from the buffer.
 void cs_write_data(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, void *input_buf);
+        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, void *src);
 
 // Run garbage collection algorithm.
 void cs_collect_garbage(collected_space *cs);
