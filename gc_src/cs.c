@@ -1,8 +1,10 @@
 #include "cs.h"
+#include "mb.h"
 #include "ms.h"
 #include "virt.h"
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
+#include "../core_src/sys.h"
 
 typedef enum {
     GC_NEWLY_ADDED,
@@ -24,6 +26,15 @@ typedef struct {
     // The number of bytes in the data array.
     uint64_t da_size;
 } obj_header;
+
+static inline addr_book_vaddr *obj_get_rt(obj *o) {
+    return (addr_book_vaddr *)((obj_header *)o + 1);
+}
+
+static inline uint8_t *obj_get_da(obj *o) {
+    obj_header *h = (obj_header *)o;
+    return (uint8_t *)((addr_book_vaddr *)(h + 1) + h->rt_len);
+}
 
 typedef struct {
     uint8_t allocated;
@@ -80,8 +91,54 @@ void delete_collected_space(collected_space *cs) {
     safe_free(cs);
 }
 
-static uint64_t cs_pop_root_entry_unsafe(collected_space *cs) {
-    // Assume we have the necessary lock on the root set.
+static inline malloc_res cs_malloc_object_p(collected_space *cs, 
+        gc_status_code gc_status, uint64_t rt_len, uint64_t da_size, uint8_t hold) {
+
+    malloc_res res =  ms_malloc_and_hold(cs->ms, sizeof(obj_header) + 
+            (rt_len * sizeof(addr_book_vaddr)) +
+            (da_size * sizeof(uint8_t)));
+
+    obj_header *obj_h = res.paddr;
+
+    obj_h->rt_len = rt_len;
+    obj_h->da_size = da_size;
+
+    obj_h->gc_status = gc_status;
+
+    addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
+    
+    uint64_t i;
+    for (i = 0; i < rt_len; i++) {
+        rt[i] = NULL_VADDR;
+    }
+
+    if (hold) {
+        return res;
+    }
+
+    // Unlock virtual address.
+    ms_unlock(cs->ms, res.vaddr);
+    res.paddr = NULL; // Throw out physical address.
+
+    return res;
+}
+
+
+static inline addr_book_vaddr cs_malloc_object(collected_space *cs, 
+        gc_status_code gc_status, uint64_t rt_len, uint64_t da_size) {
+    return cs_malloc_object_p(cs, gc_status, rt_len, da_size, 0).vaddr;
+}
+
+static inline malloc_res cs_malloc_object_and_hold(collected_space *cs, 
+        gc_status_code gc_status, uint64_t rt_len, uint64_t da_size) {
+    return cs_malloc_object_p(cs, gc_status, rt_len, da_size, 1);
+}
+
+static uint64_t cs_store_root(collected_space *cs, addr_book_vaddr root_vaddr) {
+    safe_wrlock(&(cs->root_set_lock));
+    
+    // First we pop off the next free entry index from the root set. 
+    // Resizing if we need to.
     
     if (cs->free_head == UINT64_MAX) {
         // No free elements! ... resize!
@@ -106,50 +163,86 @@ static uint64_t cs_pop_root_entry_unsafe(collected_space *cs) {
     uint64_t root_ind = cs->free_head;
     cs->free_head = cs->root_set[cs->free_head].next_free;
 
-    // NOTE: after this returns, the given root entry will not
-    // be marked as allocated. It should not be marked as allocated
-    // until it holds a valid virtual address.
-    //
-    // This function simply removes it from the free list.
+    // Finally, we store our root vaddr!
+    cs->root_set[root_ind].allocated = 1;
+    cs->root_set[root_ind].vaddr = root_vaddr;
+
+    safe_rwlock_unlock(&(cs->root_set_lock));
 
     return root_ind;
 }
 
-static inline malloc_res cs_malloc_object_and_hold(collected_space *cs, 
-        gc_status_code gc_status, uint64_t rt_len, uint64_t da_size) {
-    malloc_res res =  ms_malloc_and_hold(cs->ms, sizeof(obj_header) + 
-            (rt_len * sizeof(addr_book_vaddr)) +
-            (da_size * sizeof(uint8_t)));
+uint64_t cs_new_root(collected_space *cs, uint64_t rt_len) {
+    // NOTE: One day we made add error checking universally.
+    // I just don't know if it is needed at this moment.
+    //if (rt_len == 0) {
+    //    error_logf(1, 1, "cs_new_root: reference table length must be non-zero");
+    //}
 
-    obj_header *obj_h = res.paddr;
+    // Create our root object, store it in the root set.
+    addr_book_vaddr root_vaddr = cs_malloc_object(cs, GC_ROOT, rt_len, 0);
+    uint64_t root_ind = cs_store_root(cs, root_vaddr);
 
-    obj_h->rt_len = rt_len;
-    obj_h->da_size = da_size;
-
-    obj_h->gc_status = gc_status;
-
-    // TODO add nulled out reference table!
+    return root_ind;
 }
 
-uint64_t cs_new_root(collected_space *cs, uint64_t rt_len) {
-    uint64_t root_ind;
+uint64_t cs_copy_root(collected_space *cs, uint64_t src_root_ind, uint64_t dest_rt_len) {
+    addr_book_vaddr src_root_vaddr;
 
-    safe_wrlock(&(cs->root_set_lock));
-    root_ind = cs_pop_root_entry_unsafe(cs);
-
-    // TODO finish this all up...
-
+    safe_rdlock(&(cs->root_set_lock)); 
+    src_root_vaddr = cs->root_set[src_root_ind].vaddr;
     safe_rwlock_unlock(&(cs->root_set_lock));
 
-    return 0;
-}
+    // NOTE: Given the underlying memory space is only being used through these 
+    // calls... It is impossible another thread would have access to 
+    // the new root's vaddr. Thus, a dead lock should be impossible here...
 
-uint64_t cs_copy_root(collected_space *cs, uint64_t root_ind, uint64_t rt_len) {
-    return 0;
+    obj_header *src_root_h = ms_get_read(cs->ms, src_root_vaddr);
+    uint64_t src_rt_len = src_root_h->rt_len;
+    addr_book_vaddr *src_rt = (addr_book_vaddr *)(src_root_h + 1);
+
+    malloc_res dest_root_res = cs_malloc_object_and_hold(cs, GC_ROOT, dest_rt_len, 0);
+    obj_header *dest_root_h = dest_root_res.paddr;
+    addr_book_vaddr *dest_rt = (addr_book_vaddr *)(dest_root_h + 1);
+
+    // Now we have access to both reference tables.
+    // Src's in read mode, and dest's in write mode... let's do the copy.
+    uint64_t i;
+    for (i = 0; i < src_rt_len && i < dest_rt_len; i++) {
+        dest_rt[i] = src_rt[i];
+    }
+
+    ms_unlock(cs->ms, dest_root_res.vaddr);
+
+    ms_unlock(cs->ms, src_root_vaddr);
+
+    return cs_store_root(cs, dest_root_res.vaddr);
 }
 
 void cs_remove_root(collected_space *cs, uint64_t root_ind) {
-    // TODO
+    // Once again, we are assuming that a user is not removing a root
+    // until it is certain that it is no longer in use by any other threads.
+    // This call should never be in parallel with another one of these 
+    // calls to the same root.
+    
+    addr_book_vaddr root_vaddr;
+
+    // First, let's take our root out of the root set and add it to 
+    // the free list.
+    safe_wrlock(&(cs->root_set_lock));
+    root_set_entry *root_entry = cs->root_set + root_ind;
+
+    // Save the root vaddr.
+    root_vaddr = root_entry->vaddr;
+
+    root_entry->allocated = 0;
+    root_entry->next_free = cs->free_head;
+
+    cs->free_head = root_ind;
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    // Finally, let's free our root from the mem_space.
+    ms_free(cs->ms, root_vaddr);
 }
 
 void cs_new_obj(collected_space *cs, uint64_t root_ind, uint64_t offset,
