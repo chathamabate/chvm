@@ -285,6 +285,7 @@ void cs_new_obj(collected_space *cs, uint64_t root_ind, uint64_t offset,
 void cs_move_reference(collected_space *cs, uint64_t root_ind,
         uint64_t dest_offset, uint64_t src_offset) {
     addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+
     obj_header *root_h = ms_get_write(cs->ms, root_vaddr);
 
     addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1); 
@@ -372,6 +373,8 @@ void cs_write_data(collected_space *cs, uint64_t root_ind,
 static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_header *obj_h = paddr; 
 
+    safe_printf("--\n");
+
     safe_printf("Object @ Vaddr (%"PRIu64", %"PRIu64")\n", 
             v.table_index, v.cell_index);
 
@@ -382,8 +385,12 @@ static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
 
     uint64_t i;
     for (i = 0; i < obj_h->rt_len; i++) {
-        safe_printf("rt[%PRIu64] = (%"PRIu64", %"PRIu64")\n", 
-                rt[i].table_index, rt[i].cell_index);
+        if (null_adb_addr(rt[i])) {
+            safe_printf("rt[%"PRIu64"] = NULL\n", i);
+        } else {
+            safe_printf("rt[%"PRIu64"] = (%"PRIu64", %"PRIu64")\n", i,
+                    rt[i].table_index, rt[i].cell_index);
+        }
     }
 
     uint8_t *da = (uint8_t *)(rt + obj_h->da_size);
@@ -405,35 +412,52 @@ static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
         }
 
         for (j = 0; j < ROW_LEN && i < obj_h->da_size; j++, i++) {
-            safe_printf(" 0x%2X", da[i]);
+            safe_printf(" 0x%02X", da[i]);
         }
 
         safe_printf("\n");
     }
 }
 
-void cs_print(collected_space *cs) {
+static inline void root_set_entry_print_unsafe(root_set_entry *entry) {
+    if (!(entry->allocated)) {
+        if (entry->next_free == UINT64_MAX) {
+            safe_printf("(Free, Next: NULL)\n");
+        } else {
+            safe_printf("(Free, Next: %"PRIu64")\n", entry->next_free);
+        }
 
+        return;
+    }
+
+    // Allocated case.
+
+    if (null_adb_addr(entry->vaddr)) {
+        // Shouldn't really happen.
+        safe_printf("(Allocated, Vaddr: NULL)\n");
+    } else {
+        safe_printf("(Allocated, Vaddr: (%"PRIu64", %"PRIu64"))\n", 
+                entry->vaddr.table_index, entry->vaddr.cell_index);
+    }
+}
+
+void cs_print(collected_space *cs) {
     safe_rdlock(&(cs->root_set_lock)); 
-    safe_printf("Root Set (Cap: %"PRIu64", Free Head: %"PRIu64")\n", 
-            cs->root_set_cap, cs->free_head);
+
+    if (cs->free_head == UINT64_MAX) {
+        safe_printf("Root Set (Cap: %"PRIu64", Free Head: NULL)\n",
+                cs->root_set_cap);
+    } else {
+        safe_printf("Root Set (Cap: %"PRIu64", Free Head: %"PRIu64")\n",
+                cs->root_set_cap, cs->free_head);
+    }
 
     uint64_t i;
     root_set_entry *entry;
 
     for (i = 0; i < cs->root_set_cap; i++) {
         safe_printf("rs[%"PRIu64"] = ", i);    
-        
-        entry = cs->root_set + i; 
-        
-        if (entry->allocated) {
-            safe_printf("(Allocated, Vaddr: (%"PRIu64", %"PRIu64"))\n", 
-                    entry->vaddr.table_index, entry->vaddr.cell_index);
-        } else if (entry->next_free == UINT64_MAX) {
-            safe_printf("(Free, Next: NULL)\n");
-        } else {
-            safe_printf("(Free, Next: "PRIu64")\n", entry->next_free);
-        }
+        root_set_entry_print_unsafe(cs->root_set + i);
     }
 
     safe_rwlock_unlock(&(cs->root_set_lock));
