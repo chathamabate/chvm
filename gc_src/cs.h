@@ -84,7 +84,7 @@ void cs_read_data(collected_space *cs, uint64_t root_ind,
 
 // Write data to an object's offset data array from the buffer.
 void cs_write_data(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, void *src);
+        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, const void *src);
 
 void cs_print(collected_space *cs);
 

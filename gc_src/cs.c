@@ -364,7 +364,7 @@ void cs_read_data(collected_space *cs, uint64_t root_ind,
 }
 
 void cs_write_data(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, void *src) {
+        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, const void *src) {
     addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
     obj_header *root_h = ms_get_read(cs->ms, root_vaddr);
 
@@ -376,15 +376,11 @@ void cs_write_data(collected_space *cs, uint64_t root_ind,
     addr_book_vaddr *dest_rt = (addr_book_vaddr *)(dest_h + 1);
     uint8_t *dest_da = (uint8_t *)(dest_rt + dest_h->rt_len);
 
-    safe_printf("Writing %llu bytes from %p to %p[%llu]\n", len, src, dest_da, dest_da_offset);
     memcpy(dest_da + dest_da_offset, src, len);
-
-    dest_da[0] = 255;
 
     ms_unlock(cs->ms, dest_vaddr);
     ms_unlock(cs->ms, root_vaddr);
 }
-
 
 static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_header *obj_h = paddr; 
@@ -409,11 +405,7 @@ static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
         }
     }
 
-    uint8_t *da = (uint8_t *)(rt + obj_h->da_size);
-
-    // What the sweet lord is going on here...
-    safe_printf("Data Array @ %p\n", da);
-    safe_printf("DA[0] = %u\n", da[0]);
+    uint8_t *da = (uint8_t *)(rt + obj_h->rt_len);
 
     static const uint64_t ROW_LEN = 8;
 
