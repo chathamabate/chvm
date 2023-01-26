@@ -5,16 +5,29 @@
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
 #include "../core_src/sys.h"
+#include "../core_src/io.h"
+
 #include <string.h>
+#include <inttypes.h>
+#include <stdint.h>
 
 typedef enum {
-    GC_NEWLY_ADDED,
+    GC_NEWLY_ADDED = 0,
 
     GC_UNVISITED,
     GC_VISITED,
 
     GC_ROOT,
 } gc_status_code;
+
+static const uint64_t GC_STAT_STRINGS_LEN = 4;
+
+static const char *GC_STAT_STRINGS[GC_STAT_STRINGS_LEN] = {
+    "GC Newly Added",
+    "GC Unvisited",
+    "GC Visited",
+    "GC Root",
+};
 
 typedef struct {} obj;
 
@@ -81,6 +94,9 @@ collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed,
     cs->root_set_cap = 1;
 
     uint64_t free_head = 0;
+
+    cs->root_set[0].allocated = 0;
+    cs->root_set[0].next_free = UINT64_MAX;
 
     return cs;
 }
@@ -350,6 +366,79 @@ void cs_write_data(collected_space *cs, uint64_t root_ind,
 
     ms_unlock(cs->ms, dest_vaddr);
     ms_unlock(cs->ms, root_vaddr);
+}
+
+
+static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
+    obj_header *obj_h = paddr; 
+
+    safe_printf("Object @ Vaddr (%"PRIu64", %"PRIu64")\n", 
+            v.table_index, v.cell_index);
+
+    safe_printf("Status: %s, RT Length: %"PRIu64", DA Size: %"PRIu64"\n",
+            GC_STAT_STRINGS[obj_h->gc_status], obj_h->rt_len, obj_h->da_size);
+
+    addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
+
+    uint64_t i;
+    for (i = 0; i < obj_h->rt_len; i++) {
+        safe_printf("rt[%PRIu64] = (%"PRIu64", %"PRIu64")\n", 
+                rt[i].table_index, rt[i].cell_index);
+    }
+
+    uint8_t *da = (uint8_t *)(rt + obj_h->da_size);
+
+    static const uint64_t ROW_LEN = 8;
+
+    uint64_t j;
+    for (i = 0; i < obj_h->da_size; ) {
+        // Find Inclusive end index for this row.
+        uint64_t end = i + ROW_LEN - 1;
+        if (end >= obj_h->da_size) {
+            end = obj_h->da_size - 1;
+        }
+
+        if (i == end) {
+            safe_printf("da[%"PRIu64"] =", i);
+        } else {
+            safe_printf("da[%"PRIu64"...%"PRIu64"] =", i, end); 
+        }
+
+        for (j = 0; j < ROW_LEN && i < obj_h->da_size; j++, i++) {
+            safe_printf(" 0x%2X", da[i]);
+        }
+
+        safe_printf("\n");
+    }
+}
+
+void cs_print(collected_space *cs) {
+
+    safe_rdlock(&(cs->root_set_lock)); 
+    safe_printf("Root Set (Cap: %"PRIu64", Free Head: %"PRIu64")\n", 
+            cs->root_set_cap, cs->free_head);
+
+    uint64_t i;
+    root_set_entry *entry;
+
+    for (i = 0; i < cs->root_set_cap; i++) {
+        safe_printf("rs[%"PRIu64"] = ", i);    
+        
+        entry = cs->root_set + i; 
+        
+        if (entry->allocated) {
+            safe_printf("(Allocated, Vaddr: (%"PRIu64", %"PRIu64"))\n", 
+                    entry->vaddr.table_index, entry->vaddr.cell_index);
+        } else if (entry->next_free == UINT64_MAX) {
+            safe_printf("(Free, Next: NULL)\n");
+        } else {
+            safe_printf("(Free, Next: "PRIu64")\n", entry->next_free);
+        }
+    }
+
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    ms_foreach(cs->ms, obj_print, NULL, 0);
 }
 
 void cs_collect_garbage(collected_space *cs) {

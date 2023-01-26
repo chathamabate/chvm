@@ -82,6 +82,8 @@ void cs_read_data(collected_space *cs, uint64_t root_ind,
 void cs_write_data(collected_space *cs, uint64_t root_ind,
         uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, void *src);
 
+void cs_print(collected_space *cs);
+
 // Run garbage collection algorithm.
 void cs_collect_garbage(collected_space *cs);
 
