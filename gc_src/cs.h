@@ -56,6 +56,10 @@ void cs_remove_root(collected_space *cs, uint64_t root_ind);
 void cs_new_obj(collected_space *cs, uint64_t root_ind, uint64_t offset,
         uint64_t rt_len, uint64_t da_size);
 
+// Set a reference to NULL_VADDR.
+void cs_null_reference(collected_space *cs, uint64_t root_ind,
+        uint64_t dest_offset);
+
 // Move the reference stored at the source offset to the slot
 // at destination offset.
 // root->rt[dest_offset] = root->rt[src_offset]

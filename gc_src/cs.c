@@ -9,6 +9,7 @@
 
 #include <string.h>
 #include <inttypes.h>
+#include <stdio.h>
 #include <stdint.h>
 
 typedef enum {
@@ -282,6 +283,18 @@ void cs_new_obj(collected_space *cs, uint64_t root_ind, uint64_t offset,
     ms_unlock(cs->ms, root_vaddr);
 }
 
+void cs_null_reference(collected_space *cs, uint64_t root_ind,
+        uint64_t dest_offset) {
+    addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
+
+    obj_header *root_h = ms_get_write(cs->ms, root_vaddr);
+
+    addr_book_vaddr *root_rt = (addr_book_vaddr *)(root_h + 1); 
+    root_rt[dest_offset] = NULL_VADDR;
+
+    ms_unlock(cs->ms, root_vaddr);
+}
+
 void cs_move_reference(collected_space *cs, uint64_t root_ind,
         uint64_t dest_offset, uint64_t src_offset) {
     addr_book_vaddr root_vaddr = cs_get_root_vaddr(cs, root_ind);
@@ -363,7 +376,10 @@ void cs_write_data(collected_space *cs, uint64_t root_ind,
     addr_book_vaddr *dest_rt = (addr_book_vaddr *)(dest_h + 1);
     uint8_t *dest_da = (uint8_t *)(dest_rt + dest_h->rt_len);
 
+    safe_printf("Writing %llu bytes from %p to %p[%llu]\n", len, src, dest_da, dest_da_offset);
     memcpy(dest_da + dest_da_offset, src, len);
+
+    dest_da[0] = 255;
 
     ms_unlock(cs->ms, dest_vaddr);
     ms_unlock(cs->ms, root_vaddr);
@@ -394,6 +410,10 @@ static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
     }
 
     uint8_t *da = (uint8_t *)(rt + obj_h->da_size);
+
+    // What the sweet lord is going on here...
+    safe_printf("Data Array @ %p\n", da);
+    safe_printf("DA[0] = %u\n", da[0]);
 
     static const uint64_t ROW_LEN = 8;
 
