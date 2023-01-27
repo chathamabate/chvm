@@ -139,6 +139,10 @@ malloc_res ms_malloc_p(mem_space *ms, uint64_t min_bytes, uint8_t hold) {
         .paddr = NULL,
     };
 
+    if (min_bytes == 0) {
+        return res;
+    }
+
     // NOTE: Here comes a nice random algorithm for the boys back at 
     // Rice. (This may make testing a little tricky...)
     
