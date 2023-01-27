@@ -54,7 +54,7 @@ void delete_collected_space(collected_space *cs);
 // Maybe I should be brainstorming ways of having the below calls
 // emit error handling information to be used by the final VM.
 //
-// Should I be adding universal error handling...?
+// ^ GOOD IDEA HERE!
 
 // The gc_space will hold an array list of "root objects".
 // A "root object" will just hold an table of references.
@@ -63,6 +63,33 @@ void delete_collected_space(collected_space *cs);
 //
 // Users refer to root objects via an index.
 // Users refer to references in a root object via an offset.
+
+typedef enum {
+    CS_SUCCESS = 0,
+
+    // This is returned when a root with a zero length
+    // reference table is attempted to be created.
+    CS_EMPTY_ROOT_CREATION,
+
+    // This is returned when an object with a zero lemgth
+    // reference table and data array is attempted to be 
+    // created.
+    CS_EMPTY_OBJECT_CREATION,
+
+    // This is returned when the index of a root is out
+    // of bounds for the root set.
+    CS_ROOT_INDEX_OUT_OF_BOUNDS,
+
+    // This is returned when the given entry in the root
+    // set referenced is not initialized.
+    CS_ROOT_INDEX_INVALID,
+
+    // This is returned when the given offset is out
+    // of bounds for a specific root.
+    CS_ROOT_OFFSET_OUT_OF_BOUNDS,
+
+    // MORE TO COME...
+} cs_status_code;
 
 // Add a new root with the given number of references. 
 uint64_t cs_new_root(collected_space *cs, uint64_t rt_len);

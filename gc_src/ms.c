@@ -34,6 +34,10 @@ struct mem_space_struct {
 
 mem_space *new_mem_space_seed(uint64_t chnl, uint64_t seed, 
         uint64_t adb_t_cap, uint64_t mb_m_bytes) {
+    if (mb_m_bytes == 0) {
+        return NULL;   
+    }
+
     mem_space *ms = safe_malloc(chnl, sizeof(mem_space));
 
     *(addr_book **)&(ms->adb) = new_addr_book(chnl, adb_t_cap);;
