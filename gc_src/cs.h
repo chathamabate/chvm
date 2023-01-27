@@ -31,6 +31,30 @@ void delete_collected_space(collected_space *cs);
 
 // NOTE: the user facing operations below will mimic memory orientated
 // operations for the final VM.
+//
+// NOTE: A Collected space is thread safe in a way.
+// That is calls in parrallel to any of the below endpoints
+// will not result in fatal errors.
+// The collected space will survive and its data structures
+// will be intact.
+// However, the order of the operations will not be deterministic.
+// If one is doing writes and reads from the same object in parallel,
+// god only knows which operations will happen when.
+//
+// For this reason, I think I will need to add some sort of mutex,
+// creation operation below. Why not just force fast operations??
+// That is the original design... the user can check out physcial
+// addresses and do as they please with them... I just think this
+// is too dangerous... 
+//
+// A user could then stop the garbage collector indefinitely.
+// They could also totally destroy an object structure by
+// accident. I prefer the below design despite its slow down.
+//
+// Maybe I should be brainstorming ways of having the below calls
+// emit error handling information to be used by the final VM.
+//
+// Should I be adding universal error handling...?
 
 // The gc_space will hold an array list of "root objects".
 // A "root object" will just hold an table of references.

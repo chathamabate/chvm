@@ -37,7 +37,12 @@ typedef enum {
 // All entries must reside in a constant location in
 // memory.
 //
+// Capacity must be non-zero.
+//
 addr_table *new_addr_table(uint8_t chnl, uint64_t cap);
+
+// For below calls... it is expected that adt is non-null
+// otherwise, behavoir iss undefined.
 
 void delete_addr_table(addr_table *adt);
 

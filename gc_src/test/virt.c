@@ -302,7 +302,7 @@ const chunit_test ADT_MOVE = {
 
 static void test_adt_bad_index(chunit_test_context *tc) {
     addr_table *adt = new_addr_table(1, 1);
-
+     
     // Out of bounds index here.
     adt_free(adt, 1);
 

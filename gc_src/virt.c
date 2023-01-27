@@ -37,6 +37,10 @@ typedef struct {
 } addr_table_cell;
 
 addr_table *new_addr_table(uint8_t chnl, uint64_t cap) {
+    if (cap == 0) {
+        error_logf(1, 1, "new_addr_table: cap must be non-zero");
+    }
+
     addr_table *adt = safe_malloc(chnl, 
             sizeof(addr_table_header) + 
             (sizeof(uint64_t) * cap) + 
@@ -244,7 +248,7 @@ void *adt_get_read_p(addr_table *adt, uint64_t ind, uint8_t blk) {
 
 // Same as adt_get_read, except with a write lock.
 void *adt_get_write_p(addr_table *adt, uint64_t ind, uint8_t blk) {
-    adt_validate_cell_ind(adt, ind, "adt_get_write");
+    adt_validate_cell_ind(adt, ind, "adt_get_write_p");
 
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
@@ -297,6 +301,7 @@ addr_table_code adt_free(addr_table *adt, uint64_t index) {
     safe_wrlock(&(table[index].lck));
     adt_validate_cell(1, cell, index, "adt_free");
     table[index].allocated = 0;
+    table[index].paddr = NULL;
     safe_rwlock_unlock(&(table[index].lck));
 
     safe_wrlock(&(adt_h->free_stack_lck));
@@ -386,6 +391,10 @@ typedef struct addr_book_struct {
 } addr_book;
 
 addr_book *new_addr_book(uint8_t chnl, uint64_t table_cap) {
+    if (table_cap == 0) {
+        return NULL;
+    }
+
     addr_book *adb = safe_malloc(chnl, sizeof(addr_book));
 
     *(uint64_t *)&(adb->table_cap) = table_cap;
