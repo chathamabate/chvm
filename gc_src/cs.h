@@ -1,6 +1,9 @@
 #ifndef GC_CS_H
 #define GC_CS_H
 
+#include "virt.h"
+#include "ms.h"
+
 #include <stdlib.h>
 #include <time.h>
 #include <stdint.h>
@@ -29,113 +32,69 @@ static inline collected_space *new_collected_space(uint64_t chnl,
 
 void delete_collected_space(collected_space *cs);
 
-// NOTE: the user facing operations below will mimic memory orientated
-// operations for the final VM.
+// NOTE: After lots of thought, I have decided that the user
+// will have access to object locks as originally intended...
+// 
+// That is, the user will be able to call gc_get_read/write.
+// This will allow the user to stop the garbage collector
+// indefinitely if they're not careful.
 //
-// NOTE: A Collected space is thread safe in a way.
-// That is calls in parrallel to any of the below endpoints
-// will not result in fatal errors.
-// The collected space will survive and its data structures
-// will be intact.
-// However, the order of the operations will not be deterministic.
-// If one is doing writes and reads from the same object in parallel,
-// god only knows which operations will happen when.
+// However, other options are quite overkill and probably
+// extremely slow.
 //
-// For this reason, I think I will need to add some sort of mutex,
-// creation operation below. Why not just force fast operations??
-// That is the original design... the user can check out physcial
-// addresses and do as they please with them... I just think this
-// is too dangerous... 
-//
-// A user could then stop the garbage collector indefinitely.
-// They could also totally destroy an object structure by
-// accident. I prefer the below design despite its slow down.
-//
-// Maybe I should be brainstorming ways of having the below calls
-// emit error handling information to be used by the final VM.
-//
-// ^ GOOD IDEA HERE!
+// We will have to make sure compilers for the VM know this.
 
 // The gc_space will hold an array list of "root objects".
-// A "root object" will just hold an table of references.
 // A "root object" is always live (that is it will never
 // be garbage collected)
+// The reference out from roots will determine which objects
+// are not GC'd.
 //
 // Users refer to root objects via an index.
 // Users refer to references in a root object via an offset.
 
-typedef enum {
-    CS_SUCCESS = 0,
+// This create an object in the underlying mem space and returns its
+// information (Depending on whether hold is provided.
+malloc_res cs_malloc_p(collected_space *cs, uint8_t root, uint64_t rt_len, 
+        uint64_t da_size, uint8_t hold);
 
-    // This is returned when a root with a zero length
-    // reference table is attempted to be created.
-    CS_EMPTY_ROOT_CREATION,
+static inline addr_book_vaddr cs_malloc_object(collected_space *cs,
+        uint64_t rt_len, uint64_t da_size) {
+    return cs_malloc_p(cs, 0, rt_len, da_size, 0).vaddr;
+}
 
-    // This is returned when an object with a zero lemgth
-    // reference table and data array is attempted to be 
-    // created.
-    CS_EMPTY_OBJECT_CREATION,
+static inline malloc_res cs_malloc_object_and_hold(collected_space *cs,
+        uint64_t rt_len, uint64_t da_size) {
+    return cs_malloc_object_p(cs, 0, rt_len, da_size, 1);
+}
 
-    // This is returned when the index of a root is out
-    // of bounds for the root set.
-    CS_ROOT_INDEX_OUT_OF_BOUNDS,
+static inline addr_book_vaddr cs_malloc_root(collected_space *cs,
+        uint64_t rt_len, uint64_t da_size) {
+    return cs_malloc_p(cs, 1, rt_len, da_size, 0).vaddr; 
+}
 
-    // This is returned when the given entry in the root
-    // set referenced is not initialized.
-    CS_ROOT_INDEX_INVALID,
+static inline malloc_res cs_malloc_root_and_hold(collected_space *cs,
+        uint64_t rt_len, uint64_t da_size) {
+    return cs_malloc_p(cs, 1, rt_len, da_size, 1); 
+}
 
-    // This is returned when the given offset is out
-    // of bounds for a specific root.
-    CS_ROOT_OFFSET_OUT_OF_BOUNDS,
+// NOTE: somehow restrictions will need to be put in place
+// by the assembler to make sure the user doesn't f everything up.
+// Or maybe they should be allowed to?
+//
+// NOTE: root and deroot assume the user doesn't already have the lock on the given 
+// object! 
 
-    // MORE TO COME...
-} cs_status_code;
+// Turn a normal object into a root object.
+void cs_root(collected_space *cs, addr_book_vaddr non_root_vaddr);
 
-// Add a new root with the given number of references. 
-uint64_t cs_new_root(collected_space *cs, uint64_t rt_len);
+// Turn a root object into a normal object.
+void cs_deroot(collected_space *cs, addr_book_vaddr root_vaddr);
 
-// This will create a new root object with the exact same references as a
-// given existing root. references may be truncated depending on the 
-// reference table length given for the new root being created.
-uint64_t cs_copy_root(collected_space *cs, uint64_t root_ind, uint64_t rt_len);
-
-// Remove a root object from the root set.
-// (It will eventually be garbage collected)
-void cs_remove_root(collected_space *cs, uint64_t root_ind);
-
-// Create a new object and store it at a certain offset in a root object. 
-void cs_new_obj(collected_space *cs, uint64_t root_ind, uint64_t offset,
-        uint64_t rt_len, uint64_t da_size);
-
-// Set a reference to NULL_VADDR.
-void cs_null_reference(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset);
-
-// Move the reference stored at the source offset to the slot
-// at destination offset.
-// root->rt[dest_offset] = root->rt[src_offset]
-void cs_move_reference(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t src_offset);
-
-// Load a reference from a reference into the root's reference table.
-// root->rt[dest_offset] = root->rt[src_offset]->rt[src_int_offset]
-void cs_load_reference(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t src_offset, uint64_t src_rt_offset);
-
-// root->rt[dest_offset]->rt[dest_rt_offset] = root->rt[src_offset]
-void cs_store_reference(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t dest_rt_offset, uint64_t src_offset);
-
-// NOTE: For data reading operations below... buffers cannot be overlaping!
-// (i.e. we use memcpy)
-
-// Read len bytes from an objects offset data array, and copy them into buf.
-void cs_read_data(collected_space *cs, uint64_t root_ind, 
-        uint64_t src_offset, uint64_t src_da_offset, uint64_t len, void *dest);
-
-// Write data to an object's offset data array from the buffer.
-void cs_write_data(collected_space *cs, uint64_t root_ind,
-        uint64_t dest_offset, uint64_t dest_da_offset, uint64_t len, const void *src);
+// These calls are forwarded directly to the memory space.
+void *cs_get_read(collected_space *cs, addr_book_vaddr vaddr);
+void *cs_get_write(collected_space *cs, addr_book_vaddr vaddr);
+void cs_unlock(collected_space *cs, addr_book_vaddr vaddr);
 
 void cs_print(collected_space *cs);
 
