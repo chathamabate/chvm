@@ -273,7 +273,25 @@ void bc_pop_front(util_bc *bc, void *dest) {
 }
 
 void bc_foreach(util_bc *bc, cell_consumer c, void *ctx) {
+    util_bc_table_header *iter = bc->first;
+    uint64_t cell_ind = bc->first_start;
 
+    uint8_t *table = (uint8_t *)(iter + 1);
+    
+    while (!(iter == bc->last && cell_ind == bc->last_end)) {
+        void *cell = table + (cell_ind * bc->cell_size);
+        c(cell, ctx);
+
+        // Advance.
+        cell_ind++;
+
+        // Advance to next block if needed.
+        if (cell_ind == bc->table_size) {
+            cell_ind = 0;
+            iter = iter->next;
+            table = (uint8_t *)(iter + 1);
+        }
+    }
 }
 
 
