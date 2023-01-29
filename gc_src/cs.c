@@ -365,8 +365,27 @@ void cs_print(collected_space *cs) {
     ms_foreach(cs->ms, obj_print, NULL, 0);
 }
 
+// NOTE: GC Steps :
+//
+// 1) Set all non-root objects as unvisited.
+// 2) Perform a graph search from each root marking objects
+// visited.
+// 3) Delete all unvisited objects from the memory space.
+
+static void obj_unvisit(addr_book_vaddr v, void *paddr, void *ctx) {
+    obj_pre_header *obj_p_h = paddr;
+
+    if (obj_p_h->gc_status != GC_ROOT) {
+        obj_p_h->gc_status = GC_UNVISITED;
+    }
+}
+
 void cs_collect_garbage(collected_space *cs) {
-    // TODO
+    // Unvisit all non-root objects.
+    ms_foreach(cs->ms, obj_unvisit, NULL, 1);
+    
+    // Implement graph search with a stack/queue.
+    
 }
 
 void cs_try_full_shift(collected_space *cs) {

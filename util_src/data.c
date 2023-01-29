@@ -1,5 +1,6 @@
 #include "./data.h"
 #include "../core_src/mem.h"
+#include "../core_src/sys.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -94,6 +95,185 @@ void *ll_get(util_ll *ll, uint64_t i) {
 
 uint64_t ll_len(util_ll *ll) {
     return ll->len;
+}
+
+typedef struct util_bc_table_header_struct {
+    struct util_bc_table_header_struct *next;
+    struct util_bc_table_header_struct *prev;
+} util_bc_table_header;
+
+struct util_broken_collection {
+    size_t cell_size;
+    uint64_t table_size;
+
+    // NOTE: the table chain will always hold at least
+    // 1 table.
+    //
+    // The table chain will never shrink.
+    // That is even when tables in the chain become empty,
+    // they will remain in the chain to prevent further mallocs.
+    //
+    // first will be the pointer to the first table which contains an
+    // element. Or an arbitrary table if the bc is empty.
+    // 
+    // last will be the pointer to the last table which contains an
+    // element, Or it will equal first if the bc is empty.
+    //
+    // if first = last & first_start = last_end, the bc is empty.
+    //
+    // last_end will always be a valid index to place into.
+    // That is last_end is always < table_size.
+
+    util_bc_table_header *first;
+
+    // Index in first of the first element.
+    uint64_t first_start; 
+
+    util_bc_table_header *last;
+
+    // Index in last of the first free space. (i.e. Exclusive)
+    uint64_t last_end;
+};
+
+static inline util_bc_table_header *new_util_bc_table(util_bc *bc) {
+    util_bc_table_header *bc_t_h = safe_malloc(get_chnl(bc), 
+            sizeof(util_bc_table_header) +
+            (bc->cell_size * bc->table_size));
+
+    bc_t_h->next = NULL;
+    bc_t_h->prev = NULL;
+
+    return bc_t_h;
+}
+
+util_bc *new_broken_collection(uint8_t chnl, size_t cs, uint64_t ts) {
+    if (cs == 0 || ts == 0) {
+        error_logf(1, 1, "new_broken_collection: bad sizes given");
+    }
+
+    util_bc *bc = safe_malloc(chnl, sizeof(util_bc));
+
+    bc->cell_size = cs;
+    bc->table_size = ts;
+
+    util_bc_table_header *first_table = new_util_bc_table(bc);
+
+    bc->first = first_table;
+    bc->first_start = 0;
+
+    bc->last = first_table;
+    bc->last_end = 0;
+
+    return bc;
+}
+
+void delete_broken_collection(util_bc *bc) {
+    util_bc_table_header *iter, *next;
+
+    iter = bc->first->prev;
+    while (iter) {
+        next = iter->prev;
+        safe_free(iter);
+        iter = next;
+    }
+
+    iter = bc->first;
+    while (iter) {
+        next = iter->next;
+        safe_free(iter);
+        iter = next;
+    }
+
+    safe_free(bc);
+}
+
+void bc_push_back(util_bc *bc, void *src) {
+    // We know last_end will always be valid to place into.
+    
+    uint8_t *table = (uint8_t *)(bc->last + 1);
+    memcpy(table + (bc->last_end * bc->cell_size), src, bc->cell_size);
+
+    bc->last_end++;
+
+    // Here, our last_end is still valid, no work needs to be done.
+    if (bc->last_end < bc->table_size) {
+        return;
+    }
+
+    // Here there is no next table in our chain!!!
+    // We must malloc.
+    if (!(bc->last->next)) {
+        util_bc_table_header *new_table = new_util_bc_table(bc);
+
+        bc->last->next = new_table;
+        new_table->prev = bc->last;
+    }
+
+    // Advance to the next table.
+    bc->last = bc->last->next;
+    bc->last_end = 0;
+}
+
+void bc_push_front(util_bc *bc, void *src) {
+    // Here we must back up in the chain.
+    if (bc->first_start == 0) {
+        // If there is no where to back up to, malloc.
+        if (!(bc->first->prev)) {
+            util_bc_table_header *new_table = new_util_bc_table(bc);
+
+            bc->first->prev = new_table;
+            new_table->next = bc->first;
+        }
+
+        bc->first = bc->first->prev;
+        bc->first_start = bc->table_size;
+    }
+
+    bc->first_start--;
+
+    uint8_t *table = (uint8_t *)(bc->first + 1);
+    memcpy(table + (bc->first_start * bc->cell_size), src, bc->cell_size);
+}
+
+void bc_pop_back(util_bc *bc, void *dest) {
+    if (bc->first == bc->last && bc->first_start == bc->last_end) {
+        error_logf(1, 1, "bc_pop_back: cannot pop from empty bc");
+    }
+
+    // Here bc is not empty, so there must be somewhere to back up to.
+    if (bc->last_end == 0) {
+        bc->last = bc->last->prev;
+        bc->last_end = bc->table_size;
+    }     
+
+    bc->last_end--;
+
+    uint8_t *table = (uint8_t *)(bc->last + 1);
+    memcpy(dest, table + (bc->last_end * bc->cell_size), bc->cell_size);
+}
+
+void bc_pop_front(util_bc *bc, void *dest) {
+    if (bc->first == bc->last && bc->first_start == bc->last_end) {
+        error_logf(1, 1, "bc_pop_back: cannot pop from empty bc");
+    }
+
+    uint8_t *table = (uint8_t *)(bc->first + 1);
+    memcpy(dest, table + (bc->first_start * bc->cell_size), bc->cell_size);
+
+    bc->first_start++;
+
+    // Remember, because our boy wasn't empty...
+    // in the case below, there is no need to check for a next table
+    // we know it must exists.
+
+    if (bc->first_start == bc->table_size) {
+        bc->first_start = 0;
+        bc->first = bc->first->next;
+    }
+}
+
+void bc_foreach(util_bc *bc, cell_consumer c, void *ctx) {
+
 }
 
 
