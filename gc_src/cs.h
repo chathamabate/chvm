@@ -19,6 +19,14 @@
 
 typedef struct collected_space_struct collected_space;
 
+typedef struct {
+    // The number of references in the reference table.
+    const uint64_t rt_len;
+
+    // The number of bytes in the data array.
+    const uint64_t da_size;
+} obj_header;
+
 // Here we provide information to set up the underlying memory space.
 // NOTE: No root objects will be created at first.
 collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed, 
@@ -77,24 +85,49 @@ static inline malloc_res cs_malloc_object_and_hold(collected_space *cs,
 
 typedef uint64_t cs_root_id;
 
-cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size);
+typedef enum {
+    CS_SUCCESS = 0,
 
-addr_book_vaddr cs_get_root_vaddr(collected_space *cs, cs_root_id root_id);
+    // This is used when you try to promote an object which
+    // is already a root. 
+    CS_ALREADY_ROOT,
 
-// Turn a normal object into a root object.
-cs_root_id cs_root(collected_space *cs, addr_book_vaddr non_root_vaddr);
+    // This is used when you try to deroot and object which
+    // is not a root.
+    CS_NOT_A_ROOT, 
 
-// Turn a root object into a normal object.
-// Do nothing if there is nothing in the root set at the given id.
-void cs_deroot(collected_space *cs, cs_root_id root_id);
+    // This is used when an out of bounds root id is given.
+    CS_ROOT_ID_OUT_OF_BOUNDS,
+
+    // This is used when the root id given is not allocated yet.
+    CS_ROOT_ID_NOT_ALLOCATED,
+} cs_root_status_code;
+
 
 typedef struct {
-    // The number of references in the reference table.
-    const uint64_t rt_len;
+    cs_root_status_code status_code;
+    cs_root_id root_id;
+} cs_root_res;
 
-    // The number of bytes in the data array.
-    const uint64_t da_size;
-} obj_header;
+// Turn a normal object into a root object.
+// NOTE: if a given object is already a root UINT64_MAX is returned.
+cs_root_res cs_root(collected_space *cs, addr_book_vaddr vaddr);
+
+// Create a root object from scratch.
+cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size);
+
+// Turn a root object into a normal object.
+// If something is derooted 0 is returned.
+// (Otherwise) if root_id is invalid return 1.
+cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id);
+
+typedef struct {
+    cs_root_status_code status_code;
+    addr_book_vaddr root_vaddr;
+} cs_get_root_res;
+
+// Will return NULL if a bad root_id is given.
+cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id);
 
 // These calls are forwarded directly to the memory space.
 obj_header *cs_get_read(collected_space *cs, addr_book_vaddr vaddr);

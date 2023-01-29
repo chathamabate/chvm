@@ -21,6 +21,10 @@ typedef enum {
     GC_ROOT,
 } gc_status_code;
 
+typedef struct {
+    gc_status_code gc_status;
+} obj_pre_header;
+
 static const uint64_t GC_STAT_STRINGS_LEN = 4;
 
 static const char *GC_STAT_STRINGS[GC_STAT_STRINGS_LEN] = {
@@ -59,11 +63,81 @@ struct collected_space_struct {
     root_set_entry *root_set;
 };
 
-
-
 // TODO: rewrite the collected space code here!
 
-static cs_root_id cs_store_root(collected_space *cs, addr_book_vaddr root_vaddr) {
+collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed, 
+        uint64_t adb_t_cap, uint64_t mb_m_bytes) {
+    collected_space *cs = safe_malloc(chnl, sizeof(collected_space));
+
+    // Create our underlying memory space.
+    *(mem_space **)&(cs->ms) = 
+        new_mem_space_seed(chnl, seed, adb_t_cap, mb_m_bytes);
+
+    // Set up our root set.
+    // Starts with one single free entry.
+    safe_rwlock_init(&(cs->root_set_lock), NULL);
+    cs->root_set = safe_malloc(chnl, sizeof(root_set_entry) * 1);
+    cs->root_set_cap = 1;
+
+    uint64_t free_head = 0;
+
+    cs->root_set[0].allocated = 0;
+    cs->root_set[0].next_free = UINT64_MAX;
+
+    return cs;
+}
+
+void delete_collected_space(collected_space *cs) {
+    safe_rwlock_destroy(&(cs->root_set_lock));
+    safe_free(cs->root_set);
+
+    delete_mem_space(cs->ms);
+    
+    safe_free(cs);
+}
+
+static malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
+        uint64_t da_size, uint8_t root, uint8_t hold) {
+    malloc_res res = ms_malloc_and_hold(cs->ms, 
+            sizeof(obj_pre_header) +
+            sizeof(obj_header) +
+            (sizeof(addr_book_vaddr) * rt_len) +
+            (sizeof(uint8_t) * da_size));
+
+    // Set up headers...
+    obj_pre_header *obj_p_h = res.paddr;
+    obj_header *obj_h = (obj_header *)(obj_p_h + 1);
+    addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
+
+    // Set up Pre Header.
+    obj_p_h->gc_status = root ? GC_ROOT : GC_NEWLY_ADDED;
+
+    // Set up normal Header.
+    *(uint64_t *)&(obj_h->rt_len) = rt_len;
+    *(uint64_t *)&(obj_h->da_size) = da_size;
+
+    uint64_t i;
+    for (i = 0; i < rt_len; i++) {
+        rt[i] = NULL_VADDR;
+    }
+
+    if (hold) {
+        return res;
+    }
+
+    ms_unlock(cs->ms, res.vaddr);
+    res.paddr = NULL;
+
+    return res;
+}
+
+
+malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
+        uint64_t da_size, uint8_t hold) {
+    return cs_malloc_p(cs, rt_len, da_size, 0, hold);
+}
+
+static cs_root_id cs_store_root(collected_space *cs, addr_book_vaddr vaddr) {
     safe_wrlock(&(cs->root_set_lock));
 
     // First we pop off the next free entry index from the root set.
@@ -94,15 +168,110 @@ static cs_root_id cs_store_root(collected_space *cs, addr_book_vaddr root_vaddr)
 
     // Finally, we store our root vaddr!
     cs->root_set[root_ind].allocated = 1;
-    cs->root_set[root_ind].vaddr = root_vaddr;
+    cs->root_set[root_ind].vaddr = vaddr;
 
     safe_rwlock_unlock(&(cs->root_set_lock));
 
     return root_ind;
 }
 
+cs_root_res cs_root(collected_space *cs, addr_book_vaddr vaddr) {
+    cs_root_res res;
+
+    res.root_id = UINT64_MAX;
+
+    obj_pre_header *obj_p_h = ms_get_write(cs->ms, vaddr);
+
+    if (obj_p_h->gc_status == GC_ROOT) {
+        ms_unlock(cs->ms, vaddr);
+        res.status_code = CS_ALREADY_ROOT;
+
+        return res;
+    }
+
+    obj_p_h->gc_status = GC_ROOT;
+
+    ms_unlock(cs->ms, vaddr);
+
+    res.status_code = CS_SUCCESS; 
+    res.root_id = cs_store_root(cs, vaddr);
+
+    return res;
+}
+
+cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size) {
+    addr_book_vaddr root_vaddr = cs_malloc_p(cs, rt_len, da_size, 1, 0).vaddr;
+    return cs_store_root(cs, root_vaddr);
+}
+
+cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id) {
+    addr_book_vaddr root_vaddr;
+
+    safe_rdlock(&(cs->root_set_lock));
+
+    if (root_id >= cs->root_set_cap) {
+        safe_rwlock_unlock(&(cs->root_set_lock));
+        return CS_ROOT_ID_OUT_OF_BOUNDS;
+    }
+
+    if (!(cs->root_set[root_id].allocated)) {
+        safe_rwlock_unlock(&(cs->root_set_lock));
+        return CS_ROOT_ID_NOT_ALLOCATED;
+    }
+
+    root_vaddr = cs->root_set[root_id].vaddr;
+     
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    // If the root vaddr is in the root set, it will always be a GC_ROOT.
+    obj_pre_header *obj_p_h = ms_get_write(cs->ms, root_vaddr);
+    obj_p_h->gc_status = GC_NEWLY_ADDED;
+    ms_unlock(cs->ms, root_vaddr); 
+
+    return CS_SUCCESS;
+}
+
+cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id) {
+    cs_get_root_res res;
+    res.root_vaddr = NULL_VADDR;
+
+    safe_rdlock(&(cs->root_set_lock));
+
+    if (root_id >= cs->root_set_cap) {
+        safe_rwlock_unlock(&(cs->root_set_lock));
+        res.status_code = CS_ROOT_ID_OUT_OF_BOUNDS;
+        return res;
+    }
+
+    if (!(cs->root_set[root_id].allocated)) {
+        safe_rwlock_unlock(&(cs->root_set_lock));
+        res.status_code = CS_ROOT_ID_NOT_ALLOCATED;
+        return res;
+    }
+
+    res.root_vaddr = cs->root_set[root_id].vaddr;
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    res.status_code = CS_SUCCESS;
+
+    return res;
+}
+
+obj_header *cs_get_read(collected_space *cs, addr_book_vaddr vaddr) {
+    return (obj_header *)((obj_pre_header *)ms_get_read(cs->ms, vaddr) + 1);    
+}
+
+obj_header *cs_get_write(collected_space *cs, addr_book_vaddr vaddr) {
+    return (obj_header *)((obj_pre_header *)ms_get_write(cs->ms, vaddr) + 1);    
+}
+
+void cs_unlock(collected_space *cs, addr_book_vaddr vaddr) {
+    ms_unlock(cs->ms, vaddr);
+}
+
 static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
-    obj_header *obj_h = paddr;
+    obj_pre_header *obj_p_h = paddr;
+    obj_header *obj_h = (obj_header *)(obj_p_h + 1);
 
     safe_printf("--\n");
 
@@ -110,7 +279,7 @@ static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
             v.table_index, v.cell_index);
 
     safe_printf("Status: %s, RT Length: %"PRIu64", DA Size: %"PRIu64"\n",
-            GC_STAT_STRINGS[obj_h->gc_status], obj_h->rt_len, obj_h->da_size);
+            GC_STAT_STRINGS[obj_p_h->gc_status], obj_h->rt_len, obj_h->da_size);
 
     addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
 
