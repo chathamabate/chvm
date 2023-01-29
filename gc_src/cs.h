@@ -55,27 +55,17 @@ void delete_collected_space(collected_space *cs);
 
 // This create an object in the underlying mem space and returns its
 // information (Depending on whether hold is provided.
-malloc_res cs_malloc_p(collected_space *cs, uint8_t root, uint64_t rt_len, 
+malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
         uint64_t da_size, uint8_t hold);
 
 static inline addr_book_vaddr cs_malloc_object(collected_space *cs,
         uint64_t rt_len, uint64_t da_size) {
-    return cs_malloc_p(cs, 0, rt_len, da_size, 0).vaddr;
+    return cs_malloc_object_p(cs, rt_len, da_size, 0).vaddr;
 }
 
 static inline malloc_res cs_malloc_object_and_hold(collected_space *cs,
         uint64_t rt_len, uint64_t da_size) {
-    return cs_malloc_object_p(cs, 0, rt_len, da_size, 1);
-}
-
-static inline addr_book_vaddr cs_malloc_root(collected_space *cs,
-        uint64_t rt_len, uint64_t da_size) {
-    return cs_malloc_p(cs, 1, rt_len, da_size, 0).vaddr; 
-}
-
-static inline malloc_res cs_malloc_root_and_hold(collected_space *cs,
-        uint64_t rt_len, uint64_t da_size) {
-    return cs_malloc_p(cs, 1, rt_len, da_size, 1); 
+    return cs_malloc_object_p(cs, rt_len, da_size, 1);
 }
 
 // NOTE: somehow restrictions will need to be put in place
@@ -83,17 +73,32 @@ static inline malloc_res cs_malloc_root_and_hold(collected_space *cs,
 // Or maybe they should be allowed to?
 //
 // NOTE: root and deroot assume the user doesn't already have the lock on the given 
-// object! 
+// object! What about a fixed size array?? The user decides???
+
+typedef uint64_t cs_root_id;
+
+cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size);
+
+addr_book_vaddr cs_get_root_vaddr(collected_space *cs, cs_root_id root_id);
 
 // Turn a normal object into a root object.
-void cs_root(collected_space *cs, addr_book_vaddr non_root_vaddr);
+cs_root_id cs_root(collected_space *cs, addr_book_vaddr non_root_vaddr);
 
 // Turn a root object into a normal object.
-void cs_deroot(collected_space *cs, addr_book_vaddr root_vaddr);
+// Do nothing if there is nothing in the root set at the given id.
+void cs_deroot(collected_space *cs, cs_root_id root_id);
+
+typedef struct {
+    // The number of references in the reference table.
+    const uint64_t rt_len;
+
+    // The number of bytes in the data array.
+    const uint64_t da_size;
+} obj_header;
 
 // These calls are forwarded directly to the memory space.
-void *cs_get_read(collected_space *cs, addr_book_vaddr vaddr);
-void *cs_get_write(collected_space *cs, addr_book_vaddr vaddr);
+obj_header *cs_get_read(collected_space *cs, addr_book_vaddr vaddr);
+obj_header *cs_get_write(collected_space *cs, addr_book_vaddr vaddr);
 void cs_unlock(collected_space *cs, addr_book_vaddr vaddr);
 
 void cs_print(collected_space *cs);
