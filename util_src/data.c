@@ -138,26 +138,6 @@ struct util_broken_collection {
     uint64_t last_end;
 };
 
-uint64_t bc_get_num_tables(util_bc *bc) {
-    uint64_t num_tables = 0;
-
-    util_bc_table_header *iter = bc->first->prev;
-
-    while (iter) {
-        num_tables++;
-        iter = iter->prev;
-    }
-
-    iter = bc->first;
-
-    while (iter) {
-        num_tables++;
-        iter = iter->next;
-    }
-    
-    return num_tables;
-}
-
 static inline util_bc_table_header *new_util_bc_table(util_bc *bc) {
     util_bc_table_header *bc_t_h = safe_malloc(get_chnl(bc), 
             sizeof(util_bc_table_header) +
@@ -210,6 +190,26 @@ void delete_broken_collection(util_bc *bc) {
     }
 
     safe_free(bc);
+}
+
+uint64_t bc_get_num_tables(util_bc *bc) {
+    uint64_t num_tables = 0;
+
+    util_bc_table_header *iter = bc->first->prev;
+
+    while (iter) {
+        num_tables++;
+        iter = iter->prev;
+    }
+
+    iter = bc->first;
+
+    while (iter) {
+        num_tables++;
+        iter = iter->next;
+    }
+    
+    return num_tables;
 }
 
 void bc_push_back(util_bc *bc, void *src) {
@@ -329,5 +329,14 @@ void bc_foreach(util_bc *bc, cell_consumer c, void *ctx) {
     }
 }
 
+static void bc_len_consumer(void *cell, void *ctx) {
+    (*(uint64_t *)ctx)++;
+}
 
+uint64_t bc_len(util_bc *bc) {
+    uint64_t len = 0; 
+    bc_foreach(bc, bc_len_consumer, &len);
+
+    return len;
+}
 

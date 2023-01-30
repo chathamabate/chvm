@@ -44,4 +44,6 @@ typedef void (*cell_consumer)(void *cell, void *ctx);
 
 void bc_foreach(util_bc *bc, cell_consumer c, void *ctx);
 
+uint64_t bc_len(util_bc *bc);
+
 #endif

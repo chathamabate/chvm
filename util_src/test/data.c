@@ -88,8 +88,7 @@ static const chunit_test BC_NEW = {
     .t = test_new_broken_collection,
 };
 
-static void test_push_and_pop(chunit_test_context *tc, util_bc *bc, 
-        uint64_t pushes, uint8_t front) {
+static inline void bc_push_seq(util_bc *bc, uint64_t pushes, uint8_t front) {
     uint64_t i;
     for (i = 0; i < pushes; i++) {
         if (front) {
@@ -98,8 +97,13 @@ static void test_push_and_pop(chunit_test_context *tc, util_bc *bc,
             bc_push_back(bc, &i);
         }
     }
+}
 
-    uint64_t res;
+static void test_push_and_pop(chunit_test_context *tc, util_bc *bc, 
+        uint64_t pushes, uint8_t front) {
+    bc_push_seq(bc, pushes, front);
+
+    uint64_t i, res;
     for (i = 0; i < pushes; i++) {
         if (front) {
             bc_pop_front(bc, &res);
@@ -109,6 +113,8 @@ static void test_push_and_pop(chunit_test_context *tc, util_bc *bc,
 
         assert_eq_uint(tc, pushes - 1 - i, res);
     }
+
+    assert_eq_uint(tc, 0, bc_len(bc));
 }
 
 static void test_bc_back(chunit_test_context *tc) {
@@ -161,20 +167,77 @@ static const chunit_test BC_FRONT_DEL = {
     .t = test_bc_front_del,
 };
 
-
-
-static void test_bc_queue(chunit_test_context *tc, util_bc *bc, 
+static void test_bc_queue_p(chunit_test_context *tc, util_bc *bc, 
         uint64_t iters, uint64_t buffer_len, uint8_t front) {
-    uint64_t i;
-    for (i = 0; i < buffer_len; i++) {
-        if (front) {
-        }
-    }
-
-    uint64_t iter;
+    bc_push_seq(bc, buffer_len, front);
+     
+    uint64_t iter, i, res;
     for (iter = 0; iter < iters; iter++) {
+        bc_push_seq(bc, buffer_len, front);
+
+        for (i = 0; i < buffer_len; i++) {
+            if (front) {
+                bc_pop_back(bc, &res);
+            } else {
+                bc_pop_front(bc, &res);
+            }
+
+            // Note we are queueing here!
+            assert_eq_uint(tc, i, res);
+        } 
     } 
+
+    assert_eq_uint(tc, buffer_len, bc_len(bc));
 }
+
+static void test_bc_queue_back(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 3, 0);
+    test_bc_queue_p(tc, bc, 30, 5, 0);
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_QUEUE_BACK = {
+    .name = "Broken Collection Queue Back",
+    .t = test_bc_queue_back,
+    .timeout = 5,
+};
+
+static void test_bc_queue_back_del(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 4, 1);
+    test_bc_queue_p(tc, bc, 30, 5, 0);
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_QUEUE_BACK_DEL = {
+    .name = "Broken Collection Queue Back with Deletion",
+    .t = test_bc_queue_back_del,
+    .timeout = 5,
+};
+
+static void test_bc_queue_front(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 6, 0);
+    test_bc_queue_p(tc, bc, 30, 5, 1);
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_QUEUE_FRONT = {
+    .name = "Broken Collection Queue Front",
+    .t = test_bc_queue_front,
+    .timeout = 5,
+};
+
+static void test_bc_queue_front_del(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 3, 1);
+    test_bc_queue_p(tc, bc, 30, 7, 1);
+    delete_broken_collection(bc);
+
+}
+
+static const chunit_test BC_QUEUE_FRONT_DEL = {
+    .name = "Broken Collection Queue Back with Deletion",
+    .t = test_bc_queue_front_del,
+    .timeout = 5,
+};
 
 const chunit_test_suite UTIL_TEST_SUITE_BC = {
     .name = "Broken Collection Suite",
@@ -184,9 +247,12 @@ const chunit_test_suite UTIL_TEST_SUITE_BC = {
         &BC_BACK_DEL,
         &BC_FRONT,
         &BC_FRONT_DEL,
+
+        &BC_QUEUE_BACK,
+        &BC_QUEUE_BACK_DEL,
+        &BC_QUEUE_FRONT,
+        &BC_QUEUE_FRONT_DEL,
     },
-    .tests_len = 5
+    .tests_len = 9
 };
-
-
 
