@@ -99,7 +99,7 @@ static inline void bc_push_seq(util_bc *bc, uint64_t pushes, uint8_t front) {
     }
 }
 
-static void test_push_and_pop(chunit_test_context *tc, util_bc *bc, 
+static void test_bc_push_and_pop(chunit_test_context *tc, util_bc *bc, 
         uint64_t pushes, uint8_t front) {
     bc_push_seq(bc, pushes, front);
 
@@ -119,7 +119,7 @@ static void test_push_and_pop(chunit_test_context *tc, util_bc *bc,
 
 static void test_bc_back(chunit_test_context *tc) {
     util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 4, 0);
-    test_push_and_pop(tc, bc, 17, 0);
+    test_bc_push_and_pop(tc, bc, 17, 0);
     delete_broken_collection(bc);
 }
 
@@ -131,7 +131,7 @@ static const chunit_test BC_BACK = {
 
 static void test_bc_back_del(chunit_test_context *tc) {
     util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 3, 1);
-    test_push_and_pop(tc, bc, 25, 0);
+    test_bc_push_and_pop(tc, bc, 25, 0);
     assert_eq_uint(tc, 1, bc_get_num_tables(bc));
     delete_broken_collection(bc);
 }
@@ -144,7 +144,7 @@ static const chunit_test BC_BACK_DEL = {
 
 static void test_bc_front(chunit_test_context *tc) {
     util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 7, 0);
-    test_push_and_pop(tc, bc, 23, 1);
+    test_bc_push_and_pop(tc, bc, 23, 1);
     delete_broken_collection(bc);
 }
 
@@ -156,7 +156,7 @@ static const chunit_test BC_FRONT = {
 
 static void test_bc_front_del(chunit_test_context *tc) {
     util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 9, 1);
-    test_push_and_pop(tc, bc, 33, 1);
+    test_bc_push_and_pop(tc, bc, 33, 1);
     assert_eq_uint(tc, 1, bc_get_num_tables(bc));
     delete_broken_collection(bc);
 }
@@ -239,6 +239,25 @@ static const chunit_test BC_QUEUE_FRONT_DEL = {
     .timeout = 5,
 };
 
+static void test_bc_one(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 1, 1);
+    test_bc_push_and_pop(tc, bc, 30, 1);
+    test_bc_queue_p(tc, bc, 30, 7, 1);
+    delete_broken_collection(bc);
+
+    bc = new_broken_collection(1, sizeof(uint64_t), 1, 0);
+    test_bc_push_and_pop(tc, bc, 25, 0);
+    test_bc_queue_p(tc, bc, 30, 5, 1);
+    delete_broken_collection(bc);
+}
+
+// Test a broken collection with table size 1.
+static const chunit_test BC_ONE = {
+    .name = "Broken Collection Table Size 1",
+    .t = test_bc_one,
+    .timeout = 5,
+};
+
 const chunit_test_suite UTIL_TEST_SUITE_BC = {
     .name = "Broken Collection Suite",
     .tests = {
@@ -252,7 +271,8 @@ const chunit_test_suite UTIL_TEST_SUITE_BC = {
         &BC_QUEUE_BACK_DEL,
         &BC_QUEUE_FRONT,
         &BC_QUEUE_FRONT_DEL,
+        &BC_ONE,
     },
-    .tests_len = 9
+    .tests_len = 10
 };
 
