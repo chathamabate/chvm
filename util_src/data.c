@@ -212,7 +212,15 @@ uint64_t bc_get_num_tables(util_bc *bc) {
     return num_tables;
 }
 
-void bc_push_back(util_bc *bc, void *src) {
+static inline uint8_t bc_empty_inline(util_bc *bc) {
+    return bc->first == bc->last && bc->first_start == bc->last_end;
+}
+
+uint8_t bc_empty(util_bc *bc) {
+    return bc_empty_inline(bc);
+}
+
+void bc_push_back(util_bc *bc, const void *src) {
     // We know last_end will always be valid to place into.
     
     uint8_t *table = (uint8_t *)(bc->last + 1);
@@ -239,7 +247,7 @@ void bc_push_back(util_bc *bc, void *src) {
     bc->last_end = 0;
 }
 
-void bc_push_front(util_bc *bc, void *src) {
+void bc_push_front(util_bc *bc, const void *src) {
     // Here we must back up in the chain.
     if (bc->first_start == 0) {
         // If there is no where to back up to, malloc.
@@ -261,7 +269,7 @@ void bc_push_front(util_bc *bc, void *src) {
 }
 
 void bc_pop_back(util_bc *bc, void *dest) {
-    if (bc->first == bc->last && bc->first_start == bc->last_end) {
+    if (bc_empty_inline(bc)) {
         error_logf(1, 1, "bc_pop_back: cannot pop from empty bc");
     }
 
@@ -283,7 +291,7 @@ void bc_pop_back(util_bc *bc, void *dest) {
 }
 
 void bc_pop_front(util_bc *bc, void *dest) {
-    if (bc->first == bc->last && bc->first_start == bc->last_end) {
+    if (bc_empty_inline(bc)) {
         error_logf(1, 1, "bc_pop_back: cannot pop from empty bc");
     }
 

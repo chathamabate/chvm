@@ -258,6 +258,56 @@ static const chunit_test BC_ONE = {
     .timeout = 5,
 };
 
+static void test_bc_pop_fail(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 1, 1);
+    uint64_t i;
+    bc_pop_front(bc, &i); // Should error.
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_POP_FAIL = {
+    .name = "Broken Collection Pop Fail",
+    .t = test_bc_pop_fail,
+    .timeout = 5,
+    .should_fail = 1,
+};
+
+static void test_bc_string(chunit_test_context *tc) {
+    const uint64_t num_strings = 4;
+    const uint64_t num_chars = 5;
+
+    util_bc *bc = new_broken_collection(1, 
+            sizeof(char) * num_chars, 1, 1);
+
+
+    const char strs[num_strings][num_chars] = {
+        "more",
+        "yoyo",
+        "AyYo",
+        "Hexa",
+    };
+
+    uint64_t i;
+    for (i = 0; i < num_strings; i++) {
+        bc_push_back(bc, strs[i]);
+    }
+    
+    char buf[num_chars];
+    for (i = 0; i < num_strings; i++) {
+        bc_pop_back(bc, buf);
+
+        assert_eq_str(tc, strs[num_strings - 1 - i], buf);
+    }
+
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_STRING = {
+    .name = "Broken Collection String",
+    .t = test_bc_string,
+    .timeout = 5,
+};
+
 const chunit_test_suite UTIL_TEST_SUITE_BC = {
     .name = "Broken Collection Suite",
     .tests = {
@@ -272,7 +322,10 @@ const chunit_test_suite UTIL_TEST_SUITE_BC = {
         &BC_QUEUE_FRONT,
         &BC_QUEUE_FRONT_DEL,
         &BC_ONE,
+
+        &BC_POP_FAIL,
+        &BC_STRING,
     },
-    .tests_len = 10
+    .tests_len = 12
 };
 

@@ -34,8 +34,10 @@ void delete_broken_collection(util_bc *bc);
 
 uint64_t bc_get_num_tables(util_bc *bc);
 
-void bc_push_back(util_bc *bc, void *src);
-void bc_push_front(util_bc *bc, void *src);
+uint8_t bc_empty(util_bc *bc);
+
+void bc_push_back(util_bc *bc, const void *src);
+void bc_push_front(util_bc *bc, const void *src);
 
 void bc_pop_back(util_bc *bc, void *dest);
 void bc_pop_front(util_bc *bc, void *dest);
