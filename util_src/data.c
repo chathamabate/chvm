@@ -1,6 +1,7 @@
 #include "./data.h"
 #include "../core_src/mem.h"
 #include "../core_src/sys.h"
+#include <stdint.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -106,6 +107,8 @@ struct util_broken_collection {
     size_t cell_size;
     uint64_t table_size;
 
+    uint8_t delete_empty_tables;
+
     // NOTE: the table chain will always hold at least
     // 1 table.
     //
@@ -135,6 +138,26 @@ struct util_broken_collection {
     uint64_t last_end;
 };
 
+uint64_t bc_get_num_tables(util_bc *bc) {
+    uint64_t num_tables = 0;
+
+    util_bc_table_header *iter = bc->first->prev;
+
+    while (iter) {
+        num_tables++;
+        iter = iter->prev;
+    }
+
+    iter = bc->first;
+
+    while (iter) {
+        num_tables++;
+        iter = iter->next;
+    }
+    
+    return num_tables;
+}
+
 static inline util_bc_table_header *new_util_bc_table(util_bc *bc) {
     util_bc_table_header *bc_t_h = safe_malloc(get_chnl(bc), 
             sizeof(util_bc_table_header) +
@@ -146,7 +169,8 @@ static inline util_bc_table_header *new_util_bc_table(util_bc *bc) {
     return bc_t_h;
 }
 
-util_bc *new_broken_collection(uint8_t chnl, size_t cs, uint64_t ts) {
+util_bc *new_broken_collection(uint8_t chnl, size_t cs, uint64_t ts,
+        uint8_t del_empty_tables) {
     if (cs == 0 || ts == 0) {
         error_logf(1, 1, "new_broken_collection: bad sizes given");
     }
@@ -155,6 +179,7 @@ util_bc *new_broken_collection(uint8_t chnl, size_t cs, uint64_t ts) {
 
     bc->cell_size = cs;
     bc->table_size = ts;
+    bc->delete_empty_tables = del_empty_tables;
 
     util_bc_table_header *first_table = new_util_bc_table(bc);
 
@@ -244,6 +269,11 @@ void bc_pop_back(util_bc *bc, void *dest) {
     if (bc->last_end == 0) {
         bc->last = bc->last->prev;
         bc->last_end = bc->table_size;
+
+        if (bc->delete_empty_tables) {
+            safe_free(bc->last->next);
+            bc->last->next = NULL;
+        }
     }     
 
     bc->last_end--;
@@ -269,6 +299,11 @@ void bc_pop_front(util_bc *bc, void *dest) {
     if (bc->first_start == bc->table_size) {
         bc->first_start = 0;
         bc->first = bc->first->next;
+
+        if (bc->delete_empty_tables) {
+            safe_free(bc->first->prev); 
+            bc->first->prev = NULL;
+        }
     }
 }
 

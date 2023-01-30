@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+#include "../../core_src/io.h"
 #include "../../core_src/mem.h"
 
 static void test_new_linked_list(chunit_test_context *tc) {
@@ -64,6 +65,127 @@ const chunit_test_suite UTIL_TEST_SUITE_LL = {
         &LL_ADD_AND_GET,
     },
     .tests_len = 3
+};
+
+static void cell_print_uint(void *cell, void *ctx) {
+    safe_printf(" %" PRIu64, *(uint64_t *)cell);
+}
+
+static inline void bc_print_uint(util_bc *bc) {
+    safe_printf("BC:");
+    bc_foreach(bc, cell_print_uint, NULL);
+    safe_printf("\n");
+}
+
+static void test_new_broken_collection(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 4, 0);
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_NEW = {
+    .name = "New Broken Collection",
+    .timeout = 5,
+    .t = test_new_broken_collection,
+};
+
+static void test_push_and_pop(chunit_test_context *tc, util_bc *bc, 
+        uint64_t pushes, uint8_t front) {
+    uint64_t i;
+    for (i = 0; i < pushes; i++) {
+        if (front) {
+            bc_push_front(bc, &i);
+        } else {
+            bc_push_back(bc, &i);
+        }
+    }
+
+    uint64_t res;
+    for (i = 0; i < pushes; i++) {
+        if (front) {
+            bc_pop_front(bc, &res);
+        } else {
+            bc_pop_back(bc, &res); 
+        }
+
+        assert_eq_uint(tc, pushes - 1 - i, res);
+    }
+}
+
+static void test_bc_back(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 4, 0);
+    test_push_and_pop(tc, bc, 17, 0);
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_BACK = {
+    .name = "Broken Collection Back",
+    .timeout = 5,
+    .t = test_bc_back,
+};
+
+static void test_bc_back_del(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 3, 1);
+    test_push_and_pop(tc, bc, 25, 0);
+    assert_eq_uint(tc, 1, bc_get_num_tables(bc));
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_BACK_DEL = {
+    .name = "Broken Collection Back with Deletion",
+    .timeout = 5,
+    .t = test_bc_back_del,
+};
+
+static void test_bc_front(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 7, 0);
+    test_push_and_pop(tc, bc, 23, 1);
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_FRONT = {
+    .name = "Broken Collection Front",
+    .timeout = 5,
+    .t = test_bc_front,
+};
+
+static void test_bc_front_del(chunit_test_context *tc) {
+    util_bc *bc = new_broken_collection(1, sizeof(uint64_t), 9, 1);
+    test_push_and_pop(tc, bc, 33, 1);
+    assert_eq_uint(tc, 1, bc_get_num_tables(bc));
+    delete_broken_collection(bc);
+}
+
+static const chunit_test BC_FRONT_DEL = {
+    .name = "Broken Collection Front with Deletion",
+    .timeout = 5,
+    .t = test_bc_front_del,
+};
+
+
+
+static void test_bc_queue(chunit_test_context *tc, util_bc *bc, 
+        uint64_t iters, uint64_t buffer_len, uint8_t front) {
+    uint64_t i;
+    for (i = 0; i < buffer_len; i++) {
+        if (front) {
+        }
+    }
+
+    uint64_t iter;
+    for (iter = 0; iter < iters; iter++) {
+    } 
+}
+
+const chunit_test_suite UTIL_TEST_SUITE_BC = {
+    .name = "Broken Collection Suite",
+    .tests = {
+        &BC_NEW,
+        &BC_BACK,
+        &BC_BACK_DEL,
+        &BC_FRONT,
+        &BC_FRONT_DEL,
+    },
+    .tests_len = 5
 };
 
 

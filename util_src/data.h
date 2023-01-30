@@ -24,8 +24,15 @@ typedef struct util_broken_collection util_bc;
 
 // cs = size of each cell.
 // ts = number of cells in each table.
-util_bc *new_broken_collection(uint8_t chnl, size_t cs, uint64_t ts);
+// del_empty_tables = whether or not the bc should free tables when they are empty...
+// or just leave them be. (For a stack you may want to leave them, for a queue
+// you will want to delete)
+util_bc *new_broken_collection(uint8_t chnl, size_t cs, uint64_t ts, 
+        uint8_t del_empty_tables);
+
 void delete_broken_collection(util_bc *bc);
+
+uint64_t bc_get_num_tables(util_bc *bc);
 
 void bc_push_back(util_bc *bc, void *src);
 void bc_push_front(util_bc *bc, void *src);

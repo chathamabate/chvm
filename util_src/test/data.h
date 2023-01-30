@@ -4,5 +4,6 @@
 #include "../../testing_src/chunit.h"
 
 extern const chunit_test_suite UTIL_TEST_SUITE_LL;
+extern const chunit_test_suite UTIL_TEST_SUITE_BC;
 
 #endif
