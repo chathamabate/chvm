@@ -2,6 +2,7 @@
 #include "mb.h"
 #include "ms.h"
 #include "virt.h"
+#include "../util_src/data.h"
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
 #include "../core_src/sys.h"
@@ -14,15 +15,13 @@
 
 typedef enum {
     GC_NEWLY_ADDED = 0,
-
     GC_UNVISITED,
     GC_VISITED,
-
-    GC_ROOT,
 } gc_status_code;
 
 typedef struct {
     gc_status_code gc_status;
+    uint8_t root;
 } obj_pre_header;
 
 static const uint64_t GC_STAT_STRINGS_LEN = 4;
@@ -31,7 +30,6 @@ static const char *GC_STAT_STRINGS[GC_STAT_STRINGS_LEN] = {
     "GC Newly Added",
     "GC Unvisited",
     "GC Visited",
-    "GC Root",
 };
 
 typedef struct {
@@ -110,7 +108,8 @@ static malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
     addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
 
     // Set up Pre Header.
-    obj_p_h->gc_status = root ? GC_ROOT : GC_NEWLY_ADDED;
+    obj_p_h->gc_status = GC_NEWLY_ADDED;
+    obj_p_h->root = root;
 
     // Set up normal Header.
     *(uint64_t *)&(obj_h->rt_len) = rt_len;
@@ -182,14 +181,14 @@ cs_root_res cs_root(collected_space *cs, addr_book_vaddr vaddr) {
 
     obj_pre_header *obj_p_h = ms_get_write(cs->ms, vaddr);
 
-    if (obj_p_h->gc_status == GC_ROOT) {
+    if (obj_p_h->root) {
         ms_unlock(cs->ms, vaddr);
         res.status_code = CS_ALREADY_ROOT;
 
         return res;
     }
 
-    obj_p_h->gc_status = GC_ROOT;
+    obj_p_h->root = 1;
 
     ms_unlock(cs->ms, vaddr);
 
@@ -225,7 +224,9 @@ cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id) {
 
     // If the root vaddr is in the root set, it will always be a GC_ROOT.
     obj_pre_header *obj_p_h = ms_get_write(cs->ms, root_vaddr);
-    obj_p_h->gc_status = GC_NEWLY_ADDED;
+
+    obj_p_h->root = 0;
+
     ms_unlock(cs->ms, root_vaddr); 
 
     return CS_SUCCESS;
@@ -278,8 +279,8 @@ static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
     safe_printf("Object @ Vaddr (%"PRIu64", %"PRIu64")\n",
             v.table_index, v.cell_index);
 
-    safe_printf("Status: %s, RT Length: %"PRIu64", DA Size: %"PRIu64"\n",
-            GC_STAT_STRINGS[obj_p_h->gc_status], obj_h->rt_len, obj_h->da_size);
+    safe_printf("Root: %u, Status: %s, RT Length: %"PRIu64", DA Size: %"PRIu64"\n",
+            obj_p_h->root, GC_STAT_STRINGS[obj_p_h->gc_status], obj_h->rt_len, obj_h->da_size);
 
     addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
 
@@ -374,18 +375,58 @@ void cs_print(collected_space *cs) {
 
 static void obj_unvisit(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_pre_header *obj_p_h = paddr;
-
-    if (obj_p_h->gc_status != GC_ROOT) {
-        obj_p_h->gc_status = GC_UNVISITED;
-    }
+    obj_p_h->gc_status = GC_UNVISITED;
 }
 
 void cs_collect_garbage(collected_space *cs) {
     // Unvisit all non-root objects.
     ms_foreach(cs->ms, obj_unvisit, NULL, 1);
     
-    // Implement graph search with a stack/queue.
-    
+    // Implement graph search with a stack.
+    //
+    // Stack Constant Property:
+    //      An object is only added to the stack if it is yet to
+    //      be visited. Upon adding the object to the stack,
+    //      it is marked as visited.
+    //
+    util_bc *stack = new_broken_collection(get_chnl(cs), 
+            sizeof(addr_book_vaddr), 100, 1);
+
+
+    safe_rdlock(&(cs->root_set_lock));
+
+    // Place all roots in our stack.
+    addr_book_vaddr vaddr;
+    uint8_t unvisited = 0;
+
+    uint64_t i;
+    for (i = 0; i < cs->root_set_cap; i++) {
+        if (cs->root_set[i].allocated) {
+            vaddr = cs->root_set[i].vaddr;
+
+            obj_pre_header *obj_p_h = ms_get_write(cs->ms, vaddr);
+
+            if (obj_p_h->gc_status == GC_UNVISITED) {
+                obj_p_h->gc_status = GC_VISITED;
+                unvisited = 1;
+            }
+
+            ms_unlock(cs->ms, vaddr);
+
+            // Do this push here so that we have the write lock for as
+            // short a time as possible.
+            if (unvisited) {
+                bc_push_back(stack, &vaddr);
+                unvisited = 0;
+            }
+        }
+    }
+
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    while (!bc_empty(stack)) {
+        
+    }
 }
 
 void cs_try_full_shift(collected_space *cs) {
