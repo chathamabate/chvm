@@ -58,9 +58,6 @@ void delete_collected_space(collected_space *cs);
 // The reference out from roots will determine which objects
 // are not GC'd.
 //
-// Users refer to root objects via an index.
-// Users refer to references in a root object via an offset.
-
 // This create an object in the underlying mem space and returns its
 // information (Depending on whether hold is provided.
 malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
@@ -111,6 +108,10 @@ typedef struct {
 
 // Turn a normal object into a root object.
 // NOTE: if a given object is already a root UINT64_MAX is returned.
+//
+// NOTE: one must be careful when using this. (and deroot)
+// If an object is totally unreachable from the root set, it may be collected
+// before this is called on said object... (could also apply to said object's references)
 cs_root_res cs_root(collected_space *cs, addr_book_vaddr vaddr);
 
 // Create a root object from scratch.
@@ -137,6 +138,20 @@ void cs_unlock(collected_space *cs, addr_book_vaddr vaddr);
 void cs_print(collected_space *cs);
 
 // Run garbage collection algorithm.
+//
+// NOTE: This will free all objects which are not reachable from the 
+// root set at the time of this call. (root set lock will be held
+// for the entire duration of this call.
+// This prevents any confusion inside the garbage collector.
+//
+// NOTE: The user CANNOT hold a virtual address to any unreachable objects.
+// The objects could be garbage collected... thus rendering the virtaul address
+// invald. When making an object a root, make sure a reachable object holds a reference
+// to the original object before it is made a root.
+//
+// Once an object is marked as a root, it can be forgotten about... 
+// it will never be GC'd
+//
 void cs_collect_garbage(collected_space *cs);
 
 // Run try full shift on the underlying memory space.

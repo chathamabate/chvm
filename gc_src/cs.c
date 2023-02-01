@@ -17,11 +17,11 @@ typedef enum {
     GC_NEWLY_ADDED = 0,
     GC_UNVISITED,
     GC_VISITED,
+    GC_ROOT,
 } gc_status_code;
 
 typedef struct {
     gc_status_code gc_status;
-    uint8_t root;
 } obj_pre_header;
 
 static const uint64_t GC_STAT_STRINGS_LEN = 4;
@@ -30,6 +30,7 @@ static const char *GC_STAT_STRINGS[GC_STAT_STRINGS_LEN] = {
     "GC Newly Added",
     "GC Unvisited",
     "GC Visited",
+    "GC Root", 
 };
 
 typedef struct {
@@ -49,9 +50,9 @@ struct collected_space_struct {
     // It will be stored in the memory space and will
     // be refered to by a virtual address.
     //
-    // However, it will only have a reference table, no data.
-    // The user will always use root objects to access other
-    // arbitrary objects.
+    // NOTE: This lock must be held whenever the root status
+    // of an object is being edited... not just for when
+    // we are editing the set below.
     pthread_rwlock_t root_set_lock;
 
     uint64_t root_set_cap;
@@ -108,8 +109,7 @@ static malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
     addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
 
     // Set up Pre Header.
-    obj_p_h->gc_status = GC_NEWLY_ADDED;
-    obj_p_h->root = root;
+    obj_p_h->gc_status = root ? GC_ROOT : GC_NEWLY_ADDED;
 
     // Set up normal Header.
     *(uint64_t *)&(obj_h->rt_len) = rt_len;
@@ -130,15 +130,12 @@ static malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
     return res;
 }
 
-
 malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
         uint64_t da_size, uint8_t hold) {
     return cs_malloc_p(cs, rt_len, da_size, 0, hold);
 }
 
-static cs_root_id cs_store_root(collected_space *cs, addr_book_vaddr vaddr) {
-    safe_wrlock(&(cs->root_set_lock));
-
+static cs_root_id cs_store_root_unsafe(collected_space *cs, addr_book_vaddr vaddr) {
     // First we pop off the next free entry index from the root set.
     // Resizing if we need to.
 
@@ -169,67 +166,71 @@ static cs_root_id cs_store_root(collected_space *cs, addr_book_vaddr vaddr) {
     cs->root_set[root_ind].allocated = 1;
     cs->root_set[root_ind].vaddr = vaddr;
 
-    safe_rwlock_unlock(&(cs->root_set_lock));
-
     return root_ind;
 }
 
 cs_root_res cs_root(collected_space *cs, addr_book_vaddr vaddr) {
     cs_root_res res;
 
-    res.root_id = UINT64_MAX;
-
+    safe_wrlock(&(cs->root_set_lock));
     obj_pre_header *obj_p_h = ms_get_write(cs->ms, vaddr);
 
-    if (obj_p_h->root) {
-        ms_unlock(cs->ms, vaddr);
-        res.status_code = CS_ALREADY_ROOT;
+    res.root_id = UINT64_MAX;
 
-        return res;
+    if (obj_p_h->gc_status == GC_ROOT) {
+        res.status_code = CS_ALREADY_ROOT;
+    } else {
+        obj_p_h->gc_status = GC_ROOT;
+        res.root_id = cs_store_root_unsafe(cs, vaddr);
+
+        res.status_code = CS_SUCCESS; 
     }
 
-    obj_p_h->root = 1;
-
     ms_unlock(cs->ms, vaddr);
-
-    res.status_code = CS_SUCCESS; 
-    res.root_id = cs_store_root(cs, vaddr);
+    safe_rwlock_unlock(&(cs->root_set_lock));
 
     return res;
 }
 
 cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size) {
+    safe_wrlock(&(cs->root_set_lock));
     addr_book_vaddr root_vaddr = cs_malloc_p(cs, rt_len, da_size, 1, 0).vaddr;
-    return cs_store_root(cs, root_vaddr);
+    cs_root_id root_id = cs_store_root_unsafe(cs, root_vaddr);
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    return root_id; 
 }
 
 cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id) {
     addr_book_vaddr root_vaddr;
 
-    safe_rdlock(&(cs->root_set_lock));
+    cs_root_status_code res_code;
+
+    safe_wrlock(&(cs->root_set_lock));
 
     if (root_id >= cs->root_set_cap) {
-        safe_rwlock_unlock(&(cs->root_set_lock));
-        return CS_ROOT_ID_OUT_OF_BOUNDS;
+        res_code = CS_ROOT_ID_OUT_OF_BOUNDS;
+    } else if (!(cs->root_set[root_id].allocated)) {
+        res_code = CS_ROOT_ID_NOT_ALLOCATED;
+    } else {
+        res_code = CS_SUCCESS;
+
+        root_vaddr = cs->root_set[root_id].vaddr;
+
+        obj_pre_header *obj_p_h = ms_get_write(cs->ms, root_vaddr);
+        obj_p_h->gc_status = GC_NEWLY_ADDED;
+        ms_unlock(cs->ms, root_vaddr);
+
+        // Finally, remove from root_set, push to front of 
+        // free list.
+        cs->root_set[root_id].allocated = 0;
+        cs->root_set[root_id].next_free = cs->free_head;
+        cs->free_head = root_id;
     }
 
-    if (!(cs->root_set[root_id].allocated)) {
-        safe_rwlock_unlock(&(cs->root_set_lock));
-        return CS_ROOT_ID_NOT_ALLOCATED;
-    }
-
-    root_vaddr = cs->root_set[root_id].vaddr;
-     
     safe_rwlock_unlock(&(cs->root_set_lock));
 
-    // If the root vaddr is in the root set, it will always be a GC_ROOT.
-    obj_pre_header *obj_p_h = ms_get_write(cs->ms, root_vaddr);
-
-    obj_p_h->root = 0;
-
-    ms_unlock(cs->ms, root_vaddr); 
-
-    return CS_SUCCESS;
+    return res_code;
 }
 
 cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id) {
@@ -279,8 +280,8 @@ static void obj_print(addr_book_vaddr v, void *paddr, void *ctx) {
     safe_printf("Object @ Vaddr (%"PRIu64", %"PRIu64")\n",
             v.table_index, v.cell_index);
 
-    safe_printf("Root: %u, Status: %s, RT Length: %"PRIu64", DA Size: %"PRIu64"\n",
-            obj_p_h->root, GC_STAT_STRINGS[obj_p_h->gc_status], obj_h->rt_len, obj_h->da_size);
+    safe_printf("Status: %s, RT Length: %"PRIu64", DA Size: %"PRIu64"\n",
+            GC_STAT_STRINGS[obj_p_h->gc_status], obj_h->rt_len, obj_h->da_size);
 
     addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
 
@@ -361,9 +362,15 @@ void cs_print(collected_space *cs) {
         root_set_entry_print_unsafe(cs->root_set + i);
     }
 
-    safe_rwlock_unlock(&(cs->root_set_lock));
-
     ms_foreach(cs->ms, obj_print, NULL, 0);
+
+    // NOTE: I decided that if we are going to print out
+    // the full collected space, the root set should stay constant during 
+    // this time. (... i.e. garbage collection should also not be occurring)
+    //
+    // Probs should never call cs_print in parallel with anything anyways.
+    //
+    safe_rwlock_unlock(&(cs->root_set_lock));
 }
 
 // NOTE: GC Steps :
@@ -384,13 +391,20 @@ void cs_collect_garbage(collected_space *cs) {
     
     // Implement graph search with a stack.
     //
-    // Stack Constant Property:
-    //      An object is only added to the stack if it is yet to
-    //      be visited. Upon adding the object to the stack,
-    //      it is marked as visited.
+    // While the stack isn't empty, objects will be popped one
+    // at a time.
+    //
+    // When an object is popped, we will acquire its write lock.
+    // If the object is marked as visited, we will 
+    // release its lock and move on.
+    // Otherwise, we will mark it as visitied, then add all of
+    // its references to the stack. Release its lock, then move on.
+    // 
+    // I considered checking for visited before adding to the stack,
+    // but I don't like acquire nested locks.
     //
     util_bc *stack = new_broken_collection(get_chnl(cs), 
-            sizeof(addr_book_vaddr), 100, 1);
+            sizeof(addr_book_vaddr), 100, 0);
 
 
     safe_rdlock(&(cs->root_set_lock));
@@ -408,7 +422,7 @@ void cs_collect_garbage(collected_space *cs) {
 
             if (obj_p_h->gc_status == GC_UNVISITED) {
                 obj_p_h->gc_status = GC_VISITED;
-                unvisited = 1;
+                unvisited = 1; // We will be changingg back...
             }
 
             ms_unlock(cs->ms, vaddr);
