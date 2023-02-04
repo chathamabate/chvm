@@ -13,6 +13,39 @@
 #include <stdio.h>
 #include <stdint.h>
 
+// NOTE: Rigorous GC Notes:
+// 
+// Garbage collection will be an algorithm with a start
+// and finish which frees memory it guarantees is unreachable by the user.
+// 
+// I will attempt to keep GC completely concurrent. That is, it will never stop
+// the entire process. Instead it will pop in and out of user objects using
+// a background thread.
+//
+// There will be one root object which is always reachable. (Or "Live")
+// An arbitrary user object o is "Live" if there exists a path of references
+// starting at the root and ending at o. 
+//
+// GC will start with a "paint white" phase. By the end of this phase, all objects
+// will be marked "unvisited" or "newly added".
+//
+// "newly added" will refer to objects which were created too late for
+// the algortihm to consider them for garbage collection.
+//
+// GC will continue with a "paint black" phase. This phase will strategically
+// "visit" user objects.
+// 
+// This phase ends when it can guarantee :
+//      1) All reachable objects are marked "visited" or "newly added".
+//      2) All objects which were unreachable before the "paint white" phase
+//         started are marked "unvisited".
+//
+// After this phase, a simple "sweep" phase will occur, which will free all objects
+// marked "unvisited".
+//
+//
+//
+
 typedef enum {
     GC_NEWLY_ADDED = 0,
     GC_UNVISITED,
@@ -240,21 +273,15 @@ cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id) {
     safe_rdlock(&(cs->root_set_lock));
 
     if (root_id >= cs->root_set_cap) {
-        safe_rwlock_unlock(&(cs->root_set_lock));
         res.status_code = CS_ROOT_ID_OUT_OF_BOUNDS;
-        return res;
-    }
-
-    if (!(cs->root_set[root_id].allocated)) {
-        safe_rwlock_unlock(&(cs->root_set_lock));
+    } else if (!(cs->root_set[root_id].allocated)) {
         res.status_code = CS_ROOT_ID_NOT_ALLOCATED;
-        return res;
+    } else {
+        res.status_code = CS_SUCCESS;
+        res.root_vaddr = cs->root_set[root_id].vaddr;
     }
 
-    res.root_vaddr = cs->root_set[root_id].vaddr;
     safe_rwlock_unlock(&(cs->root_set_lock));
-
-    res.status_code = CS_SUCCESS;
 
     return res;
 }
@@ -373,35 +400,72 @@ void cs_print(collected_space *cs) {
     safe_rwlock_unlock(&(cs->root_set_lock));
 }
 
-// NOTE: GC Steps :
-//
-// 1) Set all non-root objects as unvisited.
-// 2) Perform a graph search from each root marking objects
-// visited.
-// 3) Delete all unvisited objects from the memory space.
-
 static void obj_unvisit(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_pre_header *obj_p_h = paddr;
-    obj_p_h->gc_status = GC_UNVISITED;
+
+    if (obj_p_h->gc_status != GC_ROOT) {
+        obj_p_h->gc_status = GC_UNVISITED;
+    }
 }
 
 void cs_collect_garbage(collected_space *cs) {
+    // NOTE: 
+    // GC Definitions and Assumptions :
+    // 
+    // An object o1 is connected to another object o2 iff
+    // the virtual address of o2 is in o1's reference table.
+    //
+    // Given a sequnce of objects o1, o2, o3, ... oN where N > 1, there is said
+    // to be a path from o1 to oN iff oi is connected to oi+1 for all 1 <= i < N.
+    //
+    // Given an object o, o is either a root or it is not.
+    //
+    // Given an object s, s is reacheable iff there exists a root object o such that
+    // there is a path from o to s.
+    //
+    // Assume that once an object is not reacheable, it is instantly GC'd
+    //
+    // GC algo notes:
+    // During all phases of the algorithm normal objects can be added to the 
+    // collected space. They will be marked as Newly Added.
+    // Objects can also be arbitrary upgraded to root status and downgraded to
+    // normal status. When an object is downgraded it is marked as Newly Added.
+    //
+    // 1 - Mark all non root objects as Unvisited (Painting White)
+    //      * If an object is added after its address is iterated over, said
+    //      object is simply ignored until the next GC cycle. Otherwise, it is 
+    //      painted white and considered.
+    //
+    //      * If an object is randomly upgraded to root. Nothing bad happens.
+    //
+    //      * If an object is randomly downgraded, it is set as Newly Added.
+    //      Then the 1st bullet points notes apply.
+    //
+    // 2 - Perform a graph search algorithm from the roots (Painting Black)
+    //      * All roots at the start of this phase are added to a stack.
+    //      If an arbitrary object is upgraded to a root and then disconnected 
+    //      from other roots during this phase, there is an error possiblity.
+    //      Objects connected to this new root could be GC'd as the new root
+    //      was not added to the OG stack to begin with.
+    //
+    //      * Downgrading roots won't really matter. 
+    //
+    //      * For the first bullet point's reason, we will make the root set
+    //      constant during this phase.
+    //
+    // 3 - Deleteing all objects which remain unvisited or "white" (Sweeping)
+    //      * No problems here with object addition and root modification.
+    //      If an object is white, it was not reacheable, just it is impossible
+    //      said object is than turned into somethi
+    //
+   
+    
     // Unvisit all non-root objects.
     ms_foreach(cs->ms, obj_unvisit, NULL, 1);
     
     // Implement graph search with a stack.
     //
-    // While the stack isn't empty, objects will be popped one
-    // at a time.
-    //
-    // When an object is popped, we will acquire its write lock.
-    // If the object is marked as visited, we will 
-    // release its lock and move on.
-    // Otherwise, we will mark it as visitied, then add all of
-    // its references to the stack. Release its lock, then move on.
-    // 
-    // I considered checking for visited before adding to the stack,
-    // but I don't like acquire nested locks.
+    // Only 
     //
     util_bc *stack = new_broken_collection(get_chnl(cs), 
             sizeof(addr_book_vaddr), 100, 0);
@@ -409,32 +473,6 @@ void cs_collect_garbage(collected_space *cs) {
 
     safe_rdlock(&(cs->root_set_lock));
 
-    // Place all roots in our stack.
-    addr_book_vaddr vaddr;
-    uint8_t unvisited = 0;
-
-    uint64_t i;
-    for (i = 0; i < cs->root_set_cap; i++) {
-        if (cs->root_set[i].allocated) {
-            vaddr = cs->root_set[i].vaddr;
-
-            obj_pre_header *obj_p_h = ms_get_write(cs->ms, vaddr);
-
-            if (obj_p_h->gc_status == GC_UNVISITED) {
-                obj_p_h->gc_status = GC_VISITED;
-                unvisited = 1; // We will be changingg back...
-            }
-
-            ms_unlock(cs->ms, vaddr);
-
-            // Do this push here so that we have the write lock for as
-            // short a time as possible.
-            if (unvisited) {
-                bc_push_back(stack, &vaddr);
-                unvisited = 0;
-            }
-        }
-    }
 
     safe_rwlock_unlock(&(cs->root_set_lock));
 
