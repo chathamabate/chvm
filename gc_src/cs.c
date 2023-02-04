@@ -43,8 +43,52 @@
 // After this phase, a simple "sweep" phase will occur, which will free all objects
 // marked "unvisited".
 //
+// Notes and Results on about ideas :
 //
+// If an object becomes unreachable, it is impossible for it every to become 
+// reachable again. (That is, a user only has access to reachable objects and the
+// values stored in their fields)
 //
+// An object should on be marked as "visited" when it is guaranteed all of the object's
+// references (at the time of visitation) will be visited at some point in the
+// future.
+//
+// When object is not visited, but guaranteed to be visited, it will be marked "in-progress".
+//
+// If GC is running, when the user requests the write lock on an object, we should
+// guarantee the object is "visited" before the user gets write access to the object.
+//
+// When the user requests the write lock on an "unvisited" or "in-progress" object,
+// the user thread will perform the visit.
+//
+// "paint black" can only end when the GC thread has no more objects left to visit
+// and all user visits are complete.
+// 
+// The GC algorithm will use a stack to perform a DFS on the graph during the 
+// "paint black" phase.
+//
+// The GC thread will be able to stop this phase when it is unoccupied and 
+// the stack is empty.
+//
+// Reasoning :
+// This stop condition would only be an issue iff when this condition is met
+// a user were in the process of visiting an object.
+// That is "paint black" finishes before all reachable objects are visited.
+//
+// CASE 1: the user is visiting an "in-progress" object.
+// Since the object was marked "in-progress", it must've been added to the stack.
+// Either it is still in the stack, or the GC thread just popped it off the stack and
+// is now waiting, otherwise it would've been marked "visited".
+//
+// CASE 2: the user is visiting an "unvisited" object.
+// This is key, no "visited" object is directly connected to an "unvisited" object.
+// Thus, the existence of an "unvisited" object implies the existence of an "in-progress"
+// object. Using reasoning from CASE 1, we know the existence of an "in-progress" object
+// makes the stop condition impossible.
+//
+// Lastly, the operations described above ("GC thread waiting on the stack", "user visiting
+// an object", etc..) will all require atomic GC operations. There will be a GC lock to ensure
+// object visits happen sequentially.
 
 typedef enum {
     GC_NEWLY_ADDED = 0,
