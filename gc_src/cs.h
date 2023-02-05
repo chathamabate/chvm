@@ -51,13 +51,7 @@ void delete_collected_space(collected_space *cs);
 // extremely slow.
 //
 // We will have to make sure compilers for the VM know this.
-
-// The gc_space will hold an array list of "root objects".
-// A "root object" is always live (that is it will never
-// be garbage collected)
-// The reference out from roots will determine which objects
-// are not GC'd.
-//
+ 
 // This create an object in the underlying mem space and returns its
 // information (Depending on whether hold is provided.
 malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
@@ -73,25 +67,10 @@ static inline malloc_res cs_malloc_object_and_hold(collected_space *cs,
     return cs_malloc_object_p(cs, rt_len, da_size, 1);
 }
 
-// NOTE: somehow restrictions will need to be put in place
-// by the assembler to make sure the user doesn't f everything up.
-// Or maybe they should be allowed to?
-//
-// NOTE: root and deroot assume the user doesn't already have the lock on the given 
-// object! What about a fixed size array?? The user decides???
-
 typedef uint64_t cs_root_id;
 
 typedef enum {
     CS_SUCCESS = 0,
-
-    // This is used when you try to promote an object which
-    // is already a root. 
-    CS_ALREADY_ROOT,
-
-    // This is used when you try to deroot and object which
-    // is not a root.
-    CS_NOT_A_ROOT, 
 
     // This is used when an out of bounds root id is given.
     CS_ROOT_ID_OUT_OF_BOUNDS,
@@ -100,26 +79,25 @@ typedef enum {
     CS_ROOT_ID_NOT_ALLOCATED,
 } cs_root_status_code;
 
-
 typedef struct {
     cs_root_status_code status_code;
     cs_root_id root_id;
 } cs_root_res;
 
-// Turn a normal object into a root object.
-// NOTE: if a given object is already a root UINT64_MAX is returned.
+// NOTE: see implementation file to see notes on how rooting works in
+// the presence of GC.
 //
-// NOTE: one must be careful when using this. (and deroot)
-// If an object is totally unreachable from the root set, it may be collected
-// before this is called on said object... (could also apply to said object's references)
-cs_root_res cs_root(collected_space *cs, addr_book_vaddr vaddr);
+// NOTE: This allows for the same object to made an object twice.
+// not sure why you'd do this, but won't break anything.
+//
+// Turn a normal object into a root object.
+// Returns root id of new root.
+cs_root_id cs_root(collected_space *cs, addr_book_vaddr vaddr);
 
 // Create a root object from scratch.
 cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size);
 
 // Turn a root object into a normal object.
-// If something is derooted 0 is returned.
-// (Otherwise) if root_id is invalid return 1.
 cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id);
 
 typedef struct {
@@ -132,26 +110,16 @@ cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id);
 
 // These calls are forwarded directly to the memory space.
 obj_header *cs_get_read(collected_space *cs, addr_book_vaddr vaddr);
+
+// NOTE: This has special behavoir in the presence of GC.
 obj_header *cs_get_write(collected_space *cs, addr_book_vaddr vaddr);
+
 void cs_unlock(collected_space *cs, addr_book_vaddr vaddr);
 
 void cs_print(collected_space *cs);
 
 // Run garbage collection algorithm.
-//
-// NOTE: This will free all objects which are not reachable from the 
-// root set at the time of this call. (root set lock will be held
-// for the entire duration of this call.
-// This prevents any confusion inside the garbage collector.
-//
-// NOTE: The user CANNOT hold a virtual address to any unreachable objects.
-// The objects could be garbage collected... thus rendering the virtaul address
-// invald. When making an object a root, make sure a reachable object holds a reference
-// to the original object before it is made a root.
-//
-// Once an object is marked as a root, it can be forgotten about... 
-// it will never be GC'd
-//
+// See implementation file for notes.
 void cs_collect_garbage(collected_space *cs);
 
 // Run try full shift on the underlying memory space.
