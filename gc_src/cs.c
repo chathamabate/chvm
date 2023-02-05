@@ -12,6 +12,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <sys/_pthread/_pthread_rwlock_t.h>
 
 // NOTE: Rigorous GC Notes:
 // 
@@ -65,8 +66,10 @@
 // are marked "unvisited" will be added to the visit-stack and marked "in-progress".
 // 
 // At the beginning of the "paint black" phase of the algorithm, all roots will be pushed onto
-// the in-progress-stack. If an object is rooted in the middle of the "paint black" phase
-// and is "unvisited" it will be pushed onto the in-progress stack.
+// the in-progress-stack. It is important to realize that if an object is rooted in
+// the middle of the "paint black" phase, nothing really changes. There is no need to
+// add said object to the in-progress stack as said object is guaranteed to have been
+// reachable at the beginning of "paint black" and thus will be visited.
 //
 // When the user requests the write lock on an object marked "in-progress" or "unvisited",
 // the object will be visited then and there by the user thread. That is all of the object's
@@ -122,6 +125,7 @@
 
 typedef enum {
     GC_NEWLY_ADDED = 0,
+
     GC_UNVISITED,       // White.
     GC_IN_PROGRESS,     // Grey.    
     GC_VISITED,         // Black.
@@ -152,19 +156,21 @@ typedef struct {
 struct collected_space_struct {
     mem_space * const ms;
 
-    // This lock must be acquired whenevery any type of 
-    // GC work is being executed.
-    pthread_mutex_t gc_lock;
+    // Lock for accessing the progress fields.
+    pthread_rwlock_t gc_stat_lock;
+    struct {
+        uint8_t gc_in_progress : 1;
+        uint8_t paint_black_in_progress : 1;
+    };
 
-    // 1 When GC is going on.
-    // 0 otherwise.
-    uint8_t gc_in_progress;
+    pthread_mutex_t in_progress_stack_lock;
+    util_bc *in_progress_stack;
 
-    // 1 if the paint black phase is running.
-    // 0 otherwise.
-    uint8_t paint_black_in_progress;
+    // No need for a lock on this guy.
+    util_bc *visit_stack;
 
-    util_bc *gc_stack;
+
+    pthread_rwlock_t root_set_lock;
 
     // Fields for the root set.
     uint64_t root_set_cap;
@@ -174,7 +180,6 @@ struct collected_space_struct {
     root_set_entry *root_set;
 };
 
-// TODO: rewrite the collected space code here!
 
 collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed, 
         uint64_t adb_t_cap, uint64_t mb_m_bytes) {
@@ -184,13 +189,18 @@ collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed,
     *(mem_space **)&(cs->ms) = 
         new_mem_space_seed(chnl, seed, adb_t_cap, mb_m_bytes);
 
-    safe_mutex_init(&(cs->gc_lock), NULL);
+    safe_rwlock_init(&(cs->gc_stat_lock), NULL);
     cs->gc_in_progress = 0;
-    cs->gc_stack = new_broken_collection(chnl, sizeof(addr_book_vaddr), 40, 0);
+    cs->paint_black_in_progress = 0;
 
+    safe_mutex_init(&(cs->in_progress_stack_lock), NULL);
+    cs->in_progress_stack = new_broken_collection(chnl, sizeof(addr_book_vaddr), 100, 0);
+    cs->visit_stack = new_broken_collection(chnl, sizeof(addr_book_vaddr), 100, 0);
+
+    safe_rwlock_init(&(cs->root_set_lock), NULL);
     cs->root_set = safe_malloc(chnl, sizeof(root_set_entry) * 1);
     cs->root_set_cap = 1;
-    uint64_t free_head = 0;
+    cs->free_head = 0;
     cs->root_set[0].allocated = 0;
     cs->root_set[0].next_free = UINT64_MAX;
 
@@ -198,10 +208,14 @@ collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed,
 }
 
 void delete_collected_space(collected_space *cs) {
-    safe_mutex_destroy(&(cs->gc_lock));
-    delete_broken_collection(cs->gc_stack);
-    safe_free(cs->root_set);
+    safe_rwlock_destroy(&(cs->gc_stat_lock));
+    safe_mutex_destroy(&(cs->in_progress_stack_lock));
+    safe_rwlock_destroy(&(cs->root_set_lock));
 
+    delete_broken_collection(cs->in_progress_stack);
+    delete_broken_collection(cs->visit_stack);
+
+    safe_free(cs->root_set);
     delete_mem_space(cs->ms);
     
     safe_free(cs);
@@ -256,9 +270,34 @@ malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len,
     return res;
 }
 
-static cs_root_id cs_store_root_unsafe(collected_space *cs, addr_book_vaddr vaddr) {
-    // First we pop off the next free entry index from the root set.
-    // Resizing if we need to.
+static inline  uint8_t cs_gc_in_progress(collected_space *cs) {
+    uint8_t gc_in_progress;
+
+    safe_rdlock(&(cs->gc_stat_lock));
+    gc_in_progress = cs->gc_in_progress;
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+    return gc_in_progress;
+}
+
+static inline  uint8_t cs_paint_black_in_progress(collected_space *cs) {
+    uint8_t paint_black_in_progress;
+
+    safe_rdlock(&(cs->gc_stat_lock));
+    paint_black_in_progress = cs->paint_black_in_progress;
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+    return paint_black_in_progress;
+}
+
+static inline void cs_set_paint_black_in_progress(collected_space *cs, uint8_t ip) {
+    safe_wrlock(&(cs->gc_stat_lock));
+    cs->paint_black_in_progress = ip;
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
+}
+
+cs_root_id cs_root(collected_space *cs, addr_book_vaddr vaddr) {
+    safe_wrlock(&(cs->root_set_lock));
 
     if (cs->free_head == UINT64_MAX) {
         // No free elements! ... resize!
@@ -287,49 +326,22 @@ static cs_root_id cs_store_root_unsafe(collected_space *cs, addr_book_vaddr vadd
     cs->root_set[root_ind].allocated = 1;
     cs->root_set[root_ind].vaddr = vaddr;
 
+    safe_rwlock_unlock(&(cs->root_set_lock));
+
+    // All we do is add the root to the root set, nothing else.
+
     return root_ind;
 }
 
-cs_root_id cs_root(collected_space *cs, addr_book_vaddr vaddr) {
-    safe_mutex_lock(&(cs->gc_lock));
-
-    cs_root_id id = cs_store_root_unsafe(cs, vaddr);
-
-    if (cs->paint_black_in_progress) {
-        obj_pre_header *obj_p_h = ms_get_write(cs->ms, vaddr);        
-
-        if (obj_p_h->gc_status == GC_UNVISITED) {
-            obj_p_h->gc_status = GC_IN_PROGRESS; 
-            bc_push_back(cs->gc_stack, &vaddr);
-        }
-
-        ms_unlock(cs->ms, vaddr);
-    }
-
-    safe_mutex_unlock(&(cs->gc_lock));
-
-    return id;
-}
-
 cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size) {
-    cs_root_id root_id;
-
-    safe_mutex_lock(&(cs->gc_lock));
-     
-    // The is guaranteed to be "newly added".
-    // Shouldn't matter if we are in GC or not.
-    malloc_res res = cs_malloc_p(cs, rt_len, da_size, 0);
-    root_id = cs_store_root_unsafe(cs, res.vaddr);
-        
-    safe_mutex_unlock(&(cs->gc_lock));
-
-    return root_id; 
+    addr_book_vaddr vaddr = cs_malloc_p(cs, rt_len, da_size, 0).vaddr;
+    return cs_root(cs, vaddr);
 }
 
 cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id) {
     cs_root_status_code res_code;
 
-    safe_mutex_lock(&(cs->gc_lock));
+    safe_wrlock(&(cs->root_set_lock));
     addr_book_vaddr root_vaddr;
 
     if (root_id >= cs->root_set_cap) {
@@ -339,8 +351,6 @@ cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id) {
     } else {
         res_code = CS_SUCCESS;
 
-        root_vaddr = cs->root_set[root_id].vaddr;
-
         // NOTE: this has no affect on GC if the algorithm 
         // is mid "paint black" phase.
         // DO NOT need to edit the object itself.
@@ -349,9 +359,8 @@ cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id) {
         cs->root_set[root_id].next_free = cs->free_head;
         cs->free_head = root_id;
     }
-
-    safe_mutex_unlock(&(cs->gc_lock));
-
+    safe_rwlock_unlock(&(cs->root_set_lock));
+    
     return res_code;
 }
 
@@ -359,9 +368,7 @@ cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id) {
     cs_get_root_res res;
     res.root_vaddr = NULL_VADDR;
 
-    // NOTE: in the future, consider giving the root set its own lock?
-
-    safe_mutex_lock(&(cs->gc_lock));
+    safe_rdlock(&(cs->root_set_lock));
 
     if (root_id >= cs->root_set_cap) {
         res.status_code = CS_ROOT_ID_OUT_OF_BOUNDS;
@@ -372,7 +379,7 @@ cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id) {
         res.root_vaddr = cs->root_set[root_id].vaddr;
     }
 
-    safe_mutex_unlock(&(cs->gc_lock));
+    safe_rwlock_unlock(&(cs->root_set_lock));
 
     return res;
 }
@@ -382,69 +389,39 @@ obj_header *cs_get_read(collected_space *cs, addr_book_vaddr vaddr) {
 }
 
 obj_header *cs_get_write(collected_space *cs, addr_book_vaddr vaddr) {
-    safe_mutex_lock(&(cs->gc_lock));
+    // So, if paint black is going on... gotta make some changes I guess??
+    // When do these stages actually begin???
 
-    if(!(cs->paint_black_in_progress)) {
-        safe_mutex_unlock(&(cs->gc_lock));
-
-        return (obj_header *)((obj_pre_header *)ms_get_write(cs->ms, vaddr) + 1);    
-    }
-
-    // From this point on we know paint black is going on.
-    
-    util_bc *temp_stack = NULL;
-    uint64_t i;
-
-    obj_pre_header *obj_p_h = ms_get_write(cs->ms, vaddr);
+    obj_pre_header *obj_p_h = (obj_pre_header *)ms_get_write(cs->ms, vaddr);
     obj_header *obj_h = (obj_header *)(obj_p_h + 1);
-    addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
 
-    // See if we must visit our object before aquiring
-    // write lock.
-    
-    if (obj_p_h->gc_status == GC_UNVISITED || 
-            obj_p_h->gc_status == GC_IN_PROGRESS) {
-        temp_stack = new_broken_collection(get_chnl(cs), 
-                sizeof(addr_book_vaddr), obj_h->rt_len + 1, 0); 
-
-        for (i = 0; i < obj_h->rt_len; i++) {
-            bc_push_back(temp_stack, rt + i); 
-        }
-
-        // Only can set this here because we have the GC lock.
-        // This object won't actually be "visited" until the following 
-        // while loop executes.
-        obj_p_h->gc_status = GC_VISITED;
+    if (obj_p_h->gc_status == GC_VISITED || obj_p_h == GC_NEWLY_ADDED) {
+        return obj_h;
     }
 
-    ms_unlock(cs->ms, vaddr);
-
-    // Check if a visit is needed.
-    if (temp_stack) {
-        addr_book_vaddr child_vaddr;
-        obj_pre_header *c_obj_p_h;
-
-        while (!bc_empty(temp_stack)) {
-            bc_pop_back(temp_stack, &child_vaddr);
-            
-            c_obj_p_h = ms_get_write(cs->ms, child_vaddr);
-
-            if (c_obj_p_h->gc_status == GC_UNVISITED) {
-                bc_push_back(cs->gc_stack, &child_vaddr);
-
-                c_obj_p_h->gc_status = GC_IN_PROGRESS;
-            }
-
-            ms_unlock(cs->ms, child_vaddr);
-        }
+    if (cs_paint_black_in_progress(cs)) {
+        // NOTE: if we make it here, this means we have the lock on an 
+        // unvisited/in-progress object, and paint black is occuring.
+        // We know that because we have the object lock, it is impossible
+        // paint black has ended since calling cs_paint_black_in_progress.
         
-        delete_broken_collection(temp_stack);
-    }
+        addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
 
-    safe_mutex_unlock(&(cs->gc_lock));
+        safe_mutex_lock(&(cs->in_progress_stack_lock));
 
-    // DONE
-    return (obj_header *)((obj_pre_header *)ms_get_write(cs->ms, vaddr) + 1);    
+        uint64_t ref_i;
+        for (ref_i = 0; ref_i < obj_h->rt_len; ref_i++) {
+            if (!null_adb_addr(rt[ref_i])) {
+                bc_push_back(cs->in_progress_stack, rt + ref_i); 
+            }
+        }
+
+        safe_mutex_unlock(&(cs->in_progress_stack_lock));
+
+        obj_p_h->gc_status = GC_VISITED;
+    } 
+
+    return (obj_header *)(obj_p_h + 1);
 }
 
 void cs_unlock(collected_space *cs, addr_book_vaddr vaddr) {
@@ -524,9 +501,9 @@ static inline void root_set_entry_print_unsafe(root_set_entry *entry) {
 }
 
 void cs_print(collected_space *cs) {
-    // Halt GC while printing.
-    safe_mutex_lock(&(cs->gc_lock));
 
+    safe_rdlock(&(cs->root_set_lock));
+    
     if (cs->free_head == UINT64_MAX) {
         safe_printf("Root Set (Cap: %"PRIu64", Free Head: NULL)\n",
                 cs->root_set_cap);
@@ -543,69 +520,69 @@ void cs_print(collected_space *cs) {
         root_set_entry_print_unsafe(cs->root_set + i);
     }
 
-    ms_foreach(cs->ms, obj_print, NULL, 0);
+    safe_rwlock_unlock(&(cs->root_set_lock));
 
-    // NOTE: I decided that if we are going to print out
-    // the full collected space, the root set should stay constant during 
-    // this time. (... i.e. garbage collection should also not be occurring)
-    //
-    // Probs should never call cs_print in parallel with anything anyways.
-    //
-    safe_mutex_unlock(&(cs->gc_lock));
+    // NOTE: probs shouldn't call this function in parallel with anything else,
+    // Nothing will break, but the results might be funky.
+
+    ms_foreach(cs->ms, obj_print, NULL, 0);
 }
 
 static void obj_unvisit(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_pre_header *obj_p_h = paddr;
 
-    // Won't need to aquire GC lock as this is the paint white phase.
-    
     obj_p_h->gc_status = GC_UNVISITED;
 }
 
 void cs_collect_garbage(collected_space *cs) {
-    safe_mutex_lock(&(cs->gc_lock));  
+    safe_wrlock(&(cs->gc_stat_lock));
 
     if (cs->gc_in_progress) {
-        safe_mutex_unlock(&(cs->gc_lock));
+        safe_rwlock_unlock(&(cs->gc_stat_lock));
+
         return;
     }
 
-    // Only one GC can happen at a time.
     cs->gc_in_progress = 1;
-    cs->paint_black_in_progress = 0;
-    
-    safe_mutex_unlock(&(cs->gc_lock));
-    
-    // Unvisit all non-root objects.
-    ms_foreach(cs->ms, obj_unvisit, NULL, 1);
 
-    safe_mutex_lock(&(cs->gc_lock));  
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
 
-    cs->paint_black_in_progress = 1;
+    // Paint White.
+    ms_foreach(cs->ms, obj_unvisit, NULL, 1);  
 
+    safe_rdlock(&(cs->root_set_lock)); 
+    // Once we have acquired the root set lock.
+    // The "paint black" phase has officially started.
+    // The roots at this point in time will be the only roots considered.
+    //
+    // NOTE: If a root is added after this point in the paint black phase,
+    // it is implied that it was reachable when paint black started.
+    // Thus it will not be GC'd.
+    cs_set_paint_black_in_progress(cs, 1);
+
+    safe_mutex_lock(&(cs->in_progress_stack_lock));
     uint64_t root_i;
-    addr_book_vaddr root_vaddr;
-    obj_pre_header *root_obj_p_h;
-
+    root_set_entry entry;
     for (root_i = 0; root_i < cs->root_set_cap; root_i++) {
-        if (cs->root_set[root_i].allocated) {
-            root_vaddr = cs->root_set[root_i].vaddr;
+        entry = cs->root_set[root_i];
 
-            // Place all roots in the gc stack.
-            bc_push_back(cs->gc_stack, &root_vaddr);
-
-            root_obj_p_h = ms_get_write(cs->ms, root_vaddr);
-            root_obj_p_h->gc_status = GC_IN_PROGRESS;
-            ms_unlock(cs->ms, root_vaddr);
+        if (entry.allocated) {
+            bc_push_back(cs->in_progress_stack, &(entry.vaddr));
         }
     }
-
-    // TODO... think more about what this will look like here...
-    // Maybe switch the order of gc_lock and object locks???
-    // Could be better. My brain is fried regardless.
+    safe_mutex_unlock(&(cs->in_progress_stack_lock));
     
-    safe_mutex_unlock(&(cs->gc_lock));
+    safe_rwlock_unlock(&(cs->root_set_lock));
 
+    // Now, time for DFS...
+
+
+
+    cs_set_paint_black_in_progress(cs, 0);
+
+    safe_wrlock(&(cs->gc_stat_lock));
+    cs->gc_in_progress = 0;
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
 }
 
 void cs_try_full_shift(collected_space *cs) {
