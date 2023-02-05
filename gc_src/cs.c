@@ -388,6 +388,25 @@ obj_header *cs_get_read(collected_space *cs, addr_book_vaddr vaddr) {
     return (obj_header *)((obj_pre_header *)ms_get_read(cs->ms, vaddr) + 1);    
 }
 
+static inline void cs_visit_obj(collected_space *cs, obj_pre_header *obj_p_h) {
+    obj_header *obj_h = (obj_header *)(obj_p_h + 1);
+    addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
+
+    safe_mutex_lock(&(cs->in_progress_stack_lock));
+
+    uint64_t ref_i;
+    for (ref_i = 0; ref_i < obj_h->rt_len; ref_i++) {
+        if (!null_adb_addr(rt[ref_i])) {
+            bc_push_back(cs->in_progress_stack, rt + ref_i); 
+        }
+    }
+
+    safe_mutex_unlock(&(cs->in_progress_stack_lock));
+
+    obj_p_h->gc_status = GC_VISITED;
+
+}
+
 obj_header *cs_get_write(collected_space *cs, addr_book_vaddr vaddr) {
     // So, if paint black is going on... gotta make some changes I guess??
     // When do these stages actually begin???
@@ -405,20 +424,7 @@ obj_header *cs_get_write(collected_space *cs, addr_book_vaddr vaddr) {
         // We know that because we have the object lock, it is impossible
         // paint black has ended since calling cs_paint_black_in_progress.
         
-        addr_book_vaddr *rt = (addr_book_vaddr *)(obj_h + 1);
-
-        safe_mutex_lock(&(cs->in_progress_stack_lock));
-
-        uint64_t ref_i;
-        for (ref_i = 0; ref_i < obj_h->rt_len; ref_i++) {
-            if (!null_adb_addr(rt[ref_i])) {
-                bc_push_back(cs->in_progress_stack, rt + ref_i); 
-            }
-        }
-
-        safe_mutex_unlock(&(cs->in_progress_stack_lock));
-
-        obj_p_h->gc_status = GC_VISITED;
+        cs_visit_obj(cs, obj_p_h);
     } 
 
     return (obj_header *)(obj_p_h + 1);
@@ -575,10 +581,64 @@ void cs_collect_garbage(collected_space *cs) {
     safe_rwlock_unlock(&(cs->root_set_lock));
 
     // Now, time for DFS...
+    
+    // We stop when an iteration which did no work occurs.
+    uint8_t productive_iteration = 1;
 
+    addr_book_vaddr vaddr;
 
+    obj_pre_header *obj_p_h;
+    obj_header *obj_h;
+    addr_book_vaddr *rt;
+
+    while (productive_iteration) {
+        productive_iteration = 0;
+
+        while (1) {
+            safe_mutex_lock(&(cs->in_progress_stack_lock));
+            if (bc_empty(cs->in_progress_stack)) {
+                safe_mutex_unlock(&(cs->in_progress_stack_lock));
+
+                break;
+            }
+
+            bc_pop_back(cs->in_progress_stack, &vaddr);
+            safe_mutex_unlock(&(cs->in_progress_stack_lock));
+
+            obj_p_h = ms_get_write(cs->ms, vaddr);
+
+            // Transfer to visit stack if needed.
+            if (obj_p_h->gc_status == GC_UNVISITED) {
+                obj_p_h->gc_status = GC_IN_PROGRESS; 
+                bc_push_back(cs->visit_stack, &vaddr);
+            }
+
+            ms_unlock(cs->ms, vaddr);
+
+            productive_iteration = 1;
+        }
+
+        while (!bc_empty(cs->visit_stack)) {
+            bc_pop_back(cs->visit_stack, &vaddr);
+
+            obj_p_h = ms_get_write(cs->ms, vaddr);
+
+            if (obj_p_h->gc_status == GC_IN_PROGRESS) {
+                // ... as oppposed to already being visited
+                // by the user.
+                
+                cs_visit_obj(cs, obj_p_h);
+            }
+
+            ms_unlock(cs->ms, vaddr);
+
+            productive_iteration = 1;
+        }
+    }
 
     cs_set_paint_black_in_progress(cs, 0);
+
+    // Finally time for deletion boi!
 
     safe_wrlock(&(cs->gc_stat_lock));
     cs->gc_in_progress = 0;
