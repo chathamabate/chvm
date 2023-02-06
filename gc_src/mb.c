@@ -5,8 +5,10 @@
 #include "../core_src/io.h"
 #include "../core_src/mem.h"
 #include "../core_src/thread.h"
-
 #include "../core_src/io.h"
+
+#include "../util_src/data.h"
+
 #include <inttypes.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
 
@@ -317,7 +319,7 @@ static void mb_add_to_size_unsafe(mem_block *mb, mem_piece *mp) {
 }
 
 // mp will be a newly freed piece which is not part of any free lists yet.
-static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
+static void mb_coalesce_unsafe(mem_block *mb, mem_piece *mp) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
     mem_piece *start = (mem_piece *)(mb_h + 1);
@@ -372,10 +374,8 @@ static void mb_free_unsafe(mem_block *mb, mem_piece *mp) {
     mb_add_to_size_unsafe(mb, new_free);
 }
 
-void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
+static void mb_free_unsafe(mem_block *mb, addr_book_vaddr vaddr) {
     mem_block_header *mb_h = (mem_block_header *)mb;
-
-    safe_wrlock(&(mb_h->mem_lck));
 
     // After acquring mem_lck, we know we cannot be mid shift.
     // Thus, physical addresses will be constant.
@@ -401,8 +401,14 @@ void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
     // Get corresponding mem_piece pointer.
     mem_piece *mp = map_b_to_mp(paddr);
 
-    mb_free_unsafe(mb, mp);
-    
+    mb_coalesce_unsafe(mb, mp);
+}
+
+void mb_free(mem_block *mb, addr_book_vaddr vaddr) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    safe_wrlock(&(mb_h->mem_lck));
+    mb_free_unsafe(mb, vaddr);  
     safe_rwlock_unlock(&(mb_h->mem_lck)); 
 }
 
@@ -640,12 +646,9 @@ mb_shift_res mb_try_shift(mem_block *mb) {
     return MB_SHIFT_SUCCESS;
 }
 
-void mb_foreach(mem_block *mb, mp_consumer c, void *ctx, uint8_t wr) {
+static inline void mb_foreach_unsafe(mem_block *mb, mp_consumer c, 
+        void *ctx, uint8_t wr) {
     mem_block_header *mb_h = (mem_block_header *)mb;
-
-    // NOTE: we use the read lock on the memory block since the structure
-    // of the memory block will never change from this call.
-    safe_rdlock(&(mb_h->mem_lck));
 
     mem_piece *start  = (mem_piece *)(mb_h + 1);
     mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
@@ -669,6 +672,60 @@ void mb_foreach(mem_block *mb, mp_consumer c, void *ctx, uint8_t wr) {
         c(v, mp_to_map_b(iter), ctx);
 
         adb_unlock(mb_h->adb, v);
+    }
+}
+
+void mb_foreach(mem_block *mb, mp_consumer c, void *ctx, uint8_t wr) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    // NOTE: we use the read lock on the memory block since the structure
+    // of the memory block will never change from this call.
+    safe_rdlock(&(mb_h->mem_lck));
+
+    mb_foreach_unsafe(mb, c, ctx, wr);
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+}
+
+typedef struct {
+    mp_predicate pred;
+
+    void *og_ctx;
+    util_bc *remove_stack;
+} filter_foreach_context;
+
+static void mb_filter_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
+    filter_foreach_context *ff_ctx = ctx;
+
+    if (ff_ctx->pred(v, paddr, ff_ctx->og_ctx)) {
+        bc_push_back(ff_ctx->remove_stack, &v); 
+    } 
+}
+
+// NOTE: this filter algo uses foreach, then frees after the fact.
+// This could be improved by doing the deletion while iterating.
+// However, such an approach may be tricky to code.
+void mb_filter(mem_block *mb, mp_predicate pred, void *ctx) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    util_bc *remove_stack = 
+        new_broken_collection(get_chnl(mb), sizeof(addr_book_vaddr), 20, 0);
+
+    filter_foreach_context ff_ctx = {
+        .og_ctx = ctx,
+        .pred = pred,
+        .remove_stack = remove_stack,
+    };
+
+    safe_wrlock(&(mb_h->mem_lck));
+    
+    mb_foreach_unsafe(mb, mb_filter_consumer, &ff_ctx, 0);
+
+    addr_book_vaddr v;
+    while (!bc_empty(remove_stack)) {
+        bc_pop_back(remove_stack, &v); 
+
+        mb_free_unsafe(mb, v);
     }
 
     safe_rwlock_unlock(&(mb_h->mem_lck));

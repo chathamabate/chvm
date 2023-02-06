@@ -102,6 +102,12 @@ static inline void mb_foreach_write(mem_block *mb, mp_consumer c, void *ctx) {
     mb_foreach(mb, c, ctx, 1);
 }
 
+typedef uint8_t (*mp_predicate)(addr_book_vaddr v, void *paddr, void *ctx);
+
+// This will never mutate. only ever aquire the read lock
+// on memory pieces.
+void mb_filter(mem_block *mb, mp_predicate pred, void *ctx);
+
 // This command will safely print the structure of the 
 // memory block in an easy to read way.
 // Mainly for easy debugging.
