@@ -108,6 +108,9 @@ typedef uint8_t (*mp_predicate)(addr_book_vaddr v, void *paddr, void *ctx);
 // on memory pieces.
 void mb_filter(mem_block *mb, mp_predicate pred, void *ctx);
 
+// Number of allocated pieces in the memory block.
+uint64_t mb_count(mem_block *mb);
+
 // This command will safely print the structure of the 
 // memory block in an easy to read way.
 // Mainly for easy debugging.

@@ -731,6 +731,31 @@ void mb_filter(mem_block *mb, mp_predicate pred, void *ctx) {
     safe_rwlock_unlock(&(mb_h->mem_lck));
 }
 
+uint64_t mb_count(mem_block *mb) {
+    mem_block_header *mb_h = (mem_block_header *)mb;
+
+    uint64_t count = 0;
+
+    safe_rdlock(&(mb_h->mem_lck));
+
+    mem_piece *start  = (mem_piece *)(mb_h + 1);
+    mem_piece *end = (mem_piece *)((uint8_t *)start + mb_h->cap);
+
+    mem_piece *iter = start;
+    for (; iter < end; iter = mp_next(iter)) {
+        if (!mp_alloc(iter)) {
+            continue;
+        }
+
+        // Tally all allocated pieces.
+        count++;
+    }
+
+    safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    return count;
+}
+
 void mb_print(mem_block *mb) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
