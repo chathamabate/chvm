@@ -6,6 +6,7 @@
 #include "../../testing_src/misc.h"
 #include "../../core_src/io.h"
 #include "../../util_src/thread.h"
+#include <stdint.h>
 #include <string.h>
 
 static void test_new_mem_space(chunit_test_context *tc) {
@@ -320,6 +321,87 @@ const chunit_test MS_FOREACH = {
     .timeout = 5, 
 };
 
+static void test_ms_count(chunit_test_context *tc) {
+    mem_space *ms = new_mem_space(1, 10, 100);
+
+    const uint64_t mallocs = 30;
+    addr_book_vaddr vaddrs[mallocs];
+    
+    uint64_t i;
+    for (i = 0; i < mallocs; i++) {
+        vaddrs[i] = ms_malloc(ms, 10);
+    }
+
+    assert_eq_uint(tc, mallocs, ms_count(ms));
+
+    uint64_t freed = 0;
+
+    for (i = 0; i < mallocs; i += 5) {
+        ms_free(ms, vaddrs[i]);
+        vaddrs[i] = NULL_VADDR;
+
+        freed++;
+    }
+
+    for (i = 0; i < mallocs; i += 3) {
+        if (!null_adb_addr(vaddrs[i])) {
+            ms_free(ms, vaddrs[i]);
+            vaddrs[i] = NULL_VADDR;
+
+            freed++;
+        }
+    }
+
+    assert_eq_uint(tc, mallocs - freed, ms_count(ms));
+
+    delete_mem_space(ms);
+}
+
+static const chunit_test MS_COUNT = {
+    .name = "Memory Space Count",
+    .t = test_ms_count,
+    .timeout = 5,
+};
+
+static uint8_t mp_is_even(addr_book_vaddr v, void *paddr, void *ctx) {
+    return *(uint64_t *)paddr % 2;
+}
+
+static void mp_is_even_checker(addr_book_vaddr v, void *paddr, void *ctx) {
+    chunit_test_context *tc = ctx;
+    assert_true(tc, *(uint64_t *)paddr % 2 == 0);
+}
+
+static void test_ms_filter(chunit_test_context *tc) {
+    mem_space *ms = new_mem_space(1, 10, 100);
+
+    const uint64_t num_mallocs = 45;
+    uint64_t i;
+    for (i = 0; i < num_mallocs; i++) {
+        malloc_res res = ms_malloc_and_hold(ms, sizeof(uint64_t));
+    
+        *(uint64_t *)(res.paddr) = i + 1;
+
+        ms_unlock(ms, res.vaddr);
+    }
+
+    assert_eq_uint(tc, num_mallocs, ms_count(ms));
+
+    ms_filter(ms, mp_is_even, NULL); 
+
+    assert_eq_uint(tc, num_mallocs / 2, ms_count(ms));
+
+    ms_foreach(ms, mp_is_even_checker, tc, 0);
+
+    delete_mem_space(ms);
+}
+
+static const chunit_test MS_FILTER = {
+    .name = "Memory Space Filter",
+    .t = test_ms_filter,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_MS = {
     .name = "Memory Space Test Suite",
     .tests = {
@@ -333,6 +415,9 @@ const chunit_test_suite GC_TEST_SUITE_MS = {
         &MS_MULTI_MAF_SHIFT,
         &MS_MALLOC_AND_HOLD,
         &MS_FOREACH,
+        &MS_COUNT,
+
+        &MS_FILTER,
     },
-    .tests_len = 9
+    .tests_len = 11,
 };

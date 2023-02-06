@@ -202,6 +202,11 @@ mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes) {
     return mb;
 }
 
+mem_block *new_mem_block_arr(uint8_t chnl, addr_book *adb, 
+        uint64_t cell_size, uint64_t min_cells) {
+    return new_mem_block(chnl, adb, (cell_size + MAP_PADDING) * min_cells);
+}
+
 void delete_mem_block(mem_block *mb) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
@@ -729,6 +734,8 @@ void mb_filter(mem_block *mb, mp_predicate pred, void *ctx) {
     }
 
     safe_rwlock_unlock(&(mb_h->mem_lck));
+
+    delete_broken_collection(remove_stack);
 }
 
 uint64_t mb_count(mem_block *mb) {
@@ -743,12 +750,9 @@ uint64_t mb_count(mem_block *mb) {
 
     mem_piece *iter = start;
     for (; iter < end; iter = mp_next(iter)) {
-        if (!mp_alloc(iter)) {
-            continue;
+        if (mp_alloc(iter)) {
+            count++;
         }
-
-        // Tally all allocated pieces.
-        count++;
     }
 
     safe_rwlock_unlock(&(mb_h->mem_lck));

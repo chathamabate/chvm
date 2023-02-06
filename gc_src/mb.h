@@ -8,6 +8,9 @@ typedef struct {} mem_block;
 
 mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes);
 
+mem_block *new_mem_block_arr(uint8_t chnl, addr_book *adb, 
+        uint64_t cell_size, uint64_t min_cells);
+
 // NOTE: this will also free all vaddrs in this block's corresponding 
 // address book.
 // 

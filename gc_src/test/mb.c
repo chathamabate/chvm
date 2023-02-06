@@ -230,7 +230,7 @@ static void test_mem_block_write(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_WRITE = {
+static const chunit_test MB_WRITE = {
     .name = "Memory Block Write",
     .t = test_mem_block_write,
     .timeout = 5,
@@ -325,7 +325,7 @@ static void test_mb_shift_0(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_SHIFT_0 = {
+static const chunit_test MB_SHIFT_0 = {
     .name = "Memory Block Shift 0",
     .t = test_mb_shift_0,
     .timeout = 5,
@@ -353,7 +353,7 @@ static void test_mb_shift_1(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_SHIFT_1 = {
+static const chunit_test MB_SHIFT_1 = {
     .name = "Memory Block Shift 1",
     .t = test_mb_shift_1,
     .timeout = 5,
@@ -384,7 +384,7 @@ static void test_mb_shift_2(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_SHIFT_2 = {
+static const chunit_test MB_SHIFT_2 = {
     .name = "Memory Block Shift 2",
     .t = test_mb_shift_2,
     .timeout = 5,
@@ -416,7 +416,7 @@ static void test_mb_shift_3(chunit_test_context *tc)  {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_SHIFT_3 = {
+static const chunit_test MB_SHIFT_3 = {
     .name = "Memory Block Shift 3",
     .t = test_mb_shift_3,
     .timeout = 5,
@@ -465,7 +465,7 @@ static void test_mb_shift_4(chunit_test_context *tc)  {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_SHIFT_4 = {
+static const chunit_test MB_SHIFT_4 = {
     .name = "Memory Block Shift 4",
     .t = test_mb_shift_4,
     .timeout = 5,
@@ -501,7 +501,7 @@ static void test_mb_shift_5(chunit_test_context *tc)  {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_SHIFT_5 = {
+static const chunit_test MB_SHIFT_5 = {
     .name = "Memory Block Shift 5",
     .t = test_mb_shift_5,
     .timeout = 5,
@@ -546,7 +546,7 @@ static void test_mem_block_multi_0(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_MULTI_0 = {
+static const chunit_test MB_MULTI_0 = {
     .name = "Memory Block Multi Threaded 0",
     .t = test_mem_block_multi_0,
     .timeout = 5,
@@ -584,7 +584,7 @@ static void test_mem_block_multi_1(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_MULTI_1 = {
+static const chunit_test MB_MULTI_1 = {
     .name = "Memory Block Multi Threaded 1",
     .t = test_mem_block_multi_1,
     .timeout = 5,
@@ -606,7 +606,7 @@ static void test_mb_malloc_and_hold(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_MALLOC_AND_HOLD = {
+static const chunit_test MB_MALLOC_AND_HOLD = {
     .name = "Memory Block Malloc and Hold",
     .t = test_mb_malloc_and_hold,
     .timeout = 5,
@@ -650,7 +650,7 @@ static void test_mb_foreach(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_FOREACH = {
+static const chunit_test MB_FOREACH = {
     .name = "Memory Block Foreach",
     .t = test_mb_foreach,
     .timeout = 5,
@@ -742,10 +742,107 @@ static void test_mb_foreach_multi(chunit_test_context *tc) {
     delete_addr_book(adb);
 }
 
-const chunit_test MB_FOREACH_MULTI = {
+static const chunit_test MB_FOREACH_MULTI = {
     .name = "Memory Block Foreach Multi",
     .t = test_mb_foreach_multi,
     .timeout = 5, 
+};
+
+static void test_mb_count(chunit_test_context *tc) {
+    addr_book *adb = new_addr_book(1, 5);
+    mem_block *mb = new_mem_block(1, adb, 400);
+
+    const uint64_t mallocs = 20;
+    const uint64_t size_mod = 3;
+    const uint64_t size_factor = 4;
+
+    addr_book_vaddr vaddrs[mallocs];
+
+    uint64_t i;
+    for (i = 0; i < mallocs; i++) {
+        vaddrs[i] = mb_malloc(mb, ((i % size_mod) + 1) * size_factor);
+
+        if (null_adb_addr(vaddrs[i])) {
+            break;
+        }
+    }
+
+    // Store how many were malloced.
+    const uint64_t malloced = i;
+
+    // i will be the number malloced.
+    assert_eq_uint(tc, malloced, mb_count(mb));
+
+    uint64_t freed = 0;
+
+    for (i = 0; i < malloced; i += 5) {
+        mb_free(mb, vaddrs[i]);
+        vaddrs[i] = NULL_VADDR;
+
+        freed++;
+    } 
+
+    for (i = 0; i < malloced; i += 3) {
+        if (!null_adb_addr(vaddrs[i])) {
+            mb_free(mb, vaddrs[i]);
+            vaddrs[i] = NULL_VADDR;
+
+            freed++;
+        }
+    }
+
+    assert_eq_uint(tc, malloced - freed, mb_count(mb));
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+static const chunit_test MB_COUNT = {
+    .name = "Memory Block Count",
+    .t = test_mb_count,
+    .timeout = 5,
+};
+
+static uint8_t mp_is_even(addr_book_vaddr v, void *paddr, void *ctx) {
+    return *(uint64_t *)paddr % 2;
+}
+
+static void mp_is_even_checker(addr_book_vaddr v, void *paddr, void *ctx) {
+    chunit_test_context *tc = ctx;
+    assert_true(tc, *(uint64_t *)paddr % 2 == 0);
+}
+
+static void test_mb_filter(chunit_test_context *tc) {
+    const uint64_t len = 20;
+
+    addr_book *adb = new_addr_book(1, 5);
+    mem_block *mb = new_mem_block_arr(1, adb, sizeof(uint64_t), len);
+
+    uint64_t i;
+    for (i = 0; i < len; i++) {
+        malloc_res res = mb_malloc_and_hold(mb, sizeof(uint64_t));
+
+        assert_non_null(tc, res.paddr);
+        *(uint64_t *)(res.paddr) = i + 1;
+
+        adb_unlock(adb, res.vaddr);
+    } 
+
+    assert_eq_uint(tc, len, mb_count(mb));
+    
+    mb_filter(mb, mp_is_even, NULL);
+
+    assert_eq_uint(tc, len / 2, mb_count(mb));
+    mb_foreach(mb, mp_is_even_checker, tc, 0);
+
+    delete_mem_block(mb);
+    delete_addr_book(adb);
+}
+
+static const chunit_test MB_FILTER = {
+    .name = "Memory Block Filter",
+    .t = test_mb_filter,
+    .timeout = 5,
 };
 
 const chunit_test_suite GC_TEST_SUITE_MB = {
@@ -772,6 +869,8 @@ const chunit_test_suite GC_TEST_SUITE_MB = {
         &MB_MALLOC_AND_HOLD,
         &MB_FOREACH,
         &MB_FOREACH_MULTI,
+        &MB_COUNT,
+        &MB_FILTER,
     },
-    .tests_len = 18,
+    .tests_len = 20,
 };

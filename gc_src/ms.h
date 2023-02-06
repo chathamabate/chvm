@@ -47,6 +47,8 @@ void ms_unlock(mem_space *ms, addr_book_vaddr vaddr);
 // Iterate over every allocated memory piece in the entire
 // memory space.
 void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr);
+void ms_filter(mem_space *ms, mp_predicate pred, void *ctx);
+uint64_t ms_count(mem_space *ms);
 
 void ms_print(mem_space *ms);
 

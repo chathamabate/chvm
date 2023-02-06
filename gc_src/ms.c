@@ -247,31 +247,9 @@ void ms_unlock(mem_space *ms,addr_book_vaddr vaddr) {
     adb_unlock(ms->adb, vaddr);
 }
 
-typedef struct {
-    // The original consumer given.
-    mp_consumer c;
-    
-    // The original Context given.
-    void *ctx;
-} ms_foreach_og_args;
+typedef void (*mb_consumer)(mem_block *mb, void *ctx);
 
-static void mp_ms_consumer(addr_book_vaddr v, void *paddr, 
-        void *ctx) {
-    ms_foreach_og_args *og_args = ctx; 
-
-    // Skip over malloced header.
-    void *new_paddr = (mem_space_malloc_header *)paddr + 1;
-
-    // Pass new physical address into original consumer.
-    og_args->c(v, new_paddr, og_args->ctx); 
-}
-
-void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr) {
-    ms_foreach_og_args og_args = {
-        .c = c,
-        .ctx = ctx,
-    };
-
+static void ms_foreach_mb(mem_space *ms, mb_consumer c, void *ctx) {
     uint64_t len, i;
 
     safe_rdlock(&(ms->mb_list_lck));
@@ -283,8 +261,90 @@ void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr) {
         mem_block *mb = ms->mb_list[i];
         safe_rwlock_unlock(&(ms->mb_list_lck));
 
-        mb_foreach(mb, mp_ms_consumer, &og_args, wr);
+        c(mb, ctx);
     }
+}
+
+typedef struct {
+    // The original consumer given.
+    mp_consumer c;
+    
+    // The original Context given.
+    void *ctx;
+} mb_foreach_args;
+
+static void mb_foreach_mp_consumer(addr_book_vaddr v, void *paddr, 
+        void *ctx) {
+    mb_foreach_args *mb_args = ctx; 
+
+    // Skip over malloced header.
+    void *new_paddr = (mem_space_malloc_header *)paddr + 1;
+
+    // Pass new physical address into original consumer.
+    mb_args->c(v, new_paddr, mb_args->ctx); 
+}
+
+typedef struct {
+    mb_foreach_args mb_args;
+    uint8_t wr;
+} ms_foreach_args;
+
+static void ms_foreach_mb_consumer(mem_block *mb, void *ctx) {
+    // For each memory block, we want to run foreach using the above
+    // function.
+    ms_foreach_args *ms_args = ctx;
+    mb_foreach(mb, mb_foreach_mp_consumer, &(ms_args->mb_args), ms_args->wr);
+}
+
+void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr) {
+    ms_foreach_args ms_args = {
+        .mb_args = {
+            .c = c,
+            .ctx = ctx,
+        },
+        .wr = wr,
+    };
+
+    ms_foreach_mb(ms, ms_foreach_mb_consumer, &ms_args);
+}
+
+typedef struct {
+    mp_predicate pred;
+    void *ctx;
+} mb_filter_args;
+
+static uint8_t mb_filter_mp_predicate(addr_book_vaddr v, void *paddr, void *ctx) {
+    mb_filter_args *mb_args = ctx;
+    void *new_paddr = (mem_space_malloc_header *)paddr + 1;
+    return mb_args->pred(v, new_paddr, ctx);
+}
+
+static void ms_filter_mb_consumer(mem_block *mb, void *ctx) {
+    // NOTE: with no rd/wr lock parameter we can pass ctx directly to
+    // each memory block.
+    mb_filter_args *mb_args = ctx;
+    mb_filter(mb, mb_filter_mp_predicate, mb_args);
+}
+
+void ms_filter(mem_space *ms, mp_predicate pred, void *ctx) {
+    mb_filter_args mb_args = {
+        .pred = pred,
+        .ctx = ctx,
+    };
+
+    ms_foreach_mb(ms, ms_filter_mb_consumer, &mb_args);
+}
+
+static void mp_count_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
+    (*(uint64_t *)ctx)++;
+}
+
+uint64_t ms_count(mem_space *ms) {
+    uint64_t count = 0; 
+
+    ms_foreach(ms, mp_count_consumer, &count, 0);
+
+    return count;
 }
 
 void ms_print(mem_space *ms) {
