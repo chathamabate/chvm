@@ -364,7 +364,7 @@ static const chunit_test MS_COUNT = {
 };
 
 static uint8_t mp_is_even(addr_book_vaddr v, void *paddr, void *ctx) {
-    return *(uint64_t *)paddr % 2;
+    return *(uint64_t *)paddr % 2 == 0;
 }
 
 static void mp_is_even_checker(addr_book_vaddr v, void *paddr, void *ctx) {

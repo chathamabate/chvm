@@ -540,6 +540,11 @@ static void obj_unvisit(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_p_h->gc_status = GC_UNVISITED;
 }
 
+static uint8_t obj_unvisited(addr_book_vaddr v, void *paddr, void *ctx) {
+    obj_pre_header *obj_p_h = paddr;
+    return obj_p_h->gc_status == GC_UNVISITED;
+}
+
 void cs_collect_garbage(collected_space *cs) {
     safe_wrlock(&(cs->gc_stat_lock));
 

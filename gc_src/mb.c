@@ -702,7 +702,7 @@ typedef struct {
 static void mb_filter_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
     filter_foreach_context *ff_ctx = ctx;
 
-    if (ff_ctx->pred(v, paddr, ff_ctx->og_ctx)) {
+    if (!(ff_ctx->pred(v, paddr, ff_ctx->og_ctx))) {
         bc_push_back(ff_ctx->remove_stack, &v); 
     } 
 }
