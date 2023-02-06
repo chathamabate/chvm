@@ -540,9 +540,9 @@ static void obj_unvisit(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_p_h->gc_status = GC_UNVISITED;
 }
 
-static uint8_t obj_unvisited(addr_book_vaddr v, void *paddr, void *ctx) {
+static uint8_t obj_reachable(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_pre_header *obj_p_h = paddr;
-    return obj_p_h->gc_status == GC_UNVISITED;
+    return obj_p_h->gc_status != GC_UNVISITED;
 }
 
 void cs_collect_garbage(collected_space *cs) {
@@ -643,7 +643,8 @@ void cs_collect_garbage(collected_space *cs) {
 
     cs_set_paint_black_in_progress(cs, 0);
 
-    // Finally time for deletion boi!
+    // Finally time for "sweep" phase.
+    ms_filter(cs->ms, obj_reachable, NULL);
 
     safe_wrlock(&(cs->gc_stat_lock));
     cs->gc_in_progress = 0;
