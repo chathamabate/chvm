@@ -269,7 +269,7 @@ const chunit_test MS_MULTI_MAF_SHIFT = {
 };
 
 static void test_ms_malloc_and_hold(chunit_test_context *tc) {
-    mem_space *ms = new_mem_space(1, 10, 100);
+    mem_space *ms = new_mem_space_seed(1, 1, 10, 100);
 
     malloc_res res = ms_malloc_and_hold(ms, 10);
 
@@ -291,7 +291,7 @@ static void ms_summer(addr_book_vaddr v, void *paddr, void *ctx) {
 }
 
 static void test_ms_foreach(chunit_test_context *tc) {
-    mem_space *ms = new_mem_space(1, 10, 100);
+    mem_space *ms = new_mem_space_seed(1, 1, 10, 100);
 
     uint64_t expected_sum = 0;
 
@@ -322,7 +322,7 @@ const chunit_test MS_FOREACH = {
 };
 
 static void test_ms_count(chunit_test_context *tc) {
-    mem_space *ms = new_mem_space(1, 10, 100);
+    mem_space *ms = new_mem_space_seed(1, 1, 10, 100);
 
     const uint64_t mallocs = 30;
     addr_book_vaddr vaddrs[mallocs];
@@ -373,7 +373,7 @@ static void mp_is_even_checker(addr_book_vaddr v, void *paddr, void *ctx) {
 }
 
 static void test_ms_filter(chunit_test_context *tc) {
-    mem_space *ms = new_mem_space(1, 10, 100);
+    mem_space *ms = new_mem_space_seed(1, 1, 10, 100);
 
     const uint64_t num_mallocs = 45;
     uint64_t i;

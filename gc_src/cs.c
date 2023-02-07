@@ -506,6 +506,10 @@ static inline void root_set_entry_print_unsafe(root_set_entry *entry) {
     }
 }
 
+uint64_t cs_count(collected_space *cs) {
+    return ms_count(cs->ms);
+}
+
 void cs_print(collected_space *cs) {
 
     safe_rdlock(&(cs->root_set_lock));

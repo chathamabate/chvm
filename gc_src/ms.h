@@ -44,8 +44,10 @@ void *ms_get_write(mem_space *ms, addr_book_vaddr vaddr);
 void *ms_get_read(mem_space *ms, addr_book_vaddr vaddr);
 void ms_unlock(mem_space *ms, addr_book_vaddr vaddr);
 
-// Iterate over every allocated memory piece in the entire
-// memory space.
+// NOTE:  While the below calls all are in a way "thread safe",
+// it doesn't really make sense to call them in parallel with any other
+// call.
+
 void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr);
 void ms_filter(mem_space *ms, mp_predicate pred, void *ctx);
 uint64_t ms_count(mem_space *ms);
