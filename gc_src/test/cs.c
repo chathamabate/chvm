@@ -26,16 +26,16 @@ static void test_cs_new_obj(chunit_test_context *tc) {
     const uint64_t rt_len = 5;
     const uint64_t da_size = sizeof(uint64_t);
 
-    malloc_res res = cs_malloc_object_and_hold(cs, 5, sizeof(uint64_t));
+    malloc_obj_res mor = cs_malloc_object_and_hold(cs, 5, sizeof(uint64_t));
 
-    assert_false(tc, null_adb_addr(res.vaddr));
-    assert_non_null(tc, res.paddr);
+    assert_false(tc, null_adb_addr(mor.vaddr));
+    assert_non_null(tc, mor.i.h);
 
-    obj_header *obj_h = res.paddr;
+    obj_header *obj_h = mor.i.h;
 
     assert_eq_uint(tc, rt_len, obj_h->rt_len);
     assert_eq_uint(tc, da_size, obj_h->da_size);
-    cs_unlock(cs, res.vaddr);
+    cs_unlock(cs, mor.vaddr);
 
     delete_collected_space(cs);
 }
@@ -108,34 +108,75 @@ static const chunit_test CS_GC_0 = {
     .timeout = 5,
 };
 
-static void test_cs_gc_1(chunit_test_context *tc) {
+static collected_space *new_standard_cs(addr_book_vaddr *vaddrs, uint64_t objs, 
+        uint64_t rt_len, uint64_t da_size) {
     collected_space *cs = new_collected_space_seed(1, 1, 10, 1000); 
-
-    // Simple Tree here.
-    const uint64_t objs = 5;
-    const uint64_t rt_len = 3;
-
-    addr_book_vaddr vaddrs[objs];
-
-    obj_header *obj_h;
-    addr_book_vaddr *rt;
-    uint64_t *da;
-
+    
     uint64_t i;
     for (i = 0; i < objs; i++) {
-        malloc_res res = cs_malloc_object_and_hold(cs, rt_len, sizeof(uint64_t));
-
-        obj_h = res.paddr;
-        rt = (addr_book_vaddr *)(obj_h + 1);
-        da = (uint64_t *)(rt + rt_len);
-
-        *da = i;
-
-        cs_unlock(cs, res.vaddr);
+        vaddrs[i] = cs_malloc_object(cs, rt_len, da_size);
     }
 
-    // TODO finish this up.
-    // Test comment for git.
+    return cs;
+}
+
+static void test_cs_gc_1(chunit_test_context *tc) {
+    const uint64_t objs = 5;
+    addr_book_vaddr vaddrs[objs];
+    
+    collected_space *cs = new_standard_cs(vaddrs, objs, 2, 0);
+
+    // Test Case :
+    //
+    // Root(0);
+    // 0 -> {1, 2};
+    // 3 -> {4};
+    // 
+    // 3, 4 should be GC'd
+    
+    obj_index ind;
+
+    cs_root_id root_id = cs_root(cs, vaddrs[0]);
+
+    ind = cs_get_write_ind(cs, vaddrs[0]);
+    ind.rt[0] = vaddrs[1];
+    ind.rt[1] = vaddrs[2];
+    cs_unlock(cs, vaddrs[0]);
+
+    ind = cs_get_write_ind(cs, vaddrs[3]);
+    ind.rt[0] = vaddrs[4];
+    cs_unlock(cs, vaddrs[3]);
+
+    cs_collect_garbage(cs);
+
+    assert_eq_uint(tc, 3, cs_count(cs));
+
+    // cs_print(cs);
+    //
+    delete_collected_space(cs);
+}
+
+static const chunit_test CS_GC_1 = {
+    .name = "Collected Space Collect Garbage 1",
+    .t = test_cs_gc_1,
+    .timeout = 5,
+};
+
+static void test_cs_gc_2(chunit_test_context *tc) {
+    const uint64_t objs = 6;
+    addr_book_vaddr vaddrs[objs];
+    collected_space *cs = new_standard_cs(vaddrs, objs, 2, 0);
+
+    // Test Case :
+    //
+    // Root(0, 1);
+    // 0 -> {2};
+    // 1 -> {2};
+    // 3 -> {4, 5};
+    // 
+    // 3, 4, 5 should be GC'd
+
+    obj_index ind;
 
     delete_collected_space(cs);
 }
@@ -147,6 +188,7 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
         &CS_NEW_OBJ,
         &CS_NEW_ROOT,
         &CS_GC_0,
+        &CS_GC_1,
     },
-    .tests_len = 4,
+    .tests_len = 5,
 };

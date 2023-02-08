@@ -217,6 +217,10 @@ void ms_free(mem_space *ms, addr_book_vaddr vaddr) {
     mb_free(mb, vaddr);
 }
 
+uint8_t ms_allocated(mem_space *ms, addr_book_vaddr vaddr) {
+    return adb_allocated(ms->adb, vaddr);
+}
+
 void ms_try_full_shift(mem_space *ms) {
     uint64_t len, i;
 

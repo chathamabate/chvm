@@ -1,6 +1,7 @@
 #ifndef GC_CS_H
 #define GC_CS_H
 
+#include "mb.h"
 #include "virt.h"
 #include "ms.h"
 
@@ -27,6 +28,22 @@ typedef struct {
     const uint64_t da_size;
 } obj_header;
 
+typedef struct {
+    obj_header *h;
+    addr_book_vaddr *rt;
+    uint8_t *da;
+} obj_index;
+
+static inline obj_index obj_h_to_index(obj_header *h) {
+    obj_index obj_i;
+
+    obj_i.h = h;
+    obj_i.rt = (addr_book_vaddr *)(h + 1);
+    obj_i.da = (uint8_t *)(obj_i.rt + h->rt_len);
+
+    return obj_i;
+}
+
 // Here we provide information to set up the underlying memory space.
 // NOTE: No root objects will be created at first.
 collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed, 
@@ -51,10 +68,15 @@ void delete_collected_space(collected_space *cs);
 // extremely slow.
 //
 // We will have to make sure compilers for the VM know this.
+
+typedef struct {
+    addr_book_vaddr vaddr;
+    obj_index i;
+} malloc_obj_res;
  
 // This create an object in the underlying mem space and returns its
 // information (Depending on whether hold is provided.
-malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
+malloc_obj_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
         uint64_t da_size, uint8_t hold);
 
 static inline addr_book_vaddr cs_malloc_object(collected_space *cs,
@@ -62,10 +84,12 @@ static inline addr_book_vaddr cs_malloc_object(collected_space *cs,
     return cs_malloc_object_p(cs, rt_len, da_size, 0).vaddr;
 }
 
-static inline malloc_res cs_malloc_object_and_hold(collected_space *cs,
+static inline malloc_obj_res cs_malloc_object_and_hold(collected_space *cs,
         uint64_t rt_len, uint64_t da_size) {
     return cs_malloc_object_p(cs, rt_len, da_size, 1);
 }
+
+uint8_t cs_allocated(collected_space *cs, addr_book_vaddr vaddr);
 
 typedef uint64_t cs_root_id;
 
@@ -111,8 +135,18 @@ cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id);
 // These calls are forwarded directly to the memory space.
 obj_header *cs_get_read(collected_space *cs, addr_book_vaddr vaddr);
 
+static inline obj_index cs_get_read_ind(collected_space *cs, 
+        addr_book_vaddr vaddr) {
+    return obj_h_to_index(cs_get_read(cs, vaddr));
+}
+
 // NOTE: This has special behavoir in the presence of GC.
 obj_header *cs_get_write(collected_space *cs, addr_book_vaddr vaddr);
+
+static inline obj_index cs_get_write_ind(collected_space *cs, 
+        addr_book_vaddr vaddr) {
+    return obj_h_to_index(cs_get_write(cs, vaddr));
+}
 
 void cs_unlock(collected_space *cs, addr_book_vaddr vaddr);
 

@@ -258,16 +258,30 @@ malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
     return res;
 }
 
-malloc_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
+malloc_obj_res cs_malloc_object_p(collected_space *cs, uint64_t rt_len, 
         uint64_t da_size, uint8_t hold) {
-    malloc_res res = cs_malloc_p(cs, rt_len, da_size, hold);
+    malloc_res mr = cs_malloc_p(cs, rt_len, da_size, hold);
 
-    // Skip past pre header for user facing function.
-    if (res.paddr) {
-        res.paddr =  (obj_pre_header *)res.paddr + 1;
-    }
+    malloc_obj_res mor = {
+        .vaddr = mr.vaddr,
+        .i = {
+            .h = NULL,
+            .rt = NULL,
+            .da = NULL,
+        },
+    };
 
-    return res;
+    if (mr.paddr) {
+        // If we held, convert object header into object index!
+        obj_header *obj_h = (obj_header *)((obj_pre_header *)mr.paddr + 1);
+        mor.i = obj_h_to_index(obj_h);
+    } 
+
+    return mor;
+}
+
+uint8_t cs_allocated(collected_space *cs, addr_book_vaddr vaddr) {
+    return ms_allocated(cs->ms, vaddr);
 }
 
 static inline  uint8_t cs_gc_in_progress(collected_space *cs) {

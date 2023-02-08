@@ -69,6 +69,9 @@ static inline addr_table_put_res adt_put_and_hold(addr_table *adt, void *paddr) 
     return adt_put_p(adt, paddr, 1);
 }
 
+
+uint8_t adt_allocated(addr_table *adt, uint64_t cell_ind);
+
 // NOTE: For safety, I have added an allocation flag to each
 // cell in the address table.
 // Thus, the following calls will be able to check if
@@ -169,6 +172,8 @@ static inline addr_book_vaddr adb_put(addr_book *adb, void *paddr) {
 static inline addr_book_vaddr adb_put_and_hold(addr_book *adb, void *paddr) {
     return adb_put_p(adb, paddr, 1);
 }
+
+uint8_t adb_allocated(addr_book *adb, addr_book_vaddr vaddr);
 
 void adb_move_p(uint8_t lck, addr_book *adb, addr_book_vaddr vaddr, 
         void *new_paddr, uint64_t size, uint8_t init);

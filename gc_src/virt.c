@@ -161,6 +161,27 @@ addr_table_put_res adt_put_p(addr_table *adt, void *paddr, uint8_t hold) {
     return res;
 }
 
+uint8_t adt_allocated(addr_table *adt, uint64_t cell_ind) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+
+    if (cell_ind >= adt_h->cap) {
+        return 0;
+    }
+
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
+    
+    addr_table_cell *cell = table + cell_ind;
+
+    uint8_t allocated;
+
+    safe_rdlock(&(cell->lck));
+    allocated = cell->allocated;
+    safe_rwlock_unlock(&(cell->lck));
+
+    return allocated;
+}
+
 // No locks needed for this call as capacity is a constant.
 static inline void adt_validate_cell_ind(addr_table *adt, 
         uint64_t cell_ind, const char *tag) {
@@ -595,6 +616,20 @@ addr_book_vaddr adb_put_p(addr_book *adb, void *paddr, uint8_t hold) {
 
         return vaddr;
     }
+}
+
+uint8_t adb_allocated(addr_book *adb, addr_book_vaddr vaddr) {
+    addr_table *adt;
+
+    safe_rdlock(&(adb->lck));
+    if (vaddr.table_index >= adb->book_len) {
+        safe_rwlock_unlock(&(adb->lck));
+        return 0;
+    }
+    adt = adb->book[vaddr.table_index].adt;
+    safe_rwlock_unlock(&(adb->lck));
+
+    return adt_allocated(adt, vaddr.cell_index);
 }
 
 static inline addr_table *adb_get_adt(addr_book *adb, uint64_t table_index, 

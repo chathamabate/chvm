@@ -38,6 +38,9 @@ static void test_adt_put_and_get(chunit_test_context *tc) {
         void *ptr = adt_get_read(adt, put_res.index);
         adt_unlock(adt, put_res.index);
 
+        // Penciled test for adt_allocated.
+        assert_true(tc, adt_allocated(adt, put_res.index));
+
         // Looks good so far!
         assert_eq_ptr(tc, ptable + i, ptr);
     }
@@ -65,6 +68,8 @@ static void test_adt_free(chunit_test_context *tc) {
     for (i = 0; i < table_len; i++) {
         addr_table_put_res put_res = adt_put(adt, NULL);
         vaddrs[i] = put_res.index;        
+
+        assert_true(tc, adt_allocated(adt, put_res.index));
     }
 
     const uint64_t freers_len = 3;
@@ -75,6 +80,8 @@ static void test_adt_free(chunit_test_context *tc) {
     for (i = 0; i < freers_len; i++) {
         addr_table_code free_res = adt_free(adt, freers[i]);
         assert_eq_uint(tc, i == 0 ? ADT_NEWLY_FREE : ADT_SUCCESS, free_res);
+
+        assert_false(tc, adt_allocated(adt, freers[i]));
     }
 
     for (i = 0; i < freers_len; i++) {
@@ -146,6 +153,8 @@ static void *test_adt_T0(void *arg) {
         // This confirms that there is space for every ptr 
         // put into the adt.
         assert_false(context->tc, p_res.code == ADT_NO_SPACE);
+
+        assert_true(context->tc, adt_allocated(context->adt, p_res.index));
 
         // This confirms the returned index is valid.
         assert_true(context->tc, p_res.index < adt_get_cap(context->adt));
@@ -422,6 +431,8 @@ static void test_adb_put_and_get(chunit_test_context *tc) {
             // we are confirming all puts return a unique address.
             paddrs[table][ind] = (void *)((table * table_cap) + ind);
             vaddrs[table][ind] = adb_put(adb, paddrs[table][ind]);
+
+            assert_true(tc, adb_allocated(adb, vaddrs[table][ind]));
         }        
     }
 
@@ -455,6 +466,8 @@ static void test_adb_free(chunit_test_context *tc) {
     uint64_t i;
     for (i = 0; i < num_puts; i++) {
         vaddrs[i] = adb_put(adb, NULL);
+
+        assert_true(tc, adb_allocated(adb, vaddrs[i]));
     }
 
     // Confirm all puts executed correctly.
@@ -462,6 +475,8 @@ static void test_adb_free(chunit_test_context *tc) {
 
     for (i = 0; i < frees; i++) {
         adb_free(adb, vaddrs[i]);
+
+        assert_false(tc, adb_allocated(adb, vaddrs[i]));
     }
 
     // Assert frees happened successfully.

@@ -36,6 +36,8 @@ static inline malloc_res ms_malloc_and_hold(mem_space *ms,
 
 void ms_free(mem_space *ms, addr_book_vaddr vaddr);
 
+uint8_t ms_allocated(mem_space *ms, addr_book_vaddr vaddr);
+
 // This will call try full shift on all memory blocks
 // in the mem space at the time of the call.
 void ms_try_full_shift(mem_space *ms);
