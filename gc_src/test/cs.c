@@ -83,13 +83,38 @@ static const chunit_test CS_NEW_ROOT = {
     .timeout = 5,
 };
 
+// TODO : find a better way to craete colleccted spaces....
+// How to represent a graph best in static constants?
+//
+// Each node has neighbors.
+// There are those expected to be collected.
+// and those not expected to be collected.
+// Think of a better way soon.
+
+typedef struct {
+    uint64_t from;
+    uint64_t to;
+} cs_edge;
+
+
+typedef struct {
+    const uint64_t num_objs;
+
+    const uint64_t num_roots;
+    const uint64_t *roots;
+
+    const uint64_t num_edges;
+    const cs_edge *edges;
+
+    const uint64_t num_dels;
+    const uint64_t *dels;
+} cs_graph;
+
+
 static void test_cs_gc_0(chunit_test_context *tc) {
     collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
 
     const uint64_t bogus_objs = 5;
-
-    // Make a bunch of objects, all to be GC'd.
-
     uint64_t i;
     for (i = 0; i < bogus_objs; i++) {
         cs_malloc_object(cs, 1, 0);
