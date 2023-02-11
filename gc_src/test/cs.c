@@ -137,7 +137,7 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
         frees[i] = 0;
     }
 
-    // In the first pass, we store which objects are expected to be free,
+    // In the first pass, we store which objects are expected to be freed,
     // as well as how many edges come out of each object.
 
     const cs_dir *iter;
@@ -253,31 +253,17 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
     delete_collected_space(cs);
 }
 
-
-
-static const cs_test_blueprint TEST_BP_0 = {
-    .num_objs = 3,
+// No objects at all in the space.
+static const cs_test_blueprint TEST_CS_GC_0_BP = {
+    .num_objs = 0,
     .instructions = {
-        CS_F(0), CS_F(1), CS_F(2),
-
         CS_T()
     },
 };
 
+
 static void test_cs_gc_0(chunit_test_context *tc) {
-    collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
-
-    const uint64_t bogus_objs = 5;
-    uint64_t i;
-    for (i = 0; i < bogus_objs; i++) {
-        cs_malloc_object(cs, 1, 0);
-    }
-
-    assert_eq_uint(tc, bogus_objs, cs_count(cs));
-
-    cs_collect_garbage(cs);
-
-    delete_collected_space(cs);
+    run_cs_test(tc, &TEST_CS_GC_0_BP);
 }
 
 static const chunit_test CS_GC_0 = {
@@ -286,52 +272,18 @@ static const chunit_test CS_GC_0 = {
     .timeout = 5,
 };
 
-static collected_space *new_standard_cs(addr_book_vaddr *vaddrs, uint64_t objs, 
-        uint64_t rt_len, uint64_t da_size) {
-    collected_space *cs = new_collected_space_seed(1, 1, 10, 1000); 
-    
-    uint64_t i;
-    for (i = 0; i < objs; i++) {
-        vaddrs[i] = cs_malloc_object(cs, rt_len, da_size);
-    }
+// One non-root object.
+static const cs_test_blueprint TEST_CS_GC_1_BP = {
+    .num_objs = 1,
+    .instructions = {
+        CS_F(0),
 
-    return cs;
-}
+        CS_T()
+    },
+};
 
 static void test_cs_gc_1(chunit_test_context *tc) {
-    const uint64_t objs = 5;
-    addr_book_vaddr vaddrs[objs];
-    
-    collected_space *cs = new_standard_cs(vaddrs, objs, 2, 0);
-
-    // Test Case :
-    //
-    // Root(0);
-    // 0 -> {1, 2};
-    // 3 -> {4};
-    // 
-    // 3, 4 should be GC'd
-    
-    obj_index ind;
-
-    cs_root_id root_id = cs_root(cs, vaddrs[0]);
-
-    ind = cs_get_write_ind(cs, vaddrs[0]);
-    ind.rt[0] = vaddrs[1];
-    ind.rt[1] = vaddrs[2];
-    cs_unlock(cs, vaddrs[0]);
-
-    ind = cs_get_write_ind(cs, vaddrs[3]);
-    ind.rt[0] = vaddrs[4];
-    cs_unlock(cs, vaddrs[3]);
-
-    cs_collect_garbage(cs);
-
-    assert_eq_uint(tc, 3, cs_count(cs));
-
-    // cs_print(cs);
-    //
-    delete_collected_space(cs);
+    run_cs_test(tc, &TEST_CS_GC_1_BP);
 }
 
 static const chunit_test CS_GC_1 = {
@@ -340,24 +292,25 @@ static const chunit_test CS_GC_1 = {
     .timeout = 5,
 };
 
+// Three non root objects.
+static const cs_test_blueprint TEST_CS_GC_2_BP = {
+    .num_objs = 3,
+    .instructions = {
+        CS_F(0), CS_F(1), CS_F(2),
+
+        CS_T()
+    },
+};
+
 static void test_cs_gc_2(chunit_test_context *tc) {
-    const uint64_t objs = 6;
-    addr_book_vaddr vaddrs[objs];
-    collected_space *cs = new_standard_cs(vaddrs, objs, 2, 0);
-
-    // Test Case :
-    //
-    // Root(0, 1);
-    // 0 -> {2};
-    // 1 -> {2};
-    // 3 -> {4, 5};
-    // 
-    // 3, 4, 5 should be GC'd
-
-    obj_index ind;
-
-    delete_collected_space(cs);
+    run_cs_test(tc, &TEST_CS_GC_2_BP);
 }
+
+static const chunit_test CS_GC_2 = {
+    .name = "Collected Space Collect Garbage 2",
+    .t = test_cs_gc_2,
+    .timeout = 5,
+};
 
 const chunit_test_suite GC_TEST_SUITE_CS = {
     .name = "Collected Space Test Suite",
@@ -367,6 +320,8 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
         &CS_NEW_ROOT,
         &CS_GC_0,
         &CS_GC_1,
+
+        &CS_GC_2,
     },
-    .tests_len = 5,
+    .tests_len = 6,
 };
