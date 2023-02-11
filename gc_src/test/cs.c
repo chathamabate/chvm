@@ -232,7 +232,7 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
 
         uint64_t da_u64_i;
         for (da_u64_i = 0; da_u64_i < da_u64_cells; da_u64_i++) {
-            assert_eq_uint(tc, i, da_u64[i]);
+            assert_eq_uint(tc, i, da_u64[da_u64_i]);
         }
 
         cs_unlock(cs, vaddrs[i]);
@@ -382,8 +382,16 @@ static const chunit_test CS_GC_5 = {
 };
 
 static const cs_test_blueprint TEST_CS_GC_6_BP = {
-    .num_objs = 8,
+    .num_objs = 7,
     .instructions = {
+        CS_R(0),
+        CS_E(0, 1),
+
+        CS_R(2), CS_E(2, 3), CS_E(2, 4),
+
+        CS_E(5, 4), CS_E(5, 6),
+
+        CS_F(5), CS_F(6),
 
         CS_T()
     },
@@ -396,6 +404,190 @@ static void test_cs_gc_6(chunit_test_context *tc) {
 static const chunit_test CS_GC_6 = {
     .name = "Collected Space Collect Garbage 6",
     .t = test_cs_gc_6,
+    .timeout = 5,
+};
+
+// Just a kinda complex graph here.
+static const cs_test_blueprint TEST_CS_GC_7_BP = {
+    .num_objs = 8,
+    .instructions = {
+        CS_R(0), CS_R(1),
+
+        CS_E(0, 2), CS_E(0, 3),
+        CS_E(1, 3), CS_E(1, 4),
+        
+        CS_E(2, 5),
+
+        CS_E(3, 5), CS_E(3, 6),
+
+        CS_E(4, 6),
+
+        CS_E(5, 7), CS_E(6, 7),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_7(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_7_BP);
+}
+
+static const chunit_test CS_GC_7 = {
+    .name = "Collected Space Collect Garbage 7",
+    .t = test_cs_gc_7,
+    .timeout = 5,
+};
+
+// Duplicate edges!
+static const cs_test_blueprint TEST_CS_GC_8_BP = {
+    .num_objs = 4,
+    .instructions = {
+        CS_R(0),
+        CS_E(0, 2), CS_E(0, 2), CS_E(0, 3),
+        CS_E(1, 2),
+
+        CS_F(1),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_8(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_8_BP);
+}
+
+static const chunit_test CS_GC_8 = {
+    .name = "Collected Space Collect Garbage 8",
+    .t = test_cs_gc_8,
+    .timeout = 5,
+};
+
+// Root pointing to a root.
+static const cs_test_blueprint TEST_CS_GC_9_BP = {
+    .num_objs = 3,
+    .instructions = {
+        CS_R(0), CS_R(1),
+
+        CS_E(0, 1), CS_E(0, 2),
+        CS_E(1, 2),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_9(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_9_BP);
+}
+
+static const chunit_test CS_GC_9 = {
+    .name = "Collected Space Collect Garbage 9",
+    .t = test_cs_gc_9,
+    .timeout = 5,
+};
+
+// Direct Cycle.
+static const cs_test_blueprint TEST_CS_GC_10_BP = {
+    .num_objs = 2,
+    .instructions = {
+        CS_R(0),
+        CS_E(0, 1), CS_E(1, 0), 
+        CS_T()
+    },
+};
+
+static void test_cs_gc_10(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_10_BP);
+}
+
+static const chunit_test CS_GC_10 = {
+    .name = "Collected Space Collect Garbage 10",
+    .t = test_cs_gc_10,
+    .timeout = 5,
+};
+
+// Big Cycle with extra root.
+static const cs_test_blueprint TEST_CS_GC_11_BP = {
+    .num_objs = 5,
+    .instructions = {
+        CS_R(0), CS_R(1),
+
+        CS_E(0, 2),
+        CS_E(2, 4),
+        CS_E(4, 3),
+        CS_E(3, 0),
+
+        CS_E(1, 3),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_11(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_11_BP);
+}
+
+static const chunit_test CS_GC_11 = {
+    .name = "Collected Space Collect Garbage 11",
+    .t = test_cs_gc_11,
+    .timeout = 5,
+};
+
+// Big loop which contains multiple roots.
+static const cs_test_blueprint TEST_CS_GC_12_BP = {
+    .num_objs = 4,
+    .instructions = {
+        CS_R(0), CS_R(3),
+
+        CS_E(0, 1), CS_E(1, 3),
+        CS_E(3, 2), CS_E(2, 0),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_12(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_12_BP);
+}
+
+static const chunit_test CS_GC_12 = {
+    .name = "Collected Space Collect Garbage 12",
+    .t = test_cs_gc_12,
+    .timeout = 5,
+};
+
+// Big Graph 1.
+static const cs_test_blueprint TEST_CS_GC_13_BP = {
+    .num_objs = 11,
+    .instructions = {
+        CS_E(0, 2), CS_E(0, 3), CS_F(0),
+
+        CS_E(1, 0), CS_F(1),
+
+        CS_R(2), CS_E(2, 4), CS_E(2, 5),
+
+        CS_E(3, 5), CS_E(3, 6), CS_E(3, 1), CS_F(3),
+
+        CS_E(4, 7),
+
+        CS_E(5, 7), CS_E(5, 8),
+
+        CS_E(6, 5), CS_F(6),
+
+        CS_E(7, 2),
+
+        CS_R(8), CS_E(8, 7), CS_E(8, 9), CS_E(8, 10), CS_E(8, 7),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_13(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_13_BP);
+}
+
+static const chunit_test CS_GC_13 = {
+    .name = "Collected Space Collect Garbage 13",
+    .t = test_cs_gc_13,
     .timeout = 5,
 };
 
@@ -413,6 +605,15 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
         &CS_GC_4,
         &CS_GC_5,
         &CS_GC_6,
+
+        &CS_GC_7,
+        &CS_GC_8,
+        &CS_GC_9,
+        &CS_GC_10,
+        &CS_GC_11,
+
+        &CS_GC_12,
+        &CS_GC_13,
     },
-    .tests_len = 10,
+    .tests_len = 17,
 };
