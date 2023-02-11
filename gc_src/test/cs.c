@@ -2,6 +2,7 @@
 #include "../../core_src/io.h"
 #include "../../testing_src/assert.h"
 
+#include <cstdint>
 #include <stdint.h>
 #include <string.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
@@ -91,25 +92,52 @@ static const chunit_test CS_NEW_ROOT = {
 // and those not expected to be collected.
 // Think of a better way soon.
 
-typedef struct {
-    uint64_t from;
-    uint64_t to;
-} cs_edge;
+typedef enum {
+    CS_DIR_ROOT = 0,
+    CS_DIR_EDGE,
+    CS_DIR_EXPECT_ALLOCATED,
+    CS_DIR_EXPECT_FREE,
+    CS_DIR_TERMINATOR,
+} cs_dir_code;
 
+typedef struct {
+    cs_dir_code type;
+
+    uint64_t obj_ind_1;
+    uint64_t obj_ind_2;
+} cs_dir;
+
+#define CS_R(root_ind) \
+{.type = CS_DIR_ROOT, .obj_ind_1 = (root_ind), .obj_ind_2 = UINT64_MAX}
+
+#define CS_E(from_ind, to_ind) \
+{.type = CS_DIR_EDGE, .obj_ind_1 = (from_ind), .obj_ind_2 = (to_ind)}
+
+#define CS_A(obj_ind) \
+{.type = CS_DIR_EXPECT_ALLOCATED, .obj_ind_1 = (obj_ind), .obj_ind_2 = UINT64_MAX}
+
+#define CS_F(obj_ind) \
+{.type = CS_DIR_EXPECT_FREE, .obj_ind_1 = (obj_ind), .obj_ind_2 = UINT64_MAX}
+
+#define CS_T() \
+{.type = CS_DIR_TERMINATOR, .obj_ind_1 = UINT64_MAX, .obj_ind_2 = UINT64_MAX}
 
 typedef struct {
     const uint64_t num_objs;
 
-    const uint64_t num_roots;
-    const uint64_t *roots;
+    // Length of this flexible array is not given.
+    // Instead it is guaranteed to end with the terminator.
+    const cs_dir instructions[];
+} cs_test_blueprint;
 
-    const uint64_t num_edges;
-    const cs_edge *edges;
+static const cs_test_blueprint TEST_BP_0 = {
+    .num_objs = 3,
+    .instructions = {
+        CS_F(0), CS_F(1), CS_F(2),
 
-    const uint64_t num_dels;
-    const uint64_t *dels;
-} cs_graph;
-
+        CS_T()
+    },
+};
 
 static void test_cs_gc_0(chunit_test_context *tc) {
     collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
