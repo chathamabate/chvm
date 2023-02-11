@@ -244,6 +244,8 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
                 assert_true(tc, cs_allocated(cs, refs[refs_i]));
             }
         }
+
+        safe_free(refs);
     }
     
     safe_free(vaddrs);
@@ -312,6 +314,91 @@ static const chunit_test CS_GC_2 = {
     .timeout = 5,
 };
 
+static const cs_test_blueprint TEST_CS_GC_3_BP = {
+    .num_objs = 2,
+    .instructions = {
+        CS_R(0),
+
+        CS_F(1),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_3(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_3_BP);
+}
+
+static const chunit_test CS_GC_3 = {
+    .name = "Collected Space Collect Garbage 3",
+    .t = test_cs_gc_3,
+    .timeout = 5,
+};
+
+static const cs_test_blueprint TEST_CS_GC_4_BP = {
+    .num_objs = 3,
+    .instructions = {
+        CS_R(0),
+        CS_E(0, 1),
+
+        CS_F(2),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_4(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_4_BP);
+}
+
+static const chunit_test CS_GC_4 = {
+    .name = "Collected Space Collect Garbage 4",
+    .t = test_cs_gc_4,
+    .timeout = 5,
+};
+
+static const cs_test_blueprint TEST_CS_GC_5_BP = {
+    .num_objs = 5,
+    .instructions = {
+        CS_R(0),
+        CS_E(0, 1),
+        CS_E(0, 2),
+
+        CS_E(3, 4),
+        CS_F(3), CS_F(4),
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_5(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_5_BP);
+}
+
+static const chunit_test CS_GC_5 = {
+    .name = "Collected Space Collect Garbage 5",
+    .t = test_cs_gc_5,
+    .timeout = 5,
+};
+
+static const cs_test_blueprint TEST_CS_GC_6_BP = {
+    .num_objs = 8,
+    .instructions = {
+
+        CS_T()
+    },
+};
+
+static void test_cs_gc_6(chunit_test_context *tc) {
+    run_cs_test(tc, &TEST_CS_GC_6_BP);
+}
+
+static const chunit_test CS_GC_6 = {
+    .name = "Collected Space Collect Garbage 6",
+    .t = test_cs_gc_6,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_CS = {
     .name = "Collected Space Test Suite",
     .tests = {
@@ -322,6 +409,10 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
         &CS_GC_1,
 
         &CS_GC_2,
+        &CS_GC_3,
+        &CS_GC_4,
+        &CS_GC_5,
+        &CS_GC_6,
     },
-    .tests_len = 6,
+    .tests_len = 10,
 };
