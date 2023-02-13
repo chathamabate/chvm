@@ -51,7 +51,9 @@ void ms_unlock(mem_space *ms, addr_book_vaddr vaddr);
 // call.
 
 void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr);
-void ms_filter(mem_space *ms, mp_predicate pred, void *ctx);
+
+// number of pieces deleted
+uint64_t ms_filter(mem_space *ms, mp_predicate pred, void *ctx);
 uint64_t ms_count(mem_space *ms);
 
 void ms_print(mem_space *ms);

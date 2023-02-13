@@ -341,6 +341,7 @@ static void bc_len_consumer(void *cell, void *ctx) {
     (*(uint64_t *)ctx)++;
 }
 
+// NOTE : THIS CAN BE GREATLY IMPROVED.
 uint64_t bc_len(util_bc *bc) {
     uint64_t len = 0; 
     bc_foreach(bc, bc_len_consumer, &len);

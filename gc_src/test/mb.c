@@ -830,7 +830,9 @@ static void test_mb_filter(chunit_test_context *tc) {
 
     assert_eq_uint(tc, len, mb_count(mb));
     
-    mb_filter(mb, mp_is_even, NULL);
+    uint64_t filtered = mb_filter(mb, mp_is_even, NULL);
+
+    assert_eq_uint(tc, len / 2, filtered);
 
     assert_eq_uint(tc, len / 2, mb_count(mb));
     mb_foreach(mb, mp_is_even_checker, tc, 0);

@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
+#include <time.h>
 
 // NOTE: Rigorous GC Notes:
 // 
@@ -153,22 +154,35 @@ typedef struct {
     };
 } root_set_entry;
 
+typedef enum {
+    GC_WORKER_ON = 0,
+    GC_WORKER_STARTING,
+    GC_WORKER_STOPPING,
+    GC_WORKER_OFF,
+} gc_worker_status_code;
+
 struct collected_space_struct {
     mem_space * const ms;
 
     // Lock for accessing the progress fields.
     pthread_rwlock_t gc_stat_lock;
     struct {
+        gc_worker_status_code gc_worker_stat : 2;
+
+        // Consider reworking below two fields.
         uint8_t gc_in_progress : 1;
         uint8_t paint_black_in_progress : 1;
     };
+    
+    // Thread ID used when gc worker is on. 
+    // Otherwise it has an undefined value.
+    pthread_t gc_thread;
 
     pthread_mutex_t in_progress_stack_lock;
     util_bc *in_progress_stack;
 
     // No need for a lock on this guy.
     util_bc *visit_stack;
-
 
     pthread_rwlock_t root_set_lock;
 
@@ -190,6 +204,7 @@ collected_space *new_collected_space_seed(uint64_t chnl, uint64_t seed,
         new_mem_space_seed(chnl, seed, adb_t_cap, mb_m_bytes);
 
     safe_rwlock_init(&(cs->gc_stat_lock), NULL);
+    cs->gc_worker_stat = GC_WORKER_OFF;
     cs->gc_in_progress = 0;
     cs->paint_black_in_progress = 0;
 
@@ -563,13 +578,13 @@ static uint8_t obj_reachable(addr_book_vaddr v, void *paddr, void *ctx) {
     return obj_p_h->gc_status != GC_UNVISITED;
 }
 
-void cs_collect_garbage(collected_space *cs) {
+uint64_t cs_collect_garbage(collected_space *cs) {
     safe_wrlock(&(cs->gc_stat_lock));
 
     if (cs->gc_in_progress) {
         safe_rwlock_unlock(&(cs->gc_stat_lock));
 
-        return;
+        return 0;
     }
 
     cs->gc_in_progress = 1;
@@ -662,11 +677,74 @@ void cs_collect_garbage(collected_space *cs) {
     cs_set_paint_black_in_progress(cs, 0);
 
     // Finally time for "sweep" phase.
-    ms_filter(cs->ms, obj_reachable, NULL);
+    uint64_t filtered = ms_filter(cs->ms, obj_reachable, NULL);
 
     safe_wrlock(&(cs->gc_stat_lock));
     cs->gc_in_progress = 0;
     safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+    return filtered;
+}
+
+typedef struct {
+    collected_space *cs;
+    const struct timespec *delay;
+} cs_gc_worker_arg;
+
+static void *cs_gc_worker(void *arg) {
+    cs_gc_worker_arg *gc_arg = arg;
+
+    collected_space *cs = gc_arg->cs;
+    const struct timespec *delay = gc_arg->delay;
+
+    return NULL;
+}
+
+uint8_t cs_start_gc(collected_space *cs, const struct timespec *del) {
+    safe_wrlock(&(cs->gc_stat_lock));
+
+    if (cs->gc_worker_stat != GC_WORKER_OFF) {
+        safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+        return 1;
+    }
+
+    cs->gc_worker_stat = GC_WORKER_STARTING;
+    
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+    cs_gc_worker_arg gc_arg = {
+        .cs = cs,
+        .delay = del,
+    };
+
+    safe_pthread_create(&(cs->gc_thread), NULL, cs_gc_worker, &gc_arg);
+
+    safe_wrlock(&(cs->gc_stat_lock));
+    cs->gc_worker_stat = GC_WORKER_ON;
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+    return 0;
+}
+
+uint8_t cs_stop_gc(collected_space *cs, uint8_t block) {
+    gc_worker_status_code stat;
+
+    safe_wrlock(&(cs->gc_stat_lock));
+    if (cs->gc_worker_stat != GC_WORKER_ON) {
+        safe_rwlock_unlock(&(cs->gc_stat_lock)); 
+
+        return 1;
+    }
+
+    cs->gc_worker_stat = GC_WORKER_STOPPING;
+    safe_rwlock_unlock(&(cs->gc_stat_lock)); 
+
+    if (block) {
+        safe_pthread_join(cs->gc_thread, NULL);
+    }
+
+    return 0;
 }
 
 void cs_try_full_shift(collected_space *cs) {

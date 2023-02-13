@@ -109,7 +109,7 @@ typedef uint8_t (*mp_predicate)(addr_book_vaddr v, void *paddr, void *ctx);
 
 // This will never mutate. only ever aquire the read lock
 // on memory pieces.
-void mb_filter(mem_block *mb, mp_predicate pred, void *ctx);
+uint64_t mb_filter(mem_block *mb, mp_predicate pred, void *ctx);
 
 // Number of allocated pieces in the memory block.
 uint64_t mb_count(mem_block *mb);

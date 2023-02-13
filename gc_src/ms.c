@@ -315,28 +315,32 @@ void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr) {
 typedef struct {
     mp_predicate pred;
     void *ctx;
+    uint64_t count;
 } mb_filter_args;
 
 static uint8_t mb_filter_mp_predicate(addr_book_vaddr v, void *paddr, void *ctx) {
     mb_filter_args *mb_args = ctx;
     void *new_paddr = (mem_space_malloc_header *)paddr + 1;
-    return mb_args->pred(v, new_paddr, ctx);
+    return mb_args->pred(v, new_paddr, mb_args->ctx);
 }
 
 static void ms_filter_mb_consumer(mem_block *mb, void *ctx) {
     // NOTE: with no rd/wr lock parameter we can pass ctx directly to
     // each memory block.
     mb_filter_args *mb_args = ctx;
-    mb_filter(mb, mb_filter_mp_predicate, mb_args);
+    mb_args->count += mb_filter(mb, mb_filter_mp_predicate, mb_args);
 }
 
-void ms_filter(mem_space *ms, mp_predicate pred, void *ctx) {
+uint64_t ms_filter(mem_space *ms, mp_predicate pred, void *ctx) {
     mb_filter_args mb_args = {
         .pred = pred,
         .ctx = ctx,
+        .count = 0,
     };
 
     ms_foreach_mb(ms, ms_filter_mb_consumer, &mb_args);
+
+    return mb_args.count;
 }
 
 static void mp_count_consumer(addr_book_vaddr v, void *paddr, void *ctx) {

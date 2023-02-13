@@ -363,13 +363,13 @@ static const chunit_test MS_COUNT = {
     .timeout = 5,
 };
 
-static uint8_t mp_is_even(addr_book_vaddr v, void *paddr, void *ctx) {
-    return *(uint64_t *)paddr % 2 == 0;
+static uint8_t mp_is_three_mult(addr_book_vaddr v, void *paddr, void *ctx) {
+    return *(uint64_t *)paddr % 3 == 0;
 }
 
-static void mp_is_even_checker(addr_book_vaddr v, void *paddr, void *ctx) {
+static void mp_is_three_mult_checker(addr_book_vaddr v, void *paddr, void *ctx) {
     chunit_test_context *tc = ctx;
-    assert_true(tc, *(uint64_t *)paddr % 2 == 0);
+    assert_true(tc, *(uint64_t *)paddr % 3 == 0);
 }
 
 static void test_ms_filter(chunit_test_context *tc) {
@@ -387,11 +387,12 @@ static void test_ms_filter(chunit_test_context *tc) {
 
     assert_eq_uint(tc, num_mallocs, ms_count(ms));
 
-    ms_filter(ms, mp_is_even, NULL); 
+    uint64_t filtered = ms_filter(ms, mp_is_three_mult, NULL); 
 
-    assert_eq_uint(tc, num_mallocs / 2, ms_count(ms));
+    assert_eq_uint(tc, 30, filtered);
+    assert_eq_uint(tc, 15, ms_count(ms));
 
-    ms_foreach(ms, mp_is_even_checker, tc, 0);
+    ms_foreach(ms, mp_is_three_mult_checker, tc, 0);
 
     delete_mem_space(ms);
 }

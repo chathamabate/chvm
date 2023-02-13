@@ -696,6 +696,7 @@ typedef struct {
     mp_predicate pred;
 
     void *og_ctx;
+    uint64_t count;
     util_bc *remove_stack;
 } filter_foreach_context;
 
@@ -703,6 +704,7 @@ static void mb_filter_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
     filter_foreach_context *ff_ctx = ctx;
 
     if (!(ff_ctx->pred(v, paddr, ff_ctx->og_ctx))) {
+        ff_ctx->count++;
         bc_push_back(ff_ctx->remove_stack, &v); 
     } 
 }
@@ -710,7 +712,7 @@ static void mb_filter_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
 // NOTE: this filter algo uses foreach, then frees after the fact.
 // This could be improved by doing the deletion while iterating.
 // However, such an approach may be tricky to code.
-void mb_filter(mem_block *mb, mp_predicate pred, void *ctx) {
+uint64_t mb_filter(mem_block *mb, mp_predicate pred, void *ctx) {
     mem_block_header *mb_h = (mem_block_header *)mb;
 
     util_bc *remove_stack = 
@@ -719,6 +721,7 @@ void mb_filter(mem_block *mb, mp_predicate pred, void *ctx) {
     filter_foreach_context ff_ctx = {
         .og_ctx = ctx,
         .pred = pred,
+        .count = 0,
         .remove_stack = remove_stack,
     };
 
@@ -736,6 +739,8 @@ void mb_filter(mem_block *mb, mp_predicate pred, void *ctx) {
     safe_rwlock_unlock(&(mb_h->mem_lck));
 
     delete_broken_collection(remove_stack);
+
+    return ff_ctx.count;
 }
 
 uint64_t mb_count(mem_block *mb) {

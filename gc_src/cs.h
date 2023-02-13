@@ -9,6 +9,8 @@
 #include <time.h>
 #include <stdint.h>
 
+#include <time.h>
+
 // A gc_space will be one level of abstraction above mem_space.
 // Interfacing with a gc_space will promise consistent structure
 // of all memory pieces inside the mem_space being used.
@@ -155,7 +157,20 @@ void cs_print(collected_space *cs);
 
 // Run garbage collection algorithm.
 // See implementation file for notes.
-void cs_collect_garbage(collected_space *cs);
+//
+// Returns number of objects collected.
+uint64_t cs_collect_garbage(collected_space *cs);
+
+// This will run a gc cycle every delay period.
+// If gc is already on, nothing happens.
+//
+// returns 0 if the gc worker was started.
+// returns 1 otherwise.
+uint8_t cs_start_gc(collected_space *cs, const struct timespec *del);
+
+// Returns 0 if the GC worker stopped (or has been told to stop)
+// 1 if there is no one to stop.
+uint8_t cs_stop_gc(collected_space *cs, uint8_t block);
 
 // Run try full shift on the underlying memory space.
 void cs_try_full_shift(collected_space *cs);
