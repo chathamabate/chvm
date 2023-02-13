@@ -688,19 +688,23 @@ uint64_t cs_collect_garbage(collected_space *cs) {
 
 typedef struct {
     collected_space *cs;
-    const struct timespec *delay;
+
+    const gc_worker_spec *spec;
 } cs_gc_worker_arg;
 
 static void *cs_gc_worker(void *arg) {
     cs_gc_worker_arg *gc_arg = arg;
 
     collected_space *cs = gc_arg->cs;
-    const struct timespec *delay = gc_arg->delay;
+    const gc_worker_spec *spec = gc_arg->spec;
+
+
+    // TODO : finish this part up.
 
     return NULL;
 }
 
-uint8_t cs_start_gc(collected_space *cs, const struct timespec *del) {
+uint8_t cs_start_gc(collected_space *cs, const gc_worker_spec *spec) {
     safe_wrlock(&(cs->gc_stat_lock));
 
     if (cs->gc_worker_stat != GC_WORKER_OFF) {
@@ -715,7 +719,7 @@ uint8_t cs_start_gc(collected_space *cs, const struct timespec *del) {
 
     cs_gc_worker_arg gc_arg = {
         .cs = cs,
-        .delay = del,
+        .spec = spec,
     };
 
     safe_pthread_create(&(cs->gc_thread), NULL, cs_gc_worker, &gc_arg);

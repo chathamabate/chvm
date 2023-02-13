@@ -128,7 +128,9 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
     collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
 
     uint64_t *edges = safe_malloc(1, sizeof(uint64_t) * bp->num_objs);
+
     uint8_t *frees = safe_malloc(1, sizeof(uint8_t) * bp->num_objs);
+    uint64_t frees_total = 0;
 
     // Maybe I should make a safe calloc someday...
     uint64_t i;
@@ -152,6 +154,7 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
 
         if (iter->type == CS_DIR_EXPECT_FREED) {
             frees[iter->obj_ind_1] = 1;
+            frees_total++;
         } else if (iter->type == CS_DIR_EDGE) {
             edges[iter->obj_ind_1]++;
         }
@@ -203,7 +206,8 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
     }
 
     // Finally, we can run GC!
-    cs_collect_garbage(cs);
+    uint64_t freed = cs_collect_garbage(cs);
+    assert_eq_uint(tc, frees_total, freed);
 
     // Now we run tests on each object!
     for (i = 0; i < bp->num_objs; i++) {

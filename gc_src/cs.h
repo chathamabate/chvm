@@ -161,12 +161,24 @@ void cs_print(collected_space *cs);
 // Returns number of objects collected.
 uint64_t cs_collect_garbage(collected_space *cs);
 
+typedef struct {
+    struct timespec delay;
+    
+    // 1 if memory shifting should be done also.
+    // 0 otherwise.
+    uint8_t shift;
+
+    // If shifting is on, this will equal the total number of
+    // frees which must occur before a full shift triggers.
+    uint64_t shift_trigger;
+} gc_worker_spec;
+
 // This will run a gc cycle every delay period.
 // If gc is already on, nothing happens.
 //
 // returns 0 if the gc worker was started.
 // returns 1 otherwise.
-uint8_t cs_start_gc(collected_space *cs, const struct timespec *del);
+uint8_t cs_start_gc(collected_space *cs, const gc_worker_spec *spec);
 
 // Returns 0 if the GC worker stopped (or has been told to stop)
 // 1 if there is no one to stop.
