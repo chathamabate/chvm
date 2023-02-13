@@ -698,9 +698,41 @@ static void *cs_gc_worker(void *arg) {
     collected_space *cs = gc_arg->cs;
     const gc_worker_spec *spec = gc_arg->spec;
 
+    // If the thread has started, it is guaranteed the status
+    // is GC_STARTING, GC_ON, or GC_STOPPING.
+    // This will be the only place where the status is cchanged to GC_OFF.
 
-    // TODO : finish this part up.
+    uint64_t free_count = 0;
+    
+    while (1) {
+        safe_wrlock(&(cs->gc_stat_lock));   
 
+        if (cs->gc_worker_stat == GC_WORKER_STOPPING) {
+            cs->gc_worker_stat = GC_WORKER_OFF;
+            safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+            return NULL;
+        }
+
+        safe_rwlock_unlock(&(cs->gc_stat_lock));
+
+        // Here, GC is running!
+
+        free_count += cs_collect_garbage(cs);
+
+        if (spec->shift && free_count >= spec->shift_trigger) {
+            free_count = 0;
+            cs_try_full_shift(cs);
+        }
+
+        if (spec->delay) {
+            // NOTE : No signal interrupt protection here...
+            nanosleep(spec->delay, NULL);
+        }
+    }
+
+    // Should never make it here.
+    error_logf(1, 1, "cs_gc_worker: unexpected ending");
     return NULL;
 }
 

@@ -162,7 +162,7 @@ void cs_print(collected_space *cs);
 uint64_t cs_collect_garbage(collected_space *cs);
 
 typedef struct {
-    struct timespec delay;
+    const struct timespec *delay;
     
     // 1 if memory shifting should be done also.
     // 0 otherwise.
