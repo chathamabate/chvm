@@ -236,8 +236,6 @@ void delete_collected_space(collected_space *cs) {
     safe_free(cs);
 }
 
-// TODO... time to redo this all...
-
 malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
         uint64_t da_size, uint8_t hold) {
     malloc_res res = ms_malloc_and_hold(cs->ms, 
@@ -299,7 +297,7 @@ uint8_t cs_allocated(collected_space *cs, addr_book_vaddr vaddr) {
     return ms_allocated(cs->ms, vaddr);
 }
 
-static inline  uint8_t cs_gc_in_progress(collected_space *cs) {
+static inline uint8_t cs_gc_in_progress(collected_space *cs) {
     uint8_t gc_in_progress;
 
     safe_rdlock(&(cs->gc_stat_lock));
@@ -309,7 +307,7 @@ static inline  uint8_t cs_gc_in_progress(collected_space *cs) {
     return gc_in_progress;
 }
 
-static inline  uint8_t cs_paint_black_in_progress(collected_space *cs) {
+static inline uint8_t cs_paint_black_in_progress(collected_space *cs) {
     uint8_t paint_black_in_progress;
 
     safe_rdlock(&(cs->gc_stat_lock));
@@ -363,8 +361,16 @@ cs_root_id cs_root(collected_space *cs, addr_book_vaddr vaddr) {
 }
 
 cs_root_id cs_malloc_root(collected_space *cs, uint64_t rt_len, uint64_t da_size) {
-    addr_book_vaddr vaddr = cs_malloc_p(cs, rt_len, da_size, 0).vaddr;
-    return cs_root(cs, vaddr);
+    cs_root_id root_id;
+
+    // The concept here is that while an object's lock is held, it cannot
+    // be GC'd. So, we don't release the object's lock until it has been
+    // added to the root set!
+    addr_book_vaddr vaddr = cs_malloc_p(cs, rt_len, da_size, 1).vaddr;
+    root_id = cs_root(cs, vaddr);
+    cs_unlock(cs, vaddr);
+
+    return root_id;
 }
 
 cs_root_status_code cs_deroot(collected_space *cs, cs_root_id root_id) {
@@ -698,41 +704,49 @@ static void *cs_gc_worker(void *arg) {
     collected_space *cs = gc_arg->cs;
     const gc_worker_spec *spec = gc_arg->spec;
 
+    // We can delete our gc_arg once we have extracted
+    // the needed info.
+    safe_free(gc_arg);
+
     // If the thread has started, it is guaranteed the status
     // is GC_STARTING, GC_ON, or GC_STOPPING.
     // This will be the only place where the status is cchanged to GC_OFF.
 
     uint64_t free_count = 0;
+    uint8_t stopping = 0;
+
+    safe_printf("\n");
     
-    while (1) {
-        safe_wrlock(&(cs->gc_stat_lock));   
-
-        if (cs->gc_worker_stat == GC_WORKER_STOPPING) {
-            cs->gc_worker_stat = GC_WORKER_OFF;
-            safe_rwlock_unlock(&(cs->gc_stat_lock));
-
-            return NULL;
-        }
-
-        safe_rwlock_unlock(&(cs->gc_stat_lock));
-
+    while (!stopping) {
         // Here, GC is running!
 
+        safe_printf("Collecting Garbage\n");
         free_count += cs_collect_garbage(cs);
+        safe_printf("Done With Garbage\n");
 
         if (spec->shift && free_count >= spec->shift_trigger) {
+            safe_printf("Full Shifting\n");
             free_count = 0;
             cs_try_full_shift(cs);
         }
 
         if (spec->delay) {
+            safe_printf("Sleeping\n");
             // NOTE : No signal interrupt protection here...
             nanosleep(spec->delay, NULL);
         }
+
+        safe_printf("Checking Status\n");
+
+        safe_rdlock(&(cs->gc_stat_lock));
+        stopping = cs->gc_worker_stat == GC_WORKER_STOPPING;
+        safe_rwlock_unlock(&(cs->gc_stat_lock));
     }
 
-    // Should never make it here.
-    error_logf(1, 1, "cs_gc_worker: unexpected ending");
+    safe_wrlock(&(cs->gc_stat_lock));
+    cs->gc_worker_stat = GC_WORKER_OFF;
+    safe_rwlock_unlock(&(cs->gc_stat_lock));
+
     return NULL;
 }
 
@@ -749,12 +763,11 @@ uint8_t cs_start_gc(collected_space *cs, const gc_worker_spec *spec) {
     
     safe_rwlock_unlock(&(cs->gc_stat_lock));
 
-    cs_gc_worker_arg gc_arg = {
-        .cs = cs,
-        .spec = spec,
-    };
+    cs_gc_worker_arg *gc_arg = safe_malloc(get_chnl(cs), sizeof(cs_gc_worker_arg));
+    gc_arg->cs = cs;
+    gc_arg->spec = spec;
 
-    safe_pthread_create(&(cs->gc_thread), NULL, cs_gc_worker, &gc_arg);
+    safe_pthread_create(&(cs->gc_thread), NULL, cs_gc_worker, gc_arg);
 
     safe_wrlock(&(cs->gc_stat_lock));
     cs->gc_worker_stat = GC_WORKER_ON;
@@ -763,8 +776,9 @@ uint8_t cs_start_gc(collected_space *cs, const gc_worker_spec *spec) {
     return 0;
 }
 
-uint8_t cs_stop_gc(collected_space *cs, uint8_t block) {
+uint8_t cs_stop_gc(collected_space *cs) {
     gc_worker_status_code stat;
+    safe_printf("Attempting to Stop GC\n");
 
     safe_wrlock(&(cs->gc_stat_lock));
     if (cs->gc_worker_stat != GC_WORKER_ON) {
@@ -773,12 +787,14 @@ uint8_t cs_stop_gc(collected_space *cs, uint8_t block) {
         return 1;
     }
 
+    safe_printf("Stopping GC\n");
     cs->gc_worker_stat = GC_WORKER_STOPPING;
     safe_rwlock_unlock(&(cs->gc_stat_lock)); 
 
-    if (block) {
-        safe_pthread_join(cs->gc_thread, NULL);
-    }
+    safe_printf("Joining GC Thread\n");
+    // Always join to reap zombie thread.
+    safe_pthread_join(cs->gc_thread, NULL);
+    safe_printf("Done with Join\n");
 
     return 0;
 }

@@ -3,9 +3,12 @@
 #include "../../testing_src/assert.h"
 #include "../../core_src/sys.h"
 
+#include "../../util_src/thread.h"
+
 #include <stdint.h>
 #include <string.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
+#include <time.h>
 
 static void test_new_collected_space(chunit_test_context *tc) {
     collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
@@ -597,6 +600,77 @@ static const chunit_test CS_GC_13 = {
 
 // Time for some sort of parallel testing...
 
+static const gc_worker_spec CONSTANT_GC = {
+    .delay = NULL, // No delay.
+    
+    .shift = 1,
+    .shift_trigger = 1,
+};
+
+typedef struct {
+    chunit_test_context * const tc;
+    collected_space * const cs;
+    const uint64_t roots;
+} cs_root_worker_arg;
+
+static void *cs_root_worker(void *arg) {
+    util_thread_spray_context *s_ctx = arg;
+    cs_root_worker_arg *worker_arg = s_ctx->context;
+
+    addr_book_vaddr *vaddrs = safe_malloc(get_chnl(worker_arg->cs), 
+            sizeof(addr_book_vaddr) * worker_arg->roots);
+
+    uint64_t i;
+    for (i = 0; i < worker_arg->roots; i++) {
+        // safe_printf("Starting Iter %llu\n", i);
+        cs_root_id root_id = cs_malloc_root(worker_arg->cs, 0, 10);
+        cs_get_root_res root_res = cs_get_root_vaddr(worker_arg->cs, root_id);
+
+        assert_eq_uint(worker_arg->tc, CS_SUCCESS, root_res.status_code);
+        assert_false(worker_arg->tc, null_adb_addr(root_res.root_vaddr));
+
+        vaddrs[i] = root_res.root_vaddr;
+    }
+
+    for (i = 0; i < worker_arg->roots; i++) {
+        assert_true(worker_arg->tc, cs_allocated(worker_arg->cs, vaddrs[i]));
+    }
+
+    safe_free(vaddrs);
+
+    return NULL;
+}
+
+// This first multi tests makes sure that adding roots randomly
+// and concurrently behaves correctly!
+static void test_cs_gc_multi_0(chunit_test_context *tc) {
+    collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
+
+    cs_start_gc(cs, &CONSTANT_GC);   
+    
+    cs_root_worker_arg worker_arg = {
+        .tc = tc,
+        .cs = cs,
+        .roots = 20,
+    };
+    
+    util_thread_spray_info *spray = util_thread_spray(1, 5, 
+           cs_root_worker, &worker_arg);
+
+    util_thread_collect(spray);
+
+    assert_false(tc, cs_stop_gc(cs));
+
+    delete_collected_space(cs);
+}
+
+static const chunit_test CS_GC_MULTI_0 = {
+    .name = "Collected Space Collect Garbage Multi 0",
+    .t = test_cs_gc_multi_0,
+    .timeout = 5,
+};
+
+
 const chunit_test_suite GC_TEST_SUITE_CS = {
     .name = "Collected Space Test Suite",
     .tests = {
@@ -620,6 +694,7 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
 
         &CS_GC_12,
         &CS_GC_13,
+        &CS_GC_MULTI_0,
     },
-    .tests_len = 17,
+    .tests_len = 18,
 };

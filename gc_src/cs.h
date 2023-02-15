@@ -105,10 +105,6 @@ typedef enum {
     CS_ROOT_ID_NOT_ALLOCATED,
 } cs_root_status_code;
 
-typedef struct {
-    cs_root_status_code status_code;
-    cs_root_id root_id;
-} cs_root_res;
 
 // NOTE: see implementation file to see notes on how rooting works in
 // the presence of GC.
@@ -181,8 +177,8 @@ typedef struct {
 uint8_t cs_start_gc(collected_space *cs, const gc_worker_spec *spec);
 
 // Returns 0 if the GC worker stopped (or has been told to stop)
-// 1 if there is no one to stop.
-uint8_t cs_stop_gc(collected_space *cs, uint8_t block);
+// 1 if there is no one to stop. (This call blocks!)
+uint8_t cs_stop_gc(collected_space *cs);
 
 // Run try full shift on the underlying memory space.
 void cs_try_full_shift(collected_space *cs);
