@@ -244,6 +244,8 @@ malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
             (sizeof(addr_book_vaddr) * rt_len) +
             (sizeof(uint8_t) * da_size));
 
+    safe_printf("Malloc Succeeded\n");
+
     // Set up headers...
     obj_pre_header *obj_p_h = res.paddr;
     obj_header *obj_h = (obj_header *)(obj_p_h + 1);
@@ -262,9 +264,12 @@ malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
     }
 
     if (hold) {
+        safe_printf("Returning\n");
         return res;
     }
 
+    safe_printf("Should be Unlocking %llu %llu\n", 
+            res.vaddr.table_index, res.vaddr.cell_index);
     ms_unlock(cs->ms, res.vaddr);
     res.paddr = NULL;
 
@@ -714,29 +719,21 @@ static void *cs_gc_worker(void *arg) {
 
     uint64_t free_count = 0;
     uint8_t stopping = 0;
-
-    safe_printf("\n");
     
     while (!stopping) {
         // Here, GC is running!
 
-        safe_printf("Collecting Garbage\n");
         free_count += cs_collect_garbage(cs);
-        safe_printf("Done With Garbage\n");
 
         if (spec->shift && free_count >= spec->shift_trigger) {
-            safe_printf("Full Shifting\n");
             free_count = 0;
             cs_try_full_shift(cs);
         }
 
         if (spec->delay) {
-            safe_printf("Sleeping\n");
             // NOTE : No signal interrupt protection here...
             nanosleep(spec->delay, NULL);
         }
-
-        safe_printf("Checking Status\n");
 
         safe_rdlock(&(cs->gc_stat_lock));
         stopping = cs->gc_worker_stat == GC_WORKER_STOPPING;
@@ -778,7 +775,6 @@ uint8_t cs_start_gc(collected_space *cs, const gc_worker_spec *spec) {
 
 uint8_t cs_stop_gc(collected_space *cs) {
     gc_worker_status_code stat;
-    safe_printf("Attempting to Stop GC\n");
 
     safe_wrlock(&(cs->gc_stat_lock));
     if (cs->gc_worker_stat != GC_WORKER_ON) {
@@ -787,14 +783,11 @@ uint8_t cs_stop_gc(collected_space *cs) {
         return 1;
     }
 
-    safe_printf("Stopping GC\n");
     cs->gc_worker_stat = GC_WORKER_STOPPING;
     safe_rwlock_unlock(&(cs->gc_stat_lock)); 
 
-    safe_printf("Joining GC Thread\n");
     // Always join to reap zombie thread.
     safe_pthread_join(cs->gc_thread, NULL);
-    safe_printf("Done with Join\n");
 
     return 0;
 }

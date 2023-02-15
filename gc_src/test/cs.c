@@ -610,18 +610,40 @@ static const gc_worker_spec CONSTANT_GC = {
 typedef struct {
     chunit_test_context * const tc;
     collected_space * const cs;
-    const uint64_t roots;
-} cs_root_worker_arg;
+} cs_worker_arg;
+
+static void cs_gc_multi_template(chunit_test_context *tc, uint8_t chnl,
+        uint64_t num_threads, void *(*worker)(void *)) {
+    collected_space *cs = new_collected_space_seed(chnl, 1, 10, 1000);
+
+    cs_start_gc(cs, &CONSTANT_GC);   
+    
+    cs_worker_arg worker_arg = {
+        .tc = tc,
+        .cs = cs,
+    };
+    
+    util_thread_spray_info *spray = util_thread_spray(1, num_threads, 
+           worker, &worker_arg);
+
+    util_thread_collect(spray);
+
+    assert_false(tc, cs_stop_gc(cs));
+
+    delete_collected_space(cs);
+}
 
 static void *cs_root_worker(void *arg) {
+    const uint64_t roots = 20;
+
     util_thread_spray_context *s_ctx = arg;
-    cs_root_worker_arg *worker_arg = s_ctx->context;
+    cs_worker_arg *worker_arg = s_ctx->context;
 
     addr_book_vaddr *vaddrs = safe_malloc(get_chnl(worker_arg->cs), 
-            sizeof(addr_book_vaddr) * worker_arg->roots);
+            sizeof(addr_book_vaddr) * roots);
 
     uint64_t i;
-    for (i = 0; i < worker_arg->roots; i++) {
+    for (i = 0; i < roots; i++) {
         // safe_printf("Starting Iter %llu\n", i);
         cs_root_id root_id = cs_malloc_root(worker_arg->cs, 0, 10);
         cs_get_root_res root_res = cs_get_root_vaddr(worker_arg->cs, root_id);
@@ -632,7 +654,7 @@ static void *cs_root_worker(void *arg) {
         vaddrs[i] = root_res.root_vaddr;
     }
 
-    for (i = 0; i < worker_arg->roots; i++) {
+    for (i = 0; i < roots; i++) {
         assert_true(worker_arg->tc, cs_allocated(worker_arg->cs, vaddrs[i]));
     }
 
@@ -644,29 +666,79 @@ static void *cs_root_worker(void *arg) {
 // This first multi tests makes sure that adding roots randomly
 // and concurrently behaves correctly!
 static void test_cs_gc_multi_0(chunit_test_context *tc) {
-    collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
-
-    cs_start_gc(cs, &CONSTANT_GC);   
-    
-    cs_root_worker_arg worker_arg = {
-        .tc = tc,
-        .cs = cs,
-        .roots = 20,
-    };
-    
-    util_thread_spray_info *spray = util_thread_spray(1, 5, 
-           cs_root_worker, &worker_arg);
-
-    util_thread_collect(spray);
-
-    assert_false(tc, cs_stop_gc(cs));
-
-    delete_collected_space(cs);
+    cs_gc_multi_template(tc, 1, 10, cs_root_worker);
 }
 
 static const chunit_test CS_GC_MULTI_0 = {
     .name = "Collected Space Collect Garbage Multi 0",
     .t = test_cs_gc_multi_0,
+    .timeout = 5,
+};
+
+static void *cs_obj_worker(void *arg) {
+    // HMMM, what will this do...
+
+    util_thread_spray_context *s_ctx = arg;
+    cs_worker_arg *worker_arg = s_ctx->context; 
+
+    chunit_test_context *tc = worker_arg->tc;
+    collected_space *cs = worker_arg->cs;
+
+    const uint64_t objs = 5;
+
+    // NOTE : Lying below is some GC Deadlock issue.
+    // Only arises when the GC Thread is on, so probs nothing
+    // to do with MS.
+
+    // 0 -> {1, 2}
+    // 1 -> {3}
+    // 2 -> {4}
+    addr_book_vaddr vaddrs[objs];
+    safe_printf("\nStarting\n");
+
+    malloc_obj_res root_res = cs_malloc_object_and_hold(cs, 2, 0);
+    vaddrs[0] = root_res.vaddr;
+
+    safe_printf("Creating Child Object\n");
+    vaddrs[1] = cs_malloc_object(cs, 2, 0);
+    // vaddrs[2] = cs_malloc_object(cs, 2, 0);
+
+    root_res.i.rt[0] = vaddrs[1];
+    root_res.i.rt[1] = vaddrs[2]; 
+
+    cs_unlock(cs, vaddrs[0]);
+
+    safe_printf("\nDone with creation\n");
+
+    return NULL;
+
+    obj_index ind; 
+
+    ind = cs_get_write_ind(cs, vaddrs[1]);
+    vaddrs[3] = cs_malloc_object(cs, 0, 1);
+    ind.rt[0] = vaddrs[3];
+    cs_unlock(cs, vaddrs[1]);
+
+    ind = cs_get_write_ind(cs, vaddrs[2]);
+    vaddrs[4] = cs_malloc_object(cs, 0, 1);
+    ind.rt[0] = vaddrs[4];
+    cs_unlock(cs, vaddrs[2]);
+
+    uint64_t i;
+    for (i = 0; i < objs; i++) {
+        assert_true(tc, cs_allocated(cs, vaddrs[i]));
+    }
+
+    return NULL;
+}
+
+static void test_cs_gc_multi_1(chunit_test_context *tc) {
+    cs_gc_multi_template(tc, 1, 1, cs_obj_worker);
+}
+
+static const chunit_test CS_GC_MULTI_1 = {
+    .name = "Collected Space Collect Garbage Multi 1",
+    .t = test_cs_gc_multi_1,
     .timeout = 5,
 };
 
@@ -695,6 +767,7 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
         &CS_GC_12,
         &CS_GC_13,
         &CS_GC_MULTI_0,
+        &CS_GC_MULTI_1,
     },
-    .tests_len = 18,
+    .tests_len = 19,
 };

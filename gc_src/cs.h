@@ -57,6 +57,8 @@ static inline collected_space *new_collected_space(uint64_t chnl,
             mb_m_bytes);
 }
 
+// Make sure no GC Thread is running while this is called.
+// GC Background thread must be stopped before calling this.
 void delete_collected_space(collected_space *cs);
 
 // NOTE: After lots of thought, I have decided that the user
@@ -176,8 +178,17 @@ typedef struct {
 // returns 1 otherwise.
 uint8_t cs_start_gc(collected_space *cs, const gc_worker_spec *spec);
 
-// Returns 0 if the GC worker stopped (or has been told to stop)
-// 1 if there is no one to stop. (This call blocks!)
+// If a GC Thread is running when this is called, it will be told to stop,
+// this thread will then wait until the GC Thread actually stops.
+// Finally, 0 will be returned.
+//
+// This will return 1 if no GC Thread is running, or if it has
+// already been told to stop.
+// NOTE: just because this call returns 1, doesn't mean the GC thread
+// isn't running! It may still be in the process of stopping itself.
+//
+// Thus, I would recommend not using this call in parallel with itself.
+// Maybe fix this later.
 uint8_t cs_stop_gc(collected_space *cs);
 
 // Run try full shift on the underlying memory space.
