@@ -697,7 +697,6 @@ static void *cs_obj_worker(void *arg) {
     malloc_obj_res root_res = cs_malloc_object_and_hold(cs, 2, 0);
     vaddrs[0] = root_res.vaddr;
 
-    safe_printf("Creating Child Object\n");
     vaddrs[1] = cs_malloc_object(cs, 2, 0);
     // vaddrs[2] = cs_malloc_object(cs, 2, 0);
 
@@ -705,8 +704,6 @@ static void *cs_obj_worker(void *arg) {
     root_res.i.rt[1] = vaddrs[2]; 
 
     cs_unlock(cs, vaddrs[0]);
-
-    safe_printf("\nDone with creation\n");
 
     return NULL;
 
@@ -765,7 +762,7 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
         &CS_GC_12,
         &CS_GC_13,
         &CS_GC_MULTI_0,
-//        &CS_GC_MULTI_1,
+        &CS_GC_MULTI_1,
     },
-    .tests_len = 18,
+    .tests_len = 19,
 };

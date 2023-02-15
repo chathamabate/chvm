@@ -181,16 +181,19 @@ typedef struct {
 // 
 // This is known as the mem_lck.
 //
-// There are calls below which request the mem_lck and then afterwords request
-// the locks on specific user accessible pieces. (shift, free, foreach)
+// If we have the mem_lck, and we wish to acquire the lock on an arbitrary
+// memory piece, we must guarantee no user holds said lock.
 //
-// * Shift only tries to acquire lock, and will never wait for a piece lock.
-// * Free does acquire the read lock on a piece while holding the mem lock.
-// However, It would not make sense for this ever to block, since a free call
-// should never be in parallel with any other calls to the same piece.
+// It is idomatic for the user to be able to use the memory block while also
+// holding memory piece locks. 
 //
-// * Foreach is dangerous because while holding the mem_lck, it will wait on
-// the locks of user accessible pieces.
+// For example, when we shift, we use the try lock mechanism. 
+// When we free, we assume the user does not have the lock of the piece they are freeing.
+// When we malloc, we assume the user will not have access to the new vaddr until malloc
+// returns.
+//
+// We used to have a foreach mechanism, this has since been removed for this reason!
+//
 //
 // NOTE: I may consider getting rid of MB foreach.
 
