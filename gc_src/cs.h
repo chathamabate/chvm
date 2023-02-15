@@ -152,6 +152,7 @@ void cs_unlock(collected_space *cs, addr_book_vaddr vaddr);
 
 uint64_t cs_count(collected_space *cs);
 void cs_print(collected_space *cs);
+void cs_print_ms(collected_space *cs);
 
 // Run garbage collection algorithm.
 // See implementation file for notes.

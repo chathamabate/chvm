@@ -193,9 +193,6 @@ typedef struct {
 // returns.
 //
 // We used to have a foreach mechanism, this has since been removed for this reason!
-//
-//
-// NOTE: I may consider getting rid of MB foreach.
 
 
 mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes) {

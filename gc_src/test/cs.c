@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/_pthread/_pthread_rwlock_t.h>
 #include <time.h>
+#include <unistd.h>
 
 static void test_new_collected_space(chunit_test_context *tc) {
     collected_space *cs = new_collected_space_seed(1, 1, 10, 1000);
@@ -211,6 +212,7 @@ static void run_cs_test(chunit_test_context *tc, const cs_test_blueprint *bp) {
     // Finally, we can run GC!
     uint64_t freed = cs_collect_garbage(cs);
     assert_eq_uint(tc, frees_total, freed);
+
 
     // Now we run tests on each object!
     for (i = 0; i < bp->num_objs; i++) {
@@ -644,7 +646,6 @@ static void *cs_root_worker(void *arg) {
 
     uint64_t i;
     for (i = 0; i < roots; i++) {
-        // safe_printf("Starting Iter %llu\n", i);
         cs_root_id root_id = cs_malloc_root(worker_arg->cs, 0, 10);
         cs_get_root_res root_res = cs_get_root_vaddr(worker_arg->cs, root_id);
 
@@ -676,7 +677,6 @@ static const chunit_test CS_GC_MULTI_0 = {
 };
 
 static void *cs_obj_worker(void *arg) {
-
     util_thread_spray_context *s_ctx = arg;
     cs_worker_arg *worker_arg = s_ctx->context; 
 
@@ -685,10 +685,6 @@ static void *cs_obj_worker(void *arg) {
 
     const uint64_t objs = 5;
 
-    // NOTE : Lying below is some GC Deadlock issue.
-    // Only arises when the GC Thread is on, so probs nothing
-    // to do with MS.
-
     // 0 -> {1, 2}
     // 1 -> {3}
     // 2 -> {4}
@@ -696,16 +692,15 @@ static void *cs_obj_worker(void *arg) {
 
     malloc_obj_res root_res = cs_malloc_object_and_hold(cs, 2, 0);
     vaddrs[0] = root_res.vaddr;
+    cs_root(cs, vaddrs[0]);
 
-    vaddrs[1] = cs_malloc_object(cs, 2, 0);
-    // vaddrs[2] = cs_malloc_object(cs, 2, 0);
+    vaddrs[1] = cs_malloc_object(cs, 1, 0);
+    vaddrs[2] = cs_malloc_object(cs, 1, 0);
 
     root_res.i.rt[0] = vaddrs[1];
     root_res.i.rt[1] = vaddrs[2]; 
 
     cs_unlock(cs, vaddrs[0]);
-
-    return NULL;
 
     obj_index ind; 
 
@@ -719,6 +714,33 @@ static void *cs_obj_worker(void *arg) {
     ind.rt[0] = vaddrs[4];
     cs_unlock(cs, vaddrs[2]);
 
+    // Now we will test acquiring nested locks 
+    // in the presence of GC. If we acquire an object
+    // in write mode it should always be visited before the 
+    // lock is given.
+
+    // We will swap references on two objects, and confirm
+    // the referenced object are always allocated after GC.
+
+    // sleep(1);
+    
+    obj_index ind1, ind2;
+
+    ind1 = cs_get_write_ind(cs, vaddrs[1]);
+    ind2 = cs_get_write_ind(cs, vaddrs[2]);
+
+    addr_book_vaddr temp;
+
+    temp = ind1.rt[0];
+    ind1.rt[0] = ind2.rt[0];
+    ind2.rt[0] = temp;
+
+    cs_unlock(cs, vaddrs[2]);
+    cs_unlock(cs, vaddrs[1]);
+
+    // sleep(1);
+
+    // Run another allocation check?
     uint64_t i;
     for (i = 0; i < objs; i++) {
         assert_true(tc, cs_allocated(cs, vaddrs[i]));
@@ -728,7 +750,7 @@ static void *cs_obj_worker(void *arg) {
 }
 
 static void test_cs_gc_multi_1(chunit_test_context *tc) {
-    cs_gc_multi_template(tc, 1, 1, cs_obj_worker);
+    cs_gc_multi_template(tc, 1, 10, cs_obj_worker);
 }
 
 static const chunit_test CS_GC_MULTI_1 = {

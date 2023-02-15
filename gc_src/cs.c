@@ -573,6 +573,10 @@ void cs_print(collected_space *cs) {
     ms_foreach(cs->ms, obj_print, NULL, 0);
 }
 
+void cs_print_ms(collected_space *cs) {
+    ms_print(cs->ms);
+}
+
 static void obj_unvisit(addr_book_vaddr v, void *paddr, void *ctx) {
     obj_pre_header *obj_p_h = paddr;
 
