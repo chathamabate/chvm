@@ -90,27 +90,6 @@ static inline void mb_try_full_shift(mem_block *mb) {
     while (mb_try_shift(mb) == MB_SHIFT_SUCCESS);
 }
 
-typedef void (*mp_consumer)(addr_book_vaddr v, void *paddr, void *ctx);
-
-// Iterate over every allocated piece in this memory block.
-// If wr = 1, the write lock will be acquired on each piece.
-// If wr = 0, the read lock will be.
-void mb_foreach(mem_block *mb, mp_consumer c, void *ctx, uint8_t wr);
-
-static inline void mb_foreach_read(mem_block *mb, mp_consumer c, void *ctx) {
-    mb_foreach(mb, c, ctx, 0);
-}
-
-static inline void mb_foreach_write(mem_block *mb, mp_consumer c, void *ctx) {
-    mb_foreach(mb, c, ctx, 1);
-}
-
-typedef uint8_t (*mp_predicate)(addr_book_vaddr v, void *paddr, void *ctx);
-
-// This will never mutate. only ever aquire the read lock
-// on memory pieces.
-uint64_t mb_filter(mem_block *mb, mp_predicate pred, void *ctx);
-
 // Number of allocated pieces in the memory block.
 uint64_t mb_count(mem_block *mb);
 

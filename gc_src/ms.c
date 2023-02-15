@@ -7,6 +7,8 @@
 #include "../core_src/sys.h"
 #include "../core_src/io.h"
 
+#include "../util_src/data.h"
+
 #include <inttypes.h>
 
 // For sorting... we want a linked list!
@@ -270,78 +272,68 @@ static void ms_foreach_mb(mem_space *ms, mb_consumer c, void *ctx) {
 }
 
 typedef struct {
-    // The original consumer given.
-    mp_consumer c;
-    
-    // The original Context given.
-    void *ctx;
-} mb_foreach_args;
+    adb_cell_consumer c;
+    void *og_ctx;
+} ms_foreach_mp_consumer_context;
 
-static void mb_foreach_mp_consumer(addr_book_vaddr v, void *paddr, 
-        void *ctx) {
-    mb_foreach_args *mb_args = ctx; 
+static void ms_foreach_mp_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
+    ms_foreach_mp_consumer_context *ms_f_mp_c_ctx = ctx;
 
     // Skip over malloced header.
     void *new_paddr = (mem_space_malloc_header *)paddr + 1;
 
-    // Pass new physical address into original consumer.
-    mb_args->c(v, new_paddr, mb_args->ctx); 
+    ms_f_mp_c_ctx->c(v, new_paddr, ms_f_mp_c_ctx->og_ctx);
 }
 
-typedef struct {
-    mb_foreach_args mb_args;
-    uint8_t wr;
-} ms_foreach_args;
-
-static void ms_foreach_mb_consumer(mem_block *mb, void *ctx) {
-    // For each memory block, we want to run foreach using the above
-    // function.
-    ms_foreach_args *ms_args = ctx;
-    mb_foreach(mb, mb_foreach_mp_consumer, &(ms_args->mb_args), ms_args->wr);
-}
-
-void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr) {
-    ms_foreach_args ms_args = {
-        .mb_args = {
-            .c = c,
-            .ctx = ctx,
-        },
-        .wr = wr,
+void ms_foreach(mem_space *ms, adb_cell_consumer c, void *ctx, uint8_t wr) {
+    ms_foreach_mp_consumer_context ms_f_mp_c_ctx = {
+        .c = c,
+        .og_ctx = ctx,
     };
 
-    ms_foreach_mb(ms, ms_foreach_mb_consumer, &ms_args);
+    adb_foreach(ms->adb, ms_foreach_mp_consumer, &ms_f_mp_c_ctx, wr);
 }
 
 typedef struct {
-    mp_predicate pred;
-    void *ctx;
-    uint64_t count;
-} mb_filter_args;
+    adb_cell_predicate pred;
 
-static uint8_t mb_filter_mp_predicate(addr_book_vaddr v, void *paddr, void *ctx) {
-    mb_filter_args *mb_args = ctx;
-    void *new_paddr = (mem_space_malloc_header *)paddr + 1;
-    return mb_args->pred(v, new_paddr, mb_args->ctx);
+    void *og_ctx;
+    util_bc *remove_stack; 
+} ms_filter_context;
+
+static void ms_foreach_mp_filter(addr_book_vaddr v, void *paddr, void *ctx) {
+    ms_filter_context *ms_f_ctx = ctx;
+
+    if (!(ms_f_ctx->pred(v, paddr, ms_f_ctx->og_ctx))) {
+        bc_push_back(ms_f_ctx->remove_stack, &v);
+    }
 }
 
-static void ms_filter_mb_consumer(mem_block *mb, void *ctx) {
-    // NOTE: with no rd/wr lock parameter we can pass ctx directly to
-    // each memory block.
-    mb_filter_args *mb_args = ctx;
-    mb_args->count += mb_filter(mb, mb_filter_mp_predicate, mb_args);
-}
-
-uint64_t ms_filter(mem_space *ms, mp_predicate pred, void *ctx) {
-    mb_filter_args mb_args = {
+uint64_t ms_filter(mem_space *ms, adb_cell_predicate pred, void *ctx) {
+    util_bc *remove_stack = new_broken_collection(get_chnl(ms), 
+            sizeof(addr_book_vaddr), 30, 0);
+    
+    ms_filter_context ms_f_ctx = {
+        .og_ctx = ctx,
         .pred = pred,
-        .ctx = ctx,
-        .count = 0,
+        .remove_stack = remove_stack,
     };
+    
+    ms_foreach(ms, ms_foreach_mp_filter, &ms_f_ctx, 0);
 
-    ms_foreach_mb(ms, ms_filter_mb_consumer, &mb_args);
+    uint64_t filtered = 0;
+    addr_book_vaddr v;
+    while (!bc_empty(remove_stack)) {
+        bc_pop_back(remove_stack, &v);
+        ms_free(ms, v);
+        filtered++;
+    }
 
-    return mb_args.count;
+    delete_broken_collection(remove_stack);
+
+    return filtered;
 }
+
 
 static void mp_count_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
     (*(uint64_t *)ctx)++;

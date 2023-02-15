@@ -214,6 +214,9 @@ typedef void (*adb_cell_consumer)(addr_book_vaddr v, void *paddr, void *ctx);
 
 void adb_foreach(addr_book *adb, adb_cell_consumer c, void *ctx, uint8_t wr);
 
+typedef uint8_t (*adb_cell_predicate)(addr_book_vaddr v, 
+            void *paddr, void *ctx);
+
 void adb_print(addr_book *adb);
 
 #endif

@@ -50,10 +50,10 @@ void ms_unlock(mem_space *ms, addr_book_vaddr vaddr);
 // it doesn't really make sense to call them in parallel with any other
 // call.
 
-void ms_foreach(mem_space *ms, mp_consumer c, void *ctx, uint8_t wr);
+void ms_foreach(mem_space *ms, adb_cell_consumer c, void *ctx, uint8_t wr);
 
 // number of pieces deleted
-uint64_t ms_filter(mem_space *ms, mp_predicate pred, void *ctx);
+uint64_t ms_filter(mem_space *ms, adb_cell_predicate pred, void *ctx);
 uint64_t ms_count(mem_space *ms);
 
 void ms_print(mem_space *ms);
