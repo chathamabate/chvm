@@ -174,8 +174,26 @@ typedef struct {
     mem_free_piece_header *size_free_list; 
 } mem_block_header;
 
-// How do we confirm an allocated block is not being modified 
-// as we retrieve its vaddr?????
+// NOTE: Notes on Deadlock and Memory Blocks.
+//
+// Memory blocks have a lock that is always held when the physical structure
+// of the block is being changed or iterated over.
+// 
+// This is known as the mem_lck.
+//
+// There are calls below which request the mem_lck and then afterwords request
+// the locks on specific user accessible pieces. (shift, free, foreach)
+//
+// * Shift only tries to acquire lock, and will never wait for a piece lock.
+// * Free does acquire the read lock on a piece while holding the mem lock.
+// However, It would not make sense for this ever to block, since a free call
+// should never be in parallel with any other calls to the same piece.
+//
+// * Foreach is dangerous because while holding the mem_lck, it will wait on
+// the locks of user accessible pieces.
+//
+// NOTE: I may consider getting rid of MB foreach.
+
 
 mem_block *new_mem_block(uint8_t chnl, addr_book *adb, uint64_t min_bytes) {
     uint64_t padded_cap = pad_num_bytes(min_bytes);
@@ -463,21 +481,6 @@ malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold) {
     addr_book_vaddr vaddr;
     uint64_t cut_size = big_free_size - min_size;
 
-    // NOTE: there is an important but sad feature found in the code
-    // below.
-    //
-    // Notice that the adb_install calls are executed while the mem_lck
-    // is held. This is done because adb_install will copy the vaddr
-    // into the memory piece's header.
-    // This header is part of the "structure" of the memory block,
-    // thus we must keep the memory block lock
-    // while doing this.
-    //
-    // Since I wrote the comment above, adb_install has been removed.
-    // the mem_piece header is not part of the space accessible by the user 
-    // in the malloc'd piece. Thus, we do not need the lock on the piece
-    // to write it. We only acquire said lock if the user specifies hold.
-
     // Here we check to see if we should divide our big free block.
     // This is only done when there are enough remaining bytes 
     // to malloc at least once. 
@@ -499,8 +502,15 @@ malloc_res mb_malloc_p(mem_block *mb, uint64_t min_bytes, uint8_t hold) {
         mp_init(big_free, min_size, 1);
     }
 
-    // Finally add our new piece to the address book.
-
+    // I am just going to keep this the way it is.
+    //
+    // When we malloc to a memory block, the vaddr is stored
+    // in the malloced piece, however, the paddr which is stored
+    // in the adb skips over the vaddr.
+    //
+    // This is somewhat inconsistent with Memory Space.
+    // But it is ok for now.
+    //
     vaddr = adb_put_p(mb_h->adb, mp_to_map_b(big_free), hold);
     *(mem_alloc_piece_header *)mp_body(big_free) = vaddr;
     

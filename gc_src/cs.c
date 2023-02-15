@@ -244,8 +244,6 @@ malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
             (sizeof(addr_book_vaddr) * rt_len) +
             (sizeof(uint8_t) * da_size));
 
-    safe_printf("Malloc Succeeded\n");
-
     // Set up headers...
     obj_pre_header *obj_p_h = res.paddr;
     obj_header *obj_h = (obj_header *)(obj_p_h + 1);
@@ -264,12 +262,9 @@ malloc_res cs_malloc_p(collected_space *cs, uint64_t rt_len,
     }
 
     if (hold) {
-        safe_printf("Returning\n");
         return res;
     }
 
-    safe_printf("Should be Unlocking %llu %llu\n", 
-            res.vaddr.table_index, res.vaddr.cell_index);
     ms_unlock(cs->ms, res.vaddr);
     res.paddr = NULL;
 

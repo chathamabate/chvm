@@ -338,6 +338,31 @@ addr_table_code adt_free(addr_table *adt, uint64_t index) {
     return res_code;
 }
 
+void adt_foreach(addr_table *adt, adt_cell_consumer c, void *ctx, uint8_t wr) {
+    addr_table_header *adt_h = (addr_table_header *)adt;
+    uint64_t *free_stack = (uint64_t *)(adt_h + 1);
+    addr_table_cell *table = (addr_table_cell *)(free_stack + adt_h->cap);
+
+    addr_table_cell *cell;
+
+    uint64_t i;
+    for (i = 0; i < adt_h->cap; i++) {
+        cell = table + i;
+
+        if (wr) {
+            safe_wrlock(&(cell->lck));
+        } else {
+            safe_rdlock(&(cell->lck));
+        }
+
+        if (cell->allocated) {
+            c(i, cell->paddr, ctx);
+        }
+
+        safe_rwlock_unlock(&(cell->lck));
+    }
+}
+
 void adt_print_p(addr_table *adt, const char *prefix) {
     addr_table_header *adt_h = (addr_table_header *)adt;
     uint64_t *free_stack = (uint64_t *)(adt_h + 1);
@@ -372,7 +397,6 @@ void adt_print_p(addr_table *adt, const char *prefix) {
 
         safe_rwlock_unlock(&(cell->lck));
     }
-
 }
 
 const addr_book_vaddr NULL_VADDR = {
@@ -736,22 +760,84 @@ void adb_free(addr_book *adb, addr_book_vaddr vaddr) {
     }
 }
 
-uint64_t adb_get_fill(addr_book *adb) {
-    uint64_t fill = 0;
+typedef void (*adt_consumer)(uint64_t table_ind, addr_table *adt, void *ctx);
 
-    // This kinda does need to lock on everything.
-    // Not really meant to be used in performance
-    // critical areas.
+static void adb_foreach_adt(addr_book *adb, adt_consumer c, void *ctx) {
+    uint64_t len;
 
     safe_rdlock(&(adb->lck));
-    uint64_t i;
-    for (i = 0; i < adb->book_len; i++) {
-        addr_table *adt = adb->book[i].adt;
-        fill += adt_get_fill(adt);
-    }
+    len = adb->book_len;
     safe_rwlock_unlock(&(adb->lck));
 
+    addr_table *adt;
+
+    uint64_t i;
+    for (i = 0; i < len; i++) {
+        safe_rdlock(&(adb->lck));
+        adt = adb->book[i].adt;
+        safe_rwlock_unlock(&(adb->lck));
+
+        c(i, adt, ctx); 
+    }
+}
+
+static void adt_fill_consumer(uint64_t table_ind, addr_table *adt, void *ctx) {
+    *(uint64_t *)ctx += adt_get_fill(adt);
+}
+
+uint64_t adb_get_fill(addr_book *adb) {
+    uint64_t fill = 0;
+    adb_foreach_adt(adb, adt_fill_consumer, &fill);
+
     return fill;
+}
+
+typedef struct {
+    uint64_t table_ind; 
+
+    void *og_ctx;
+    adb_cell_consumer c;
+} adb_foreach_adt_cell_context;
+
+static void adb_foreach_adt_cell_consumer(uint64_t ind, void *paddr, void *ctx) {
+    adb_foreach_adt_cell_context *adb_f_adt_c_ctx = ctx;
+
+    addr_book_vaddr vaddr = {
+        .table_index = adb_f_adt_c_ctx->table_ind,
+        .cell_index = ind,
+    };
+
+    adb_f_adt_c_ctx->c(vaddr, paddr, adb_f_adt_c_ctx->og_ctx);
+}
+
+typedef struct {
+    void *og_ctx;
+    uint8_t wr;
+
+    adb_cell_consumer c;
+} adb_foreach_adt_context;
+
+static void adb_foreach_adt_consumer(uint64_t table_ind, addr_table *adt, void *ctx) {
+    adb_foreach_adt_context *adb_f_adt_ctx = ctx;
+
+    adb_foreach_adt_cell_context adb_f_adt_c_ctx = {
+        .table_ind = table_ind,
+
+        .og_ctx = adb_f_adt_ctx->og_ctx,
+        .c = adb_f_adt_ctx->c,
+    };
+    
+    adt_foreach(adt, adb_foreach_adt_cell_consumer, &adb_f_adt_c_ctx, adb_f_adt_ctx->wr);
+}
+
+void adb_foreach(addr_book *adb, adb_cell_consumer c, void *ctx, uint8_t wr) {
+    adb_foreach_adt_context adb_f_adt_ctx = {
+        .c = c,
+        .og_ctx = ctx,
+        .wr = wr,
+    };
+
+    adb_foreach_adt(adb, adb_foreach_adt_consumer, &(adb_f_adt_ctx));
 }
 
 void adb_print(addr_book *adb) {

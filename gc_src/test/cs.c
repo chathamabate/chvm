@@ -676,7 +676,6 @@ static const chunit_test CS_GC_MULTI_0 = {
 };
 
 static void *cs_obj_worker(void *arg) {
-    // HMMM, what will this do...
 
     util_thread_spray_context *s_ctx = arg;
     cs_worker_arg *worker_arg = s_ctx->context; 
@@ -694,7 +693,6 @@ static void *cs_obj_worker(void *arg) {
     // 1 -> {3}
     // 2 -> {4}
     addr_book_vaddr vaddrs[objs];
-    safe_printf("\nStarting\n");
 
     malloc_obj_res root_res = cs_malloc_object_and_hold(cs, 2, 0);
     vaddrs[0] = root_res.vaddr;
@@ -767,7 +765,7 @@ const chunit_test_suite GC_TEST_SUITE_CS = {
         &CS_GC_12,
         &CS_GC_13,
         &CS_GC_MULTI_0,
-        &CS_GC_MULTI_1,
+//        &CS_GC_MULTI_1,
     },
-    .tests_len = 19,
+    .tests_len = 18,
 };

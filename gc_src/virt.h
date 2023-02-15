@@ -107,7 +107,6 @@ static inline void adt_reinstall(addr_table *adt, addr_book_vaddr vaddr,
             size, 1, vaddr.table_index);
 }
 
-
 // Returns NULL if the lock wasn't acquired
 void *adt_get_read_p(addr_table *adt, uint64_t ind, uint8_t blk);
 
@@ -138,6 +137,14 @@ void adt_unlock(addr_table *adt, uint64_t ind);
 // NOTE: If this is called while the user has the lock on
 // the given index acquired, behavoir is undefined.
 addr_table_code adt_free(addr_table *adt, uint64_t index);
+
+typedef void (*adt_cell_consumer)(uint64_t ind, void *paddr, void *ctx);
+
+// Iterate over all allocted cells in the address table.
+// Apply the consumer to each allocated cell.
+// wr specifies whether the write or read lock should be acquired before 
+// calling the consumer.
+void adt_foreach(addr_table *adt, adt_cell_consumer c, void *ctx, uint8_t wr);
 
 void adt_print_p(addr_table *adt, const char *prefix);
 
@@ -200,7 +207,12 @@ void adb_unlock(addr_book *adb, addr_book_vaddr vaddr);
 
 void adb_free(addr_book *adb, addr_book_vaddr vaddr);
 
+// NOTE: does not stop
 uint64_t adb_get_fill(addr_book *adb);
+
+typedef void (*adb_cell_consumer)(addr_book_vaddr v, void *paddr, void *ctx);
+
+void adb_foreach(addr_book *adb, adb_cell_consumer c, void *ctx, uint8_t wr);
 
 void adb_print(addr_book *adb);
 

@@ -382,6 +382,42 @@ const chunit_test ADT_PUT_AND_HOLD = {
     .timeout = 5,
 };
 
+static void adt_place_ind(uint64_t ind, void *paddr, void *ctx) {
+    *(uint64_t *)paddr = ind;
+}
+
+static void test_adt_foreach(chunit_test_context *tc) {
+    const uint64_t nums = 5;
+    uint64_t slots[nums];
+    uint64_t inds[nums];
+
+    addr_table *adt = new_addr_table(1, 5);    
+
+    uint64_t i;
+    for (i = 0; i < nums; i++) {
+        addr_table_put_res res = adt_put(adt, slots + i);
+        assert_false(tc, res.code == ADT_NO_SPACE); 
+
+        inds[i] = res.index;
+    }
+
+    adt_foreach(adt, adt_place_ind, NULL, 1);
+
+    for (i = 0; i < nums; i++) {
+        uint64_t *paddr = adt_get_read(adt, inds[i]);
+        assert_eq_uint(tc, inds[i], *paddr);
+        adt_unlock(adt, inds[i]);
+    }
+
+    delete_addr_table(adt);
+}
+
+static const chunit_test ADT_FOREACH = {
+    .name = "Address Table Foreach",
+    .t = test_adt_foreach,
+    .timeout = 5, 
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADT = {
     .name = "Address Table Test Suite",
     .tests = {
@@ -396,8 +432,10 @@ const chunit_test_suite GC_TEST_SUITE_ADT = {
         &ADT_UNALLOCATED_INDEX,
         &ADT_TRY_LOCK,
         &ADT_PUT_AND_HOLD,
+
+        &ADT_FOREACH,
     },
-    .tests_len = 10,
+    .tests_len = 11,
 };
 
 // Address Book Suite Below.
@@ -748,6 +786,51 @@ static const chunit_test ADB_PUT_AND_HOLD = {
     .timeout = 5,
 };
 
+static void test_adb_cell_consumer(addr_book_vaddr v, void *paddr, void *ctx) {
+    // This will store each cells cell index at its paddr.
+    // Then, it will increment a counter.
+    
+    uint64_t *i = ctx;
+
+    *(uint64_t *)paddr = v.cell_index;
+
+    (*i)++;
+}
+
+static void test_adb_foreach(chunit_test_context *tc) {
+    const uint64_t puts = 20;
+
+    uint64_t slots[puts];
+    addr_book_vaddr vaddrs[puts];
+
+    addr_book *adb = new_addr_book(1, 5);
+
+    uint64_t i;
+    for (i = 0; i < puts; i++) {
+        vaddrs[i] = adb_put(adb, slots + i);
+    }
+
+    // Place numbers 0...(puts - 1) in the slots.
+    i = 0;
+    adb_foreach(adb, test_adb_cell_consumer, &i, 1);
+
+    for (i = 0; i < puts; i++) {
+        uint64_t *tag = adb_get_read(adb, vaddrs[i]);
+        assert_eq_uint(tc, vaddrs[i].cell_index, *tag);
+        adb_unlock(adb, vaddrs[i]);
+    }
+
+    assert_eq_uint(tc, adb_get_fill(adb), i);
+
+    delete_addr_book(adb);
+}
+
+static const chunit_test ADB_FOREACH = {
+    .name = "Address Book Foreach",
+    .t = test_adb_foreach,
+    .timeout = 5,
+};
+
 const chunit_test_suite GC_TEST_SUITE_ADB = {
     .name = "Address Book Test Suite",
     .tests = {
@@ -762,7 +845,9 @@ const chunit_test_suite GC_TEST_SUITE_ADB = {
         &ADB_BAD_INDEX,
         &ADB_TRY_LOCK,
         &ADB_PUT_AND_HOLD,
+
+        &ADB_FOREACH,
     },
-    .tests_len = 10
+    .tests_len = 11
 };
 
