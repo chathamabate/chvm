@@ -138,6 +138,9 @@ endef
 
 $(eval $(call module_template,util,))
 $(eval $(call module_template,gc,util))
+$(eval $(call module_template,vm,gc util))
+
+# These will probs be deleted.
 $(eval $(call module_template,chvm,util))
 $(eval $(call module_template,chasm,util chvm))
 
