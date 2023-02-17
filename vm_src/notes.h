@@ -23,6 +23,42 @@
 // * Virtual Address    (16-byte)   : virtual
 // * Physical Address   (8-byte)    : physical
 //
+// Lots of things to consider here...
+// How should dynamic objects be passed around without being GC'd?
+// Should procedure pointers be their own type???
+// How will structures look in memory???
+//
+// Structure and Union Types???
+// Can procedures be fields???
+// Can types be fields???
+// This is something to think about???
+//
+// A procedure could provide its :
+// * Name
+// * Number of arguments
+// * Types of each argument
+// * Number of additionaly local variables
+// * Types of each local variable.
+// * Return Type.
+// * Length of text segment
+// * text segment
+//
+// A procedure is called how???
+// What are the text operations???
+// Is there a call stack??
+// Where will dynamic object creation lie???
+// 
+// Should arguments be given names???
+// I would say yes!! VM then decides how to handle them???
+//
+// Maybe a procedure could have a name and a specific argument
+// type it takes??? Then the user builds the corresponding argument
+// and passes it to the procedure?? I actually do like this personally!
+// Procedures could describe what arguments they need and then also how
+// much local storage space the need on the stack??? (To run that is)
+//
+//
+//
 //
 // 
 // A user spawned thread will be given the following resources :
