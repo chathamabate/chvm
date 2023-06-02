@@ -67,6 +67,49 @@ const chunit_test_suite UTIL_TEST_SUITE_LL = {
     .tests_len = 3
 };
 
+static void test_new_array_list(chunit_test_context *tc) {
+    util_ar *ar = new_array_list(1, sizeof(int));
+
+    assert_non_null(tc, ar);
+
+    delete_array_list(ar);
+}
+
+static const chunit_test AR_NEW = {
+    .name = "Array List New",
+    .t = test_new_array_list,
+    .timeout = 5,
+};
+
+static void test_array_list_add_and_get(chunit_test_context *tc) {
+    util_ar *ar = new_array_list(1, sizeof(int64_t));
+
+    int64_t i = 100, j = 200;
+
+    ar_add(ar, &i); 
+    ar_add(ar, &j); 
+
+    assert_eq_int(tc, i, *(int64_t *)ar_get(ar, 0));
+    assert_eq_int(tc, j, *(int64_t *)ar_get(ar, 1));
+
+    delete_array_list(ar);
+}
+
+static const chunit_test AR_ADD_AND_GET = {
+    .name = "Array List Add and Get",
+    .t = test_array_list_add_and_get,
+    .timeout = 5,
+};
+
+const chunit_test_suite UTIL_TEST_SUITE_AR = {
+    .name = "Array List Suite",
+    .tests = {
+        &AR_NEW,
+        &AR_ADD_AND_GET,
+    },
+    .tests_len = 2
+};
+
 static void cell_print_uint(void *cell, void *ctx) {
     safe_printf(" %" PRIu64, *(uint64_t *)cell);
 }

@@ -4,7 +4,6 @@
 
 #include "core_src/sys.h"
 
-
 #include "./util_src//test/mod.h"
 #include "./gc_src//test/mod.h"
 
@@ -35,8 +34,14 @@ static int safe_main(void) {
     return 0;
 }
 
+static void vlog_code(void);
+
 int main(void) {
     init_core_state(8);
+
+    // vlog_code();    
+
+    // safe_exit(0);
     int c = safe_main();
 
     // NOTE this is needed.
@@ -44,6 +49,25 @@ int main(void) {
 
     // Should never make it here.
     return 1;
+    
 }
 
+
+
+
+
+
+
+#include "./gc_src/virt.h"  // Virtual Memory.
+#include "./gc_src/mb.h"    // Memory Block. 
+#include "./gc_src/ms.h"    // Memory Space.
+#include "./gc_src/cs.h"    // Collected Space.
+
+static void bubblesort(int *int_arr, int int_arr_len) {
+
+}
+
+static void vlog_code(void) {
+    
+}
 

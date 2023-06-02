@@ -98,6 +98,60 @@ uint64_t ll_len(util_ll *ll) {
     return ll->len;
 }
 
+struct util_array_list {
+    size_t cell_size;
+    uint64_t cap;
+    void *array; // size(array) = cell_size * cap.
+                 
+    uint64_t len;
+};
+
+util_ar *new_array_list(uint8_t chnl, size_t cs) {
+    if (cs == 0) {
+        return NULL;
+    }
+
+    util_ar *ar = safe_malloc(chnl, sizeof(util_ar));
+
+    ar->cell_size = cs;
+
+    ar->cap = 1;
+    ar->array = safe_malloc(chnl, ar->cell_size * ar->cap);
+
+    ar->len = 0;
+
+    return ar;
+}
+
+void delete_array_list(util_ar *ar) {
+    safe_free(ar->array);
+
+    safe_free(ar);
+}
+
+void *ar_next(util_ar *ar) {
+    if (ar->len == ar->cap) {
+        uint64_t new_cap = (ar->cap * 2) + 1;
+
+        ar->array = safe_realloc(ar->array, new_cap);
+        ar->cap = new_cap;
+    }
+
+    return (uint8_t *)(ar->array) + (ar->len++ * ar->cell_size);
+}
+
+void ar_add(util_ar *ar, void *src) {
+    memcpy(ar_next(ar), src, ar->cell_size);
+}
+
+void *ar_get(util_ar *ar, uint64_t i) {
+    return (uint8_t *)(ar->array) + (i * ar->cell_size);
+}
+
+uint64_t ar_len(util_ar *ar) {
+    return ar->len;
+}
+
 typedef struct util_bc_table_header_struct {
     struct util_bc_table_header_struct *next;
     struct util_bc_table_header_struct *prev;

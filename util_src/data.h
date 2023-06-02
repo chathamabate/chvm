@@ -19,6 +19,20 @@ void *ll_get(util_ll *ll, uint64_t i);
 
 uint64_t ll_len(util_ll *ll);
 
+typedef struct util_array_list util_ar;
+
+util_ar *new_array_list(uint8_t chnl, size_t cs);
+void delete_array_list(util_ar *ar);
+
+void *ar_next(util_ar *ar);
+void ar_add(util_ar *ar, void *src);
+
+// NOTE: this does not do bounds checking!
+void *ar_get(util_ar *ar, uint64_t i);
+
+uint64_t ar_len(util_ar *ar);
+
+
 // Can be used as a stack or queue.
 typedef struct util_broken_collection util_bc;
 
