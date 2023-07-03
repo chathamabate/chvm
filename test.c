@@ -4,16 +4,19 @@
 
 #include "core_src/sys.h"
 
-#include "./util_src//test/mod.h"
-#include "./gc_src//test/mod.h"
+#include "./util_src/test/mod.h"
+#include "./gc_src/test/mod.h"
+#include "./vlog_src/test/mod.h"
 
 #include "./util_src/data.h"
 
-#define MODULES_LEN 2
+
+#define MODULES_LEN 3
 
 static const chunit_test_module *MODULES[MODULES_LEN] = {
     &UTIL_TEST_MOD,
     &GC_TEST_MOD,
+    &VLOG_TEST_MOD,
 };
 
 static int safe_main(void) {
@@ -34,40 +37,16 @@ static int safe_main(void) {
     return 0;
 }
 
-static void vlog_code(void);
-
 int main(void) {
     init_core_state(8);
 
-    // vlog_code();    
-
-    // safe_exit(0);
     int c = safe_main();
 
     // NOTE this is needed.
     safe_exit(c);
 
+    // I like to use this part a lot.
+
     // Should never make it here.
     return 1;
-    
 }
-
-
-
-
-
-
-
-#include "./gc_src/virt.h"  // Virtual Memory.
-#include "./gc_src/mb.h"    // Memory Block. 
-#include "./gc_src/ms.h"    // Memory Space.
-#include "./gc_src/cs.h"    // Collected Space.
-
-static void bubblesort(int *int_arr, int int_arr_len) {
-
-}
-
-static void vlog_code(void) {
-    
-}
-

@@ -138,6 +138,8 @@ endef
 
 $(eval $(call module_template,util,))
 $(eval $(call module_template,gc,util))
+$(eval $(call module_template,vlog,util)) 	# Vlog code will only
+											# Depend on Util.
 $(eval $(call module_template,vm,gc util))
 
 # These will probs be deleted.

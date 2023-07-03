@@ -129,7 +129,6 @@ typedef struct {
     addr_book_vaddr root_vaddr;
 } cs_get_root_res;
 
-// Will return NULL if a bad root_id is given.
 cs_get_root_res cs_get_root_vaddr(collected_space *cs, cs_root_id root_id);
 
 // These calls are forwarded directly to the memory space.
