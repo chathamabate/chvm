@@ -75,8 +75,11 @@ fun (P1, ... PN)<R> Function pointer type. Always static and constant.
 
 <StaticType>    ::= <PrimType> | <StaticArr> | <StaticRef> | <StaticRec>
 
+<DynamicArr>    ::= vec\<<Type>\>   
+<DynamicRef>    ::= vrt\<<Type>\>
 
-
+<DynamicField>  ::= <DynamicType> <ID>;
+<DynamicRec>    ::= rec \{ <DynamicField>+ <StaticField>* \}
 
 <DynamicType>   ::=
 
