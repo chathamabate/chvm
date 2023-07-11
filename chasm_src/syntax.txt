@@ -53,8 +53,37 @@ vrt<rec {       Virtual record type, basically an object in Java.
 fun (P1, ... PN)<R> Function pointer type. Always static and constant.
                     Should closures be supported... I guess we'll see.
 
+:: Assembly Grammar ::
 
-Valid Operations :
+<ID>        ::= [a-zA-Z_][a-zA-Z_0-9]*
+
+<IntConst>      ::= [1-9][0-9]*     // Will be parsed as 64-bit.
+<HexConst>      ::= 0x[A-Fa-f0-9]+  
+<BitConst>      ::= 0b[01]+
+<FltConst>      ::= [0-9]+(\.[0-9]+)?f
+<ChrConst>      ::= '.'
+
+<IntegralConst> ::= <IntConst> | <HexConst> | <BitConst> | <ChrConst>
+
+<PrimType>  ::= int | flt | idx | chr
+
+<StaticArr> ::= arr\<<StaticType>, <IntConst>\>
+<StaticRef> ::= phy\<<StaticType>\>
+
+<StaticField>   ::= <StaticType> <ID>;
+<StaticRec>     ::= rec \{ <StaticField>+ \}
+
+<StaticType>    ::= <PrimType> | <StaticArr> | <StaticRef> | <StaticRec>
+
+
+
+
+<DynamicType>   ::=
+
+<Type>          ::= <StaticType> | <DynamicType>
+
+
+<TypeDef>
 
 
 
