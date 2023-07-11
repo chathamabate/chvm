@@ -1,0 +1,70 @@
+
+:: SYNTAX NOTES FOR CHVM ASSEMBLY ::
+
+
+:: Types ::
+
+Primitives :
+
+int         64-bit signed integer
+flt         64-bit floating point number
+chr         8-bit character/byte value
+idx         32-bit unsigned integer index (May Change)
+
+Non-Primitives :
+
+NOTE: A dynamic piece of memory or "object" is a piece of memory
+which is allocated on the heap and is subject to garbage collection.
+The only other form of memory is static memory, this memory is allocated
+on the stack when functions are called (The stack will also reside on the heap
+technically, but the user won't know this)
+
+Static memory is freed when a function returns, thus its lifetime is known
+and not managed by the user or the garbage collector.
+
+vrt<T>          128-bit "virtual address". A non-null virtual address is used
+                to temporarily acquire the physical address of a value matching
+                its internal type T.
+
+phy<T>          64-bit "physical address". A non-null physical address can be used
+                to directly access the a value with type T.
+
+arr<T, c>       Array of constant length. This is not an address, but rather a value.
+
+vrt<arr<T, ?>>  Virtual address of an array. Since this array must reside in dynamic
+                memory, it may have a variable length.
+
+rec {           Record type, basically a struct in C. 
+    T1 field1;  For this type to be used on the stack, No internal type can be virtual. 
+    T2 field2;  
+     :
+     :
+    TN fieldN;
+}
+
+vrt<rec {       Virtual record type, basically an object in Java.
+    T1 field1;  The value of this record will reside on the heap.
+    T2 field2;  Iternal types can be virtual!
+     :
+     :
+    TN fieldN;
+}>
+
+fun (P1, ... PN)<R> Function pointer type. Always static and constant.
+                    Should closures be supported... I guess we'll see.
+
+
+Valid Operations :
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -10,6 +10,8 @@
 
 #include "./util_src/data.h"
 
+#include "./vlog_src/main.h"
+
 
 #define MODULES_LEN 3
 
@@ -40,7 +42,8 @@ static int safe_main(void) {
 int main(void) {
     init_core_state(8);
 
-    int c = safe_main();
+    // int c = safe_main();
+    int c = vlog_main();
 
     // NOTE this is needed.
     safe_exit(c);
@@ -50,3 +53,4 @@ int main(void) {
     // Should never make it here.
     return 1;
 }
+
