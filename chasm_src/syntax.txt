@@ -41,29 +41,50 @@ From this point further, a piece of data managed by the garbage collector
 will be known as "Dynamic" whereas a piece of data which resides on the 
 call stack will be known as "Static". 
 
-All dynamic pieces of data have identifiers known as "Virtual Addresses".
-A "Virtual Address" is used to aquire the lock on a dynamic piece of 
-data, and in turn, retrieve the temporary location of the data. 
-i.e. the "Physical Address".
+Data in general will be referenced in the assembly code through the use
+text identifiers. Ex. num, user_email, or student1.
 
-If a dynamic value V has type T, 
+The mechanisms of these identifiers will differ depending on whether
+the identifier is in reference to a dynamic or static piece of data.
 
-How to distinguish between virtual and physical addresses??
-How to define these things???
+If an identifier resolves to a static piece of data, said data can 
+be accessed and mutated directly as the identifiers type can be thought
+of as identical to the type of the data it references.
 
-Note that when passing static data through functions, "Physical Address"'s
-can be passed to save stack memory and allow for externally mutating functions. 
+If an identifier resolves to a dynamic piece of data, things are different.
+In this case, the id resolves to the "Virtual Address" of the piece of 
+data. To retrieve the "Physical Address" of the data, the user must
+use an aquire statement.
 
-If a static value V has type T,
-it's address when passed through a function will have type phy<T>.
+Example:
+// name_list is of type arr<vec<char>, 4>
+// name_list holds 4 character vectors (i.e. strings)
+// Each vector represents a different name.
 
-A type is dynamic iff its corresponding values must reside in 
-the garbage collected space.
+aquire read name_list as nl_p;  
 
-Thus, a type is dynamic iff one or more of the following properties applies:
+// Between these statements, nl_p contains the temporary physical address
+// of the name_list array.
+
+release name_list;  // Make sure to release to resume GC.
+
+A type T is dynamic iff a value of type T MUST reside in the garbage collected
+space. Thus, a type is dynamic iff one or more of the following properties apply:
 *       The type is a virtual address mapping to a value of any type.
+*       The type is a vector.
 *       The type is an array whose internal type is dynamic.
 *       The type is a record which contains at least one field with a dynamic type.
+
+Example:
+
+rec {
+    vrt<arr<int, 2>> coord;
+    int weight;
+}
+
+Above, since coord is a virtual address mapping to an array in the garbage collected
+space, the whole record type is dynamic and itself must be on the garbage collected 
+space!
 
 
 
