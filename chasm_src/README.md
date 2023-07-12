@@ -305,8 +305,40 @@ fun my_func() {
 }
 ```
 
+### Virtual Address `NULL` Safety
 
+Since we know when a physical address is `NULL` and non-`NULL` at compile time
+we can prevent its misuse easily!
 
+Is this the same with virtual addresses?
+
+Well, I have decided that it is ok for a virtual address to hold the value of `NULL`
+(specified by the keyword `vnull`. There will be no compile time checks for this.
+
+The only restriction is that when the physical address of `vnull` is aquired, 
+a run time error occurs and the program exits.
+
+```
+@int x_vrt;     // Default value of vnull.
+*int x_phy;
+
+aquire write x_vrt as x_phy {
+    // ERROR!!!
+    // Attempting to acquire vnull!
+}
+```
+
+It is totally ok for functions to return virtual addresses (including `vnull`).
+
+```
+fun my_func1() => @int {
+    return new int;     // OK!
+}
+
+fun my_func2() => @int { 
+    return vnull;       // Also OK!
+}
+```
 
 
 
