@@ -118,11 +118,11 @@ will be known as *Dynamic* whereas all other data will be known as *Static*.
 
 ### Address Types
 
-There will be 2 different ~Address~ types. Values of these types have
+There will be 2 different *Address* types. Values of these types have
 a small fixed size, but can be used to reference other values of
 any size.
 
-A ~Physical Address~ is a 64-bit reference to any piece of 
+A *Physical Address* is a 64-bit reference to any piece of 
 data. 
 
 A value of type `*T` is a physical address which references 
@@ -302,9 +302,6 @@ fun my_func() {
                     // (Compile Time Error) 
 
     thingy(&x);     // This is OK!
-                    // Even though x wasn't given
-                    // an initial value,
-                    // its memory will still exist!
 }
 ```
 
