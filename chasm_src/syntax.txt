@@ -41,50 +41,57 @@ From this point further, a piece of data managed by the garbage collector
 will be known as "Dynamic" whereas a piece of data which resides on the 
 call stack will be known as "Static". 
 
-Data in general will be referenced in the assembly code through the use
-text identifiers. Ex. num, user_email, or student1.
+Now we will define reference types. These types will be used to reference
+values. There will be two types of references. Physical Addresses, and
+Virtual Addresses.
 
-The mechanisms of these identifiers will differ depending on whether
-the identifier is in reference to a dynamic or static piece of data.
+A Physical Address is a C pointer. (64-bit) It can be used to access
+a static or dynamic piece of data.
 
-If an identifier resolves to a static piece of data, said data can 
-be accessed and mutated directly as the identifiers type can be thought
-of as identical to the type of the data it references.
+A physical address is denoted with the * character.
 
-If an identifier resolves to a dynamic piece of data, things are different.
-In this case, the id resolves to the "Virtual Address" of the piece of 
-data. To retrieve the "Physical Address" of the data, the user must
-use an aquire statement.
+Ex:
+*int            The physical address of an integer.
+*arr<int, 3>    The physical address of an array of 3 integers.
 
-Example:
-// name_list is of type arr<vec<char>, 4>
-// name_list holds 4 character vectors (i.e. strings)
-// Each vector represents a different name.
+A Virtual Address can be used to acquire the physical address of a piece of
+dynamic data. (128-bit)
 
-aquire read name_list as nl_p;  
+A virtual addressis denoted with the @ character.
 
-// Between these statements, nl_p contains the temporary physical address
-// of the name_list array.
+Ex:
+@int                    The virtual address of a dynamic integer.
+@rec { int x; int y; }  The virtual address of a dynamic coordinate.
 
-release name_list;  // Make sure to release to resume GC.
+If an identifier O has type @T, then acquiring O's lock will give a 
+value of type *T.
 
-A type T is dynamic iff a value of type T MUST reside in the garbage collected
-space. Thus, a type is dynamic iff one or more of the following properties apply:
-*       The type is a virtual address mapping to a value of any type.
-*       The type is a vector.
-*       The type is an array whose internal type is dynamic.
-*       The type is a record which contains at least one field with a dynamic type.
+Notes On Physical Addresses:
 
-Example:
 
-rec {
-    vrt<arr<int, 2>> coord;
-    int weight;
-}
+Notes On Arrays and Array Typing:
+An array is a value. To pass the value of an array to a function, the function
+must know the exact length of the array to be able to set aside the
+correct amount of space on the stack.
 
-Above, since coord is a virtual address mapping to an array in the garbage collected
-space, the whole record type is dynamic and itself must be on the garbage collected 
-space!
+However, arrays are often used with variable lengths. That is maybe an 
+array's length (and thus size) is unknown until runtime.
+To account for this there is the ? character.
+
+Ex:
+arr<int, ?>         Is the value of an array with variable length.
+                    (This value alone CANNOT be passed to a function)
+
+arr<int, 3>         Is the value of an array with a fixed length of 3.
+                    NOTE: a value of this type also technically has type
+                    arr<int, ?>.
+
+*arr<int, ?>        Is the physical address of an array with a variable 
+                    length.
+
+*arr<int, 3>        Is the physical address of an array with a fixed length
+                    of the 3. NOTE: a value with this type also has type
+                    *arr<int, ?>.
 
 
 
