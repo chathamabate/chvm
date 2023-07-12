@@ -149,7 +149,7 @@ reference the value of `x`. The `&` operator can only be used in specific situat
 as we will see later. 
 
 
-### [Dynamic vs Static Data Continued]
+### [1]: Dynamic vs Static Data Continued
 
 Note that in order for the garbage collector to work as expected
 it must be aware of all virtual addresses created by the user.
