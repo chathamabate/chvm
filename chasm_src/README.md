@@ -1,6 +1,6 @@
 # Notes on CHVM Assembly (CHASM)
 
-## Typing
+## Typing and Memory
 
 ### Types vs Values
 
@@ -65,11 +65,35 @@ arr<int, 3>     // An array of 3 integers.
                 // A value of this type ALSO has type arr<int, ?>.
 ```
 
+### Functions
+
+To define a function, the user must provide its return type, name, parameter types,
+and parameter names.
+
+```
+fun my_function(P1 param1, P2 param2, P3 param3, ...) -> R {
+    // Function Body
+}
+
+```
+
+In the above declaration, `my_function` is the name of the function.
+`param1, param2, param3, ...` are the names of the parameters.
+`P1, P2, P3, ...` are the types of the parameters.
+`R` is the return type of the function.
+
+Note, if `-> R` is omitted, the function will have no return type and
+thus return no value.
+
 ### Dynamic vs Static Data
 
+When calling a function, a piece of memory will be allocated known as
+the stack frame. A stack frame will contain a piece of memory which __IS__
+managed by the garbage collector and a piece of
+memory which __IS NOT__ managed by the garbage collector.
+
 From this point further, a piece of data managed by the garbage collector
-will be known as *Dynamic* whereas a piece of data which resides on the 
-call stack will be known as *Static*. 
+will be known as *Dynamic* whereas all other data will be known as *Static*.
 
 ### Address Types
 
@@ -93,11 +117,16 @@ to aquire a value of type `*T`.
 
 ```
 *int x;     // A reference to an integer.
+
 @int y;     // A "virtual" reference to an integer
             // which resides in the garbage collected
             // space.
 ```
-### Dynamic vs Static Data Continued: GC and Memory Safety
+
+Similar to C, if a value `x` has type `T`, `&x` will have type `*T` and
+reference the value of `x`.
+
+### Dynamic vs Static Data Continued
 
 Note that in order for the garbage collector to work as expected
 it must be aware of all virtual address created by the user.
@@ -105,38 +134,37 @@ it must be aware of all virtual address created by the user.
 The garbage collector can only be aware of a virtual address iff
 the address itself lives in a dynamic piece of data.
 
-So, if a value contains any virtual addresses, the value must reside
-in the garbage collected space. Such a value will thus only be 
-accessible via the use of a virtual address.
+Thus, when a user calls a function, the function will place all
+virtual address values in the dynamic part of its stack frame, and
+all other values in the static part of its stack frame.
 
 ```
-rec { int x; int y; }
+func example() {
+    int x;  // This value will reside in static memory and does
+            // not need to be known by the garbage collector.
+    
+    @int y; // This value will reside in dynamic memory as
+            // it MUST be known by the garbage collector.
+
+    rec {
+        @arr<chr, ?>    name;
+        int             grade;
+    } student;
+
+    // The value of student will be divided into static and dynamic pieces.
+    // Name will be placed in the garbage collected space, whereas grade
+    // can stay in the static part of the stack frame.
+}
 ```
 
-The above record contains no virtual addresses. Thus a value of
-this type can reside on the call stack or the garbage collected space.
+### Aquiring a Physical Address from a Virtual Address
 
-```
-rec { @arr<chr, ?> name; int age; }
-```
+The garbage collector must be notified when the user is working on a piece
+of dynamic data. To do this, we use an `aquire` statement.
 
-This record contains a virtual address referencing an unknown
-length. Thus, we can __NEVER__ define a value of this type in
-static memory. Instead, we must use a virtual address to reference
-a value of this type.
 
-```
-// Illegal declaration!!!!
-// The virtual refernce held in name will reside in the
-// stack and be unknown to the garbage collector.
 
-rec { @arr<chr, ?> name; int age; } student1;
 
-// Acceptable declaration!!!
-// 
-@rec { @arr<chr, ?> name; int age; } student2;
-
-```
 
 
 
