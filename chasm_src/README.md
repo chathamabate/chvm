@@ -65,13 +65,13 @@ arr<int, 3>     // An array of 3 integers.
                 // A value of this type ALSO has type arr<int, ?>.
 ```
 
-### Functions
+### Functions and Value Declarations
 
 To define a function, the user must provide its return type, name, parameter types,
 and parameter names.
 
 ```
-fun my_function(P1 param1, P2 param2, P3 param3, ...) -> R {
+fun my_function(P1 param1, P2 param2, P3 param3, ...) => R {
     // Function Body
 }
 
@@ -82,8 +82,25 @@ In the above declaration, `my_function` is the name of the function.
 `P1, P2, P3, ...` are the types of the parameters.
 `R` is the return type of the function.
 
-Note, if `-> R` is omitted, the function will have no return type and
+Note, if `=> R` is omitted, the function will have no return type and
 thus return no value.
+
+A function body will be able to preform many operations. 
+
+For now, we just need to know how to declare a value in the function.
+This is done by specifying the type and name of a value.
+
+```
+fun my_function(int x, int y) => int {
+    // Declaring an integer with name z.
+    int z;
+
+    // Declaring a record with a minutes and
+    // seconds field.
+    rec { int minutes; int seconds; } time;
+}
+
+```
 
 ### Dynamic vs Static Data
 
@@ -124,12 +141,13 @@ to aquire a value of type `*T`.
 ```
 
 Similar to C, if a value `x` has type `T`, `&x` will have type `*T` and
-reference the value of `x`.
+reference the value of `x`. The `&` operator can only be used in specific situations
+as we will see later. 
 
 ### Dynamic vs Static Data Continued
 
 Note that in order for the garbage collector to work as expected
-it must be aware of all virtual address created by the user.
+it must be aware of all virtual addresses created by the user.
 
 The garbage collector can only be aware of a virtual address iff
 the address itself lives in a dynamic piece of data.
@@ -157,10 +175,65 @@ func example() {
 }
 ```
 
-### Aquiring a Physical Address from a Virtual Address
+### The `new` Keyword
 
-The garbage collector must be notified when the user is working on a piece
-of dynamic data. To do this, we use an `aquire` statement.
+`chasm` provides an operator for allocating garbage collected memory.
+This operator is `new`, and will always return a virtual address.
+
+```
+new int;    // Creates a dynamic integer.
+// Returns a value of type @int.
+
+new rec { flt x; flt y; };   // Creates a dynamic coordinate.
+// Returns a value of type @rec { flt x; flt  y; }.
+```
+
+### Physical Address Safety
+
+The presence of physical addresses introduces the potential for danger!
+
+For example, what if a function call returns the physical address of a value which 
+lives in the static part of the function call's stack frame?
+
+On return, the static part of the stack frame will be deleted. The physical address returned
+will point to a deleted value!
+
+Similarly, what if we store the physical address of a dynamic value without telling
+the garbage collector? The garbage collector only keeps track of virtual addresses.
+It may delete our dynamic value without realizing we still have a way of accessing it.
+We will once again have a pointer to a deleted value!
+
+So, there will be a few restrictions on how physical addresses can be used
+to gaurantee the above problems (and others) never can happen.
+
+__First__, a physical address will __NEVER__ reside in dynamic memory.
+
+```
+new *int;       // Illegal!
+
+new rec { 
+    *arr<chr, ?> phys_name; 
+    int grade; 
+};              // Also Illegal!
+
+new rec {
+    @arr<chr, ?> name;
+    int grade;  
+};              // OK!
+```
+
+While physical addresses existing in the garbage collected space is potentially manageable,
+I have decided it is unnecessary and confusing.
+
+__Second__, a physical address is acquired from a virtual address using an `acquire` block.
+This construct has a known lifespan which notifies the garbage collector
+at its start and end.
+
+```
+j $ y;
+
+```
+
 
 
 
