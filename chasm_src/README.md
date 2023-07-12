@@ -148,7 +148,8 @@ Similar to C, if a value `x` has type `T`, `&x` will have type `*T` and
 reference the value of `x`. The `&` operator can only be used in specific situations
 as we will see later. 
 
-### Dynamic vs Static Data Continued
+
+### [Dynamic vs Static Data Continued]
 
 Note that in order for the garbage collector to work as expected
 it must be aware of all virtual addresses created by the user.
@@ -179,6 +180,42 @@ func example() {
 }
 ```
 
+### Function Types
+
+While creating a new function dynamically is not currently supported,
+you can still pass around references to defined functions.
+
+```
+fun mystery(int x, int y) => flt { ... }
+```
+The function `mystery` can be passed to another function, and has
+the type `fun (int, int) => flt`.
+
+```
+fun normal_call(fun (int, int) => flt f) {
+    flt x $ f(1, 2); // This is OK!
+    
+    ...
+}
+
+fun do_something() {
+    // This is OK!
+    fun (int, int) => flt f $ mystery;
+
+    // Also OK!
+    normal_call(f);
+}
+```
+In the above `do_something` function, `f` has a function type.
+While the value of `f` technically is an address, `f` is not considered
+virtual or physical. Its value will either reference a piece of user code
+or be `fnull` (for function null).
+
+A value with a function type can reside anywhere! 
+
+You can place function types in records and arrays, and it doesn't matter
+whether a value of a function type is in dynamic or static memory!
+
 ### The `new` Keyword
 
 `chasm` provides an operator for allocating garbage collected memory.
@@ -191,6 +228,20 @@ new int;    // Creates a dynamic integer.
 new rec { flt x; flt y; };   // Creates a dynamic coordinate.
 // Returns a value of type @rec { flt x; flt  y; }.
 ```
+
+`new` can also be used to create arrays of constant and non-consant sizes.
+
+```
+@arr<int, 4> const_arr $ new arr<int, 4>;
+
+int len $ ... // Runtime value.
+
+@arr<int, ?> variable_arr $ new arr<int, len>;
+```
+
+As seen above, we can pass an integral variable into the array allocation.
+If this is done, the type returned will always be `@arr<int, ?>` as the 
+length of the new array may not be known at compile time.
 
 ### Physical Address Safety
 
