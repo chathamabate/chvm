@@ -1,5 +1,9 @@
 # Notes on CHVM Assembly (CHASM)
 
+## Table of Contents
+
+- [Notes on CHVM Assembly \(CHASM\)](#Notes on CHVM Assembly \(CHASM\))
+
 ## Typing and Memory
 
 ### Types vs Values
@@ -149,7 +153,7 @@ reference the value of `x`. The `&` operator can only be used in specific situat
 as we will see later. 
 
 
-### [1]: Dynamic vs Static Data Continued
+### Dynamic vs Static Data Continued
 
 Note that in order for the garbage collector to work as expected
 it must be aware of all virtual addresses created by the user.
