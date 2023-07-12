@@ -129,7 +129,7 @@ A value of type `*T` is a physical address which references
 a value of type `T`.
 
 
-A ~Virtual Address~ is a 128-bit reference used to acquire
+A *Virtual Address* is a 128-bit reference used to acquire
 the physical address of a dynamic piece of data. Such
 an address is denoted using the `@` character.
 
