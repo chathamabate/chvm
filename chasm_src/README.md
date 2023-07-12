@@ -2,7 +2,21 @@
 
 ## Table of Contents
 
-- [Notes on CHVM Assembly \(CHASM\)](#Notes on CHVM Assembly \(CHASM\))
+- [Notes on CHVM Assembly (CHASM)](#notes-on-chvm-assembly-chasm)
+  - [Table of Contents](#table-of-contents)
+  - [Typing and Memory](#typing-and-memory)
+    - [Types vs Values](#types-vs-values)
+    - [Primitive Types](#primitive-types)
+    - [Simple Composite Types](#simple-composite-types)
+    - [Variable Sized Array Type](#variable-sized-array-type)
+    - [Functions and Value Declarations](#functions-and-value-declarations)
+    - [Dynamic vs Static Data](#dynamic-vs-static-data)
+    - [Address Types](#address-types)
+    - [Dynamic vs Static Data Continued](#dynamic-vs-static-data-continued)
+    - [Function Types](#function-types)
+    - [The `new` Keyword](#the-new-keyword)
+    - [Physical Address Safety](#physical-address-safety)
+    - [Virtual Address `NULL` Safety](#virtual-address-null-safety)
 
 ## Typing and Memory
 
