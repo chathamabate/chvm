@@ -36,9 +36,9 @@ There are 4 primitive types :
   * `idx`  A 32-bit unsigned integer. (Used for offsets into arrays)
   * `chr`  A 8-bit character/byte.
 
-### Simple Composite Types
-
 All remaining types are built from these types.
+
+### Simple Composite Types
 
 An array or `arr` is a composite value containing a fixed length sequence of
 identically typed values.
