@@ -1,9 +1,6 @@
 # Notes on CHVM Assembly (CHASM)
 
-## Table of Contents
-
 - [Notes on CHVM Assembly (CHASM)](#notes-on-chvm-assembly-chasm)
-  - [Table of Contents](#table-of-contents)
   - [Typing and Memory](#typing-and-memory)
     - [Types vs Values](#types-vs-values)
     - [Primitive Types](#primitive-types)
@@ -15,8 +12,10 @@
     - [Dynamic vs Static Data Continued](#dynamic-vs-static-data-continued)
     - [Function Types](#function-types)
     - [The `new` Keyword](#the-new-keyword)
-    - [Physical Address Safety](#physical-address-safety)
-    - [Virtual Address `NULL` Safety](#virtual-address-null-safety)
+    - [Value Paths and Dereferencing Physical Addresses](#value-paths-and-dereferencing-physical-addresses)
+    - [Physical Address Safety: `acquire` and `ref`](#physical-address-safety-acquire-and-ref)
+    - [Virtual Address Safety and `vnull`](#virtual-address-safety-and-vnull)
+
 
 ## Typing and Memory
 
@@ -371,13 +370,11 @@ x.[y.[z.[i]]]       // This is NOT OK!  (z.[i] is not a Constant Path)
 x![a![b!z]]         // This is NOT OK!
 ```
 
+For a more rigorous definition of these paths, look at the `grammar.txt` file
+in this directory. File defines the exact syntax rules the assembler
+follows.
 
-
-
-
-
-
-### Physical Address Safety
+### Physical Address Safety: `acquire` and `ref`
 
 The presence of physical addresses introduces the potential for danger!
 
@@ -395,109 +392,103 @@ We will once again have a pointer to a deleted value!
 So, there will be a few restrictions on how physical addresses can be used
 to gaurantee the above problems (and others) never can happen.
 
-__1:__ A physical address will __NEVER__ be returned from a function.
-
-__2:__ A physical address will __NEVER__ reside in dynamic memory.
-
-```
-new *int;       // Illegal!
-
-new rec { 
-    *arr<chr, ?> name_phy; 
-    int grade; 
-};              // Also Illegal!
-
-new rec {
-    @arr<chr, ?> name_vrt;
-    int grade;  
-};              // OK!
-```
-
-While physical addresses existing in the garbage collected space is potentially manageable,
-I have decided it is unnecessary and confusing.
-
-__3:__ A physical address is acquired from a virtual address using an `acquire` block.
-This construct has a known lifespan which notifies the garbage collector
-at its start and end.
+Most Notably, the value of a physical address can never be assigned using the `$`
+operator. 
 
 ```
-// Virtual address of our new integer.
-@int x_vrt $ new int;
+*int x;
+*int y;
 
-// Physical address field with NULL intial value.
-*int x_phy;
+x $ y;  // This is NOT OK!
+```
 
-acquire write x_vrt as x_phy {
-    // In here, the garbage collector knows we will
-    // be reading or writing to the value referenced by x_vrt.
-    //
-    // The garbage collector gives us the physical address
-    // of x_vrt's referenced integer value and places it in x_phy.
+So, if this is the case, how do we assign a value to a physical operator?
 
-    // Use ptr freely!
+There are 2 ways.
+
+First is using an `acquire` block. This construct is used to notify the garbage
+collector that we will be working on a piece of garbage collector memory and that we
+would like the piece's lock. The lock can be acquired in `write` or `read` mode.
+
+```
+@int x $ new int;
+*int x_p;
+
+acquire write x into x_p {
+   x_p! $ 10;   // This is OK!
+}
+```
+
+When exiting an `acquire` block, the corresponding lock and physical address are
+both given up. For example, in the above code `x_p` only holds a value in
+the acquire block. Attempting to use `x_p!` outside the `acquire` block will
+result in a compile time error.
+
+The second way is using the `ref` keyword. This keyword is made so arbitrary 
+references can be passed to functions. There is no reason physical addresses
+nead only be used to access memory in the garbage collected space.
+
+If the value path `vp` corresponds to a value of type `T`, then `ref vp` has a 
+type of `*T` and is the physical address of `vp`'s corresponding value.
+`ref` can only ever be used when passing an argument to a function.
+
+```
+// Function for swapping integers.
+fun swap(*int x, *int y) {
+    int temp $ x!;
+    x! $ y!;
+    y! $ temp;
 }
 
-// After our aquire block, the garbage collector is notified we are done.
-// x_phy is set back to NULL, and thus unusable.
-//
-// NOTE, we are allowed to return from inside an acquire block. 
-// The garbage collector will be notified.
-```
-Note that we can specify `read` instead of `write` in the above `acquire` block to
-notify the garbage collector that we will just be reading from our data.
+fun example() {
+    int num1 $ 1;
+    int num2 $ 2;
 
-__4:__ A physical address field cannot be assigned to except through an acquire block
-or as a parameter to a function.
+    swap(ref num1, ref num2); 
 
-```
-fun mutator(*int x_phy) { ... }
+    // NOTE, we don't need to use ref to pass a physical address
+    // to a function. Passing a physical address from an 
+    // acquire block works all the same.
 
-fun my_func() {
-    int x $ 1;
-    *int x_phy;
+    @int num3 $ new int;
+    *int num3_p;
 
-    @int y_vrt $ new int;
-    *int y_phy;
-    
-    acquire read y_vrt as y_phy {   // This is OK!
-        mutator(y_phy);             // This is OK!
+    acquire write num3 into num3_p {
+        num3_p! $ 3;
+        swap(num3_p, ref num2);
     }
-
-    mutator(&x);        // This is OK!
-    
-    x_phy $ &x;         // This is NOT OK!
-```
-
-This final rule has some powerful consequences. 
-
-The `&` operator can only ever be used when passing references to functions.
-
-Additionally, the assembler can determine at compile time when a local physical address
-is `NULL` or non-`NULL`. So, the assembler will prevent the user from ever passing a `NULL` 
-physical address into any functions.
-
-```
-fun thingy(*int x_phy) { ... }
-
-fun my_func() {
-    int x;
-    *int x_phy;
-
-    thingy(x_phy);  // This is NOT OK!
-                    // (Compile Time Error) 
-
-    thingy(&x);     // This is OK!
 }
 ```
 
-### Virtual Address `NULL` Safety
+By restricting physical addresses in this way, the assebler will
+be able to confirm safe physical address use at compile time!
 
-Since we know when a physical address is `NULL` and non-`NULL` at compile time
+Note that while the assembler will allow the user to define potentially unsafe
+types and functions, the physical address restrictions will prevent 
+all possible misuse.
+
+Here is an example.
+
+```
+fun bad_return() => *int {
+    ...
+}
+```
+
+The user can define a function which returns a physical address.
+However, due to the assembler checks, it is impossible for the
+return value of this function ever to be used since it cannot be
+assigned using `$`. We will see that the return value of a function
+can only be used iff it is immediately assigned.
+
+### Virtual Address Safety and `vnull`
+
+Since we know when a physical address is valid and invalid at compile time
 we can prevent its misuse easily!
 
 Is this the same with virtual addresses?
 
-Well, I have decided that it is ok for a virtual address to hold the value of `NULL`
+Well, I have decided that it is ok for a virtual address to hold a null value 
 (specified by the keyword `vnull`. There will be no compile time checks for this.
 
 The only restriction is that when the physical address of `vnull` is aquired, 
