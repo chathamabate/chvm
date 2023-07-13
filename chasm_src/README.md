@@ -256,7 +256,7 @@ As seen above, we can pass an integral variable into the array allocation.
 If this is done, the type returned will always be `@arr<int, ?>` as the 
 length of the new array may not be known at compile time.
 
-### Value Paths
+### Value Paths and Dereferencing Physical Addresses
 
 A *Value Path* is text in an assembly file which represents a value.
 Anywhere in the assembly file where a value is expected, a *Value Path* must
@@ -279,6 +279,24 @@ Each assembly operation will loosely coorespond to one or more bytecode
 instructions. Due to the structure of the bytecode, there are restrictions
 on the structure of a singular value path.
 
+As we explore value paths, we will also investigate how to gain access
+to a value given its physical address. This is done using the `!` and 
+`![]` operators.
+
+If `x` has a value of type `*int` (A physical address of an integer), 
+`x!` will have a value of type `int` and be. `x!` is used to represent
+the value of the integer which `x` *points* to.
+
+If `a` has type `*arr<int, ?>`, `a![i]` will have type `int` and represent 
+the integer value at index `i` in the array pointed to by `a`.
+
+Lastly `!` can be used to traverse fields when an address of a record is held.
+If `p` has type `rec {int x; int y;}`, then `p!y` has type `int` and represents the
+value in field `y` of the record pointed to by `p`. (Note that this is analagous to
+the `->` operator in C)
+
+Anyway, now let's talk about paths.
+
 A *Constant Path* is a path whose relative location
 can be determined at compile time. Such a path is only composed of
 local fields and local constant array indexes.
@@ -294,37 +312,34 @@ a.b.c.[14].x.[2]
 
 A *Simple Path* contains only one physical address dereference.
 That is it follows one of the following rules.
- * *Constant Path* -> *Constant Path*
- * \*(*Constant Path*)
+ * *Constant Path* ! 
+ * *Constant Path* ! *Constant Path*
  * *Constant Path* .[ *Constant Path* ] *Constant Path*
- * *Constant Path* ->[ *Integer Constant* ] *Constant Path*
- * *Constant Path* ->[ *Constant Path* ] *Constant Path*
+ * *Constant Path* ![ *Integer Constant* ] *Constant Path*
+ * *Constant Path* ![ *Constant Path* ] *Constant Path*
 
 ```
-x.y->z.a
+x.y!z.a
 x.y.[z].r.p.[3]
-q.r.[3]->[i.j].[3]
+q.r.[3]![i.j].[3]
 
-a->[23] // Note that even though the index is a constant,
-        // the use of the "->" operator forces this value path
+a![23]  // Note that even though the index is a constant,
+        // the use of the "!" operator forces this value path
         // to dereference the address stored in "a" at runtime.
         // Thus, this path is simple, not constant.
 
 a.[i]
-
 ```
-
 A *Complex Path* contains a dereference which
 itself contains a *Simple Path*.
 See the following rules.
  * *Constant Path* .[ *SimplePath* ] *Constant Path*
- * *Constant Path* -> [ *SimplePath* ] *Constant Path*
+ * *Constant Path* ![ *SimplePath* ] *Constant Path*
 
 ```
-x.y.z.[r->s].t.[3]
-p.t->[a->[1]]
-
-a.b->[q->[n]].x
+x.y.z.[r!s].t.[3]
+p.t![a![1]]
+a.b![q![n]].x
 ```
 
 Finally, a *Value Path* can be any of these types or a constant.
@@ -335,22 +350,25 @@ Finally, a *Value Path* can be any of these types or a constant.
 x.y         // Constant Path.
 
 x.[n].z     // Simple Path. 
-x->[i.[32]] // Simple Path.
-y->k.j      // Simple Path.
+x![i.[32]]  // Simple Path.
+y!k.j       // Simple Path.
 
-k->[i->j].j                 // Complex Path.
-k.[45].x.a->[p.k->[n].f].l  // Complex Path.
+k![i!j].j                 // Complex Path.
+k.[45].x.a![p.k![n].f].l  // Complex Path.
 
 // 2 or more dereferences which are not nested
 // are not allowed!
-x->y->z     // NOT OK
+x!y!z       // NOT OK
 x.[n].[i]   // NOT OK
+x.[k]!a     // NOT OK
 
 // Nesting dereferences deeper than one level is not allowed!
 x.[y.[z]]           // This is OK!
-x.[y->z[p.[34]]]    // This is OK!      (p.[34] is a Constant Path)
-x.[y.[z.[i]]]       // This is NOT OK!  (z.[i] is not a Constant Path)
+x.[y!z[p.[34]]]     // This is OK!      (p.[34] is a Constant Path)
+x![y![i]]           // Also OK!
 
+x.[y.[z.[i]]]       // This is NOT OK!  (z.[i] is not a Constant Path)
+x![a![b!z]]         // This is NOT OK!
 ```
 
 

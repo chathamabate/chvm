@@ -46,14 +46,13 @@
 <ConstPathTail> ::= <ConstStep>*
 <ConstPath> ::= <ID> <ConstPathTail>
 
-<SimplePath>    ::= <ConstPath> \-\> <ConstPath> 
-                  | \*\(<ConstPath>\) 
+<SimplePath>    ::= <ConstPath> ! <ConstPath>? 
                   | <ConstPath> \.\[ <ConstPath> \] <ConstPathTail>
-                  | <ConstPath> \-\> \[ <IntegralConst> \] <ConstPathTail> 
-                  | <ConstPath> \-\> \[ <ConstPath> \] <ConstPathTail>
+                  | <ConstPath> ! \[ <IntegralConst> \] <ConstPathTail> 
+                  | <ConstPath> ! \[ <ConstPath> \] <ConstPathTail>
 
 <ComplexPath>   ::= <ConstPath> \. \[ <SimplePath> \] <ConstPathTail>
-                  | <ConstPath> \-\> \[ <SimplePath> \] <ConstPathTail>
+                  | <ConstPath> ! \[ <SimplePath> \] <ConstPathTail>
 
 <ValuePath>     ::= <Const>
                   | <ConstPath>
