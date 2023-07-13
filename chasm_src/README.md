@@ -162,11 +162,6 @@ to aquire a value of type `*T`.
                 // space.
 ```
 
-Similar to C, if a value `x` has type `T`, `&x` will have type `*T` and
-reference the value of `x`. The `&` operator can only be used in specific situations
-as we will see later. 
-
-
 ### Dynamic vs Static Data Continued
 
 Note that in order for the garbage collector to work as expected
@@ -260,6 +255,36 @@ int len $ ... // Runtime value.
 As seen above, we can pass an integral variable into the array allocation.
 If this is done, the type returned will always be `@arr<int, ?>` as the 
 length of the new array may not be known at compile time.
+
+### Value Paths
+
+A *Value Path* is text in an assembly file which represents a value.
+Anywhere in the assembly file where a value is expected, a *Value Path* must
+be given.
+
+```
+int x; int y;
+rec { int z; } w;
+
+x $ y;      // y is the value path used to get the integer value of y.
+y $ w.z;    // w.z is the value path used to get the integer value
+            // held in w.
+
+w.z $ 5;    // constants are also value paths!
+            // Note the left side of an assignment is also a value
+            // path!
+```
+
+Each assembly operation will loosely coorespond to one or more bytecode 
+instructions. Due to the structure of the bytecode, there are restrictions
+on the structure of a singular value path.
+
+
+
+
+
+
+
 
 ### Physical Address Safety
 
@@ -408,6 +433,8 @@ fun my_func2() => @int {
     return vnull;       // Also OK!
 }
 ```
+
+
 
 
 
