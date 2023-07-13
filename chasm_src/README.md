@@ -364,7 +364,7 @@ x.[k]!a     // NOT OK
 
 // Nesting dereferences deeper than one level is not allowed!
 x.[y.[z]]           // This is OK!
-x.[y!z[p.[34]]]     // This is OK!      (p.[34] is a Constant Path)
+x.[y![p.[34]]]      // This is OK!      (p.[34] is a Constant Path)
 x![y![i]]           // Also OK!
 
 x.[y.[z.[i]]]       // This is NOT OK!  (z.[i] is not a Constant Path)
