@@ -39,21 +39,23 @@
           | <FuncType>
 
 // Time to redefine Value paths!!!!
-// Yay.
 
-<ValuePath>     ::= <ID>(\.<ID>)*
+<ConstStep> ::= \.<ID>
+              | \.\[ <IntegralConst> \]
 
-// For an instruction, only one array index or physical address.
-// dereference is allowed.
+<ConstPathTail> ::= <ConstStep>*
+<ConstPath> ::= <ID> <ConstPathTail>
 
-<ArrValueIndex> ::= <ValuePath>\[(<ValuePath>|<IntegralConst>)\]
-<PAddrDeRef>    ::= <ValuePath>\-\><ID>
-             
+<SimplePath>    ::= <ConstPath> \-\> <ConstPath> 
+                  | \*\(<ConstPath>\) 
+                  | <ConstPath> \.\[ <ConstPath> \] <ConstPathTail>
+                  | <ConstPath> \-\> \[ <IntegralConst> \] <ConstPathTail> 
+                  | <ConstPath> \-\> \[ <ConstPath> \] <ConstPathTail>
 
-<Declaration>   ::= <Type> <ID>;
-<StaticDef>     ::= <Type> <ID> $ <Const>;
-<DynamicDef>    ::= <Type> <ID> $ new <Type>;
-<AssignDef>     ::= <Type> <ID> $ <ID>;
+<ComplexPath>   ::= <ConstPath> \. \[ <SimplePath> \] <ConstPathTail>
+                  | <ConstPath> \-\> \[ <SimplePath> \] <ConstPathTail>
 
-
-
+<ValuePath>     ::= <Const>
+                  | <ConstPath>
+                  | <SimplePath>
+                  | <ComplexPath>

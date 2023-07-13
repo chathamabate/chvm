@@ -279,6 +279,79 @@ Each assembly operation will loosely coorespond to one or more bytecode
 instructions. Due to the structure of the bytecode, there are restrictions
 on the structure of a singular value path.
 
+A *Constant Path* is a path whose relative location
+can be determined at compile time. Such a path is only composed of
+local fields and local constant array indexes.
+
+```
+x.y.z       // Accesing fields with the "dot" operator.
+a.[4].x     // Using a "dot-index" with a constant.
+
+a.b.c.[14].x.[2]
+
+// All of the above value paths are constant paths.
+```
+
+A *Simple Path* contains only one physical address dereference.
+That is it follows one of the following rules.
+ * *Constant Path* -> *Constant Path*
+ * \*(*Constant Path*)
+ * *Constant Path* .[ *Constant Path* ] *Constant Path*
+ * *Constant Path* ->[ *Integer Constant* ] *Constant Path*
+ * *Constant Path* ->[ *Constant Path* ] *Constant Path*
+
+```
+x.y->z.a
+x.y.[z].r.p.[3]
+q.r.[3]->[i.j].[3]
+
+a->[23] // Note that even though the index is a constant,
+        // the use of the "->" operator forces this value path
+        // to dereference the address stored in "a" at runtime.
+        // Thus, this path is simple, not constant.
+
+a.[i]
+
+```
+
+A *Complex Path* contains a dereference which
+itself contains a *Simple Path*.
+See the following rules.
+ * *Constant Path* .[ *SimplePath* ] *Constant Path*
+ * *Constant Path* -> [ *SimplePath* ] *Constant Path*
+
+```
+x.y.z.[r->s].t.[3]
+p.t->[a->[1]]
+
+a.b->[q->[n]].x
+```
+
+Finally, a *Value Path* can be any of these types or a constant.
+
+```
+34          // Constant.
+
+x.y         // Constant Path.
+
+x.[n].z     // Simple Path. 
+x->[i.[32]] // Simple Path.
+y->k.j      // Simple Path.
+
+k->[i->j].j                 // Complex Path.
+k.[45].x.a->[p.k->[n].f].l  // Complex Path.
+
+// 2 or more dereferences which are not nested
+// are not allowed!
+x->y->z     // NOT OK
+x.[n].[i]   // NOT OK
+
+// Nesting dereferences deeper than one level is not allowed!
+x.[y.[z]]           // This is OK!
+x.[y->z[p.[34]]]    // This is OK!      (p.[34] is a Constant Path)
+x.[y.[z.[i]]]       // This is NOT OK!  (z.[i] is not a Constant Path)
+
+```
 
 
 
