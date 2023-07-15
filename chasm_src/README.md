@@ -283,7 +283,7 @@ to a value given its physical address. This is done using the `!` and
 `![]` operators.
 
 If `x` has a value of type `*int` (A physical address of an integer), 
-`x!` will have a value of type `int` and be. `x!` is used to represent
+`x!` will have a value of type `int`. `x!` is used to represent
 the value of the integer which `x` *points* to.
 
 If `a` has type `*arr<int, ?>`, `a![i]` will have type `int` and represent 
@@ -371,7 +371,7 @@ x![a![b!z]]         // This is NOT OK!
 ```
 
 For a more rigorous definition of these paths, look at the `grammar.txt` file
-in this directory. File defines the exact syntax rules the assembler
+in this directory. This file defines the exact syntax rules the assembler
 follows.
 
 ### Physical Address Safety: `acquire` and `ref`
@@ -402,7 +402,7 @@ operator.
 x $ y;  // This is NOT OK!
 ```
 
-So, if this is the case, how do we assign a value to a physical operator?
+So, if this is the case, how do we assign a value to a physical address?
 
 There are 2 ways.
 
@@ -426,7 +426,7 @@ result in a compile time error.
 
 The second way is using the `ref` keyword. This keyword is made so arbitrary 
 references can be passed to functions. There is no reason physical addresses
-nead only be used to access memory in the garbage collected space.
+need only be used to access memory in the garbage collected space.
 
 If the value path `vp` corresponds to a value of type `T`, then `ref vp` has a 
 type of `*T` and is the physical address of `vp`'s corresponding value.

@@ -1,5 +1,5 @@
-CC 		:= gcc
-CFLAGS	:= -pthread
+CC 		:= clang 
+CFLAGS	:= -pthread 
 
 all: test
 
