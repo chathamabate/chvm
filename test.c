@@ -26,7 +26,6 @@ static const chunit_test_module *MODULES[MODULES_LEN] = {
 };
 
 static int safe_main(void) {
-
     collected_space *cs = new_collected_space(1, 5, 1000);
 
     // Create a single root object.
