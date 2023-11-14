@@ -3,6 +3,7 @@
 
 #include "../../testing_src/chunit.h"
 
-extern const chunit_test_suite CALC_SUITE;
+extern const chunit_test_suite ADD_SUITE;
+extern const chunit_test_suite MULT_SUITE;
 
 #endif

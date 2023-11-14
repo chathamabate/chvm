@@ -3,9 +3,10 @@
 #include "./calc.h"
 
 const chunit_test_module VLOG_TEST_MOD = {
-    .name = "Vlog Module",
+    .name = "Calculator Module",
     .suites = {
-        &CALC_SUITE,
+        &ADD_SUITE,
+        &MULT_SUITE
     },
-    .suites_len = 1,
+    .suites_len = 2,
 };

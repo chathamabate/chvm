@@ -193,7 +193,7 @@ be physical depending on how the routine is defined.
 
 The memory of a routine is divided into *Stack Blocks*. 
 
-A stack block contains a piece of memory which resides in the virtual space (referenced with `.v`).
+A stack block contains a piece of memory which resides in the virtual space (referenced with `.V`).
 A stack block also contains a piece of memory which resides in the physical space (referenced with
 `.p`).
 
@@ -262,3 +262,35 @@ routine myRoutine {
 }
 ```
 
+### Routine Types and Generics
+
+Like type definitions, routines can also accept generic type
+parameters. The parameters must also be filled with virtual address
+types.
+
+Additionally, a reference to a routine can be held as a value. 
+The type of a routine reference is determined by the structure of the
+routines `rsb`.
+
+```
+type ArrayList<T> @rec {
+    ...
+};
+
+
+routine createArrayList<T> {
+    rsb.V {
+        ArrayList<T> returnVal;
+    }
+
+    rsb.p {
+        // Initial Capcity of the ArrayList.
+        int initCap;
+    }
+
+    ...
+}
+```
+
+In the above code snippet a generic routine `createArrayList<T>` is defined.
+The type of this routine would be `routine<T> { ArrayList<T> returnVal; } { int initCap; }`.

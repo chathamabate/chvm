@@ -19,10 +19,47 @@ static const chunit_test VC_ADD = {
 };
 
 
-const chunit_test_suite CALC_SUITE = {
-    .name = "Calculator Suite",
+const chunit_test_suite ADD_SUITE = {
+    .name = "Addition Suite",
     .tests = {
         &VC_ADD,
+        &VC_ADD,
+        &VC_ADD,
+        &VC_ADD,
     },
-    .tests_len = 1,
+    .tests_len = 4,
+};
+
+static void test_vc_mult1(chunit_test_context *tc) {
+    assert_eq_int(tc, -3, 3);
+}
+
+static const chunit_test VC_MULT1 = {
+    .name = "Negative * Positive",
+    .timeout = 5,
+    .t = test_vc_mult1
+};
+
+static void test_vc_mult2(chunit_test_context *tc) {
+    int x = 0, y = 1;
+    y /= x;
+    (void)y;
+}
+
+static const chunit_test VC_MULT2 = {
+    .name = "Negative * Negative",
+    .timeout = 5,
+    .t = test_vc_mult2
+};
+
+const chunit_test_suite MULT_SUITE = {
+    .name = "Multiplication Suite",
+    .tests = {
+        &VC_MULT1,
+        &VC_MULT2,
+        &VC_ADD,
+        &VC_ADD,
+        &VC_ADD,
+    },
+    .tests_len = 5,
 };
